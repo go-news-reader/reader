@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-browserhttp/browserhttp"
 	goreddit "github.com/go-reddit/reddit"
 
-	"github.com/go-news-reader/reader/browserhttp"
 	"github.com/go-news-reader/reader/source"
 )
 

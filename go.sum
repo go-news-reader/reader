@@ -4,6 +4,8 @@ github.com/go-atproto/atproto v0.1.0 h1:gdf/+JTPEq9z51JMmvH6huiBT6WIpOTfhbPMS3QV
 github.com/go-atproto/atproto v0.1.0/go.mod h1:0ir15Nin/oDgaeIPBpG2ncndlITx0Z9ZFzExl48M0SM=
 github.com/go-birdsite/twitter v0.1.0 h1:s6xFl2oG6b8/o+nkth3Nr992bq+wSVsz/HYqeTBIZtU=
 github.com/go-birdsite/twitter v0.1.0/go.mod h1:K81gyFwTIuec82tIz/Ffo4mOqT/obIqjHhyUnbbmcOc=
+github.com/go-browserhttp/browserhttp v0.1.0 h1:nyzTAv8vF3tkn4z0JUoX/y1hy/ihTV5DYTns+QM1ogE=
+github.com/go-browserhttp/browserhttp v0.1.0/go.mod h1:zAN6vOC7f+MLC+P1J/C4dpdgj8D3+BhSpZRQlgSyZu8=
 github.com/go-hackernews/hackernews v0.1.0 h1:4d9f4KmqfEnd8WTRyx2ee5jnA4JJz7QHZqA7q3nuGCY=
 github.com/go-hackernews/hackernews v0.1.0/go.mod h1:qqjIppBfii2cO163KCgdBX1RjlcEfp4MROYs4SZjay0=
 github.com/go-instagram/instagram v0.1.0 h1:asUP8y7YgAMYAq0m2dQ4VIFNpPnfpXk+p2Qjqj7jRbQ=
