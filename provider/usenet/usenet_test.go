@@ -27,7 +27,8 @@ func (f *fakeConn) Over(low, high int) ([]gonntp.Overview, error) {
 	f.gotLow, f.gotHigh = low, high
 	return f.over, f.overErr
 }
-func (f *fakeConn) Close() error { f.closed = true; return nil }
+func (f *fakeConn) Article(string) (*gonntp.Article, error) { return nil, nil }
+func (f *fakeConn) Close() error                            { f.closed = true; return nil }
 
 func dialing(c conn, err error) dialFunc {
 	return func(context.Context) (conn, error) { return c, err }

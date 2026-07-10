@@ -11,12 +11,20 @@ import (
 	"strings"
 
 	gonntp "github.com/go-newsgroups/nntp"
+	"github.com/go-newsgroups/newznab"
 
 	"github.com/go-news-reader/reader/source"
 )
 
 // ErrNoChannel is returned when Feed is called without a newsgroup name.
 var ErrNoChannel = errors.New("usenet: Query.Channel must be a newsgroup name")
+
+// ErrNoSearch is returned when a "search:" query is issued but no indexer was
+// configured (use NewWithSearch).
+var ErrNoSearch = errors.New("usenet: no Newznab indexer configured for search")
+
+// searchPrefix marks a Query.Channel as a Newznab search rather than a group.
+const searchPrefix = "search:"
 
 // defaultCount caps how many recent articles are fetched when Query.Limit is 0.
 const defaultCount = 50
@@ -25,7 +33,13 @@ const defaultCount = 50
 type conn interface {
 	Group(name string) (*gonntp.Group, error)
 	Over(low, high int) ([]gonntp.Overview, error)
+	Article(msgIDorNum string) (*gonntp.Article, error)
 	Close() error
+}
+
+// searcher is the slice of *newznab.Client the adapter uses; an interface for tests.
+type searcher interface {
+	Search(ctx context.Context, opts newznab.SearchOptions) (*newznab.SearchResult, error)
 }
 
 // dialFunc opens a connection to the NNTP server; a seam for tests.
@@ -42,20 +56,32 @@ var (
 	}
 )
 
-// Provider fetches Usenet articles as normalized items.
+// Provider fetches Usenet articles as normalized items. With an indexer
+// configured (NewWithSearch) it also answers "search:" queries via Newznab.
 type Provider struct {
-	dial dialFunc
+	dial   dialFunc
+	search searcher // nil when no indexer configured
+}
+
+func dialer(addr string, useTLS bool) dialFunc {
+	return func(ctx context.Context) (conn, error) {
+		if useTLS {
+			return nntpDialTLS(ctx, addr, &tls.Config{})
+		}
+		return nntpDial(ctx, addr)
+	}
 }
 
 // New returns a provider dialing addr ("host:port"). When useTLS is set an
 // implicit-TLS connection is made (default port 563), otherwise plaintext (119).
 func New(addr string, useTLS bool) *Provider {
-	return &Provider{dial: func(ctx context.Context) (conn, error) {
-		if useTLS {
-			return nntpDialTLS(ctx, addr, &tls.Config{})
-		}
-		return nntpDial(ctx, addr)
-	}}
+	return &Provider{dial: dialer(addr, useTLS)}
+}
+
+// NewWithSearch returns a provider that also answers "search:<query>" feeds via
+// a Newznab indexer (works with a direct indexer or an NZBHydra2 endpoint).
+func NewWithSearch(addr string, useTLS bool, indexerURL, apiKey string) *Provider {
+	return &Provider{dial: dialer(addr, useTLS), search: newznab.New(indexerURL, apiKey)}
 }
 
 // NewWithDial wraps a custom dial function (used by tests with a fake conn).
@@ -64,9 +90,14 @@ func NewWithDial(dial dialFunc) *Provider { return &Provider{dial: dial} }
 // Kind reports source.Usenet.
 func (p *Provider) Kind() source.Kind { return source.Usenet }
 
-// Feed selects the newsgroup and returns its most recent articles' overviews.
-// Not cursor-paginated here, so Result.Cursor is always empty.
+// Feed returns a page of items. A Query.Channel of "search:<query>" runs a
+// Newznab search (NZB results); any other non-empty channel is a newsgroup name
+// whose most recent article overviews are returned. Not cursor-paginated, so
+// Result.Cursor is always empty.
 func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, error) {
+	if term, ok := strings.CutPrefix(strings.TrimSpace(q.Channel), searchPrefix); ok {
+		return p.searchFeed(ctx, term, q)
+	}
 	group := strings.TrimSpace(q.Channel)
 	if group == "" {
 		return source.Result{}, ErrNoChannel
@@ -114,4 +145,40 @@ func mapOverview(group string, ov gonntp.Overview) source.Item {
 		Comments:  -1,
 		Created:   ov.Date.Unix(),
 	}
+}
+
+// searchFeed runs a Newznab search and maps the NZB results to items whose Link
+// is the .nzb download URL (feed FetchNZB to download the binary).
+func (p *Provider) searchFeed(ctx context.Context, term string, q source.Query) (source.Result, error) {
+	if p.search == nil {
+		return source.Result{}, ErrNoSearch
+	}
+	res, err := p.search.Search(ctx, newznab.SearchOptions{Query: term, Limit: q.Limit})
+	if err != nil {
+		return source.Result{}, err
+	}
+	items := make([]source.Item, 0, len(res.Items))
+	for _, it := range res.Items {
+		items = append(items, mapSearchItem(it))
+	}
+	return source.Result{Items: items}, nil
+}
+
+func mapSearchItem(it newznab.Item) source.Item {
+	item := source.Item{
+		ID:        it.GUID,
+		Source:    source.Usenet,
+		Channel:   it.Group,
+		Title:     it.Title,
+		Author:    it.Poster,
+		Permalink: it.NZBURL,
+		Link:      it.NZBURL,
+		Score:     it.Grabs,
+		Comments:  -1,
+		Created:   it.PublishDate.Unix(),
+	}
+	if it.Category != "" {
+		item.Tags = []string{it.Category}
+	}
+	return item
 }

@@ -34,9 +34,12 @@ type Options struct {
 	LemmyInstance string
 
 	// UsenetAddr ("host:port") enables the Usenet provider; UsenetTLS selects
-	// implicit TLS.
-	UsenetAddr string
-	UsenetTLS  bool
+	// implicit TLS. UsenetIndexerURL + UsenetIndexerAPIKey additionally enable
+	// Newznab "search:" queries (direct indexer or NZBHydra2).
+	UsenetAddr          string
+	UsenetTLS           bool
+	UsenetIndexerURL    string
+	UsenetIndexerAPIKey string
 
 	// Optional best-effort credentials.
 	InstagramSession string
@@ -69,7 +72,11 @@ func Registry(opts Options) *source.Registry {
 		r.Register(lemmy.New(opts.LemmyInstance))
 	}
 	if opts.UsenetAddr != "" {
-		r.Register(usenet.New(opts.UsenetAddr, opts.UsenetTLS))
+		if opts.UsenetIndexerURL != "" {
+			r.Register(usenet.NewWithSearch(opts.UsenetAddr, opts.UsenetTLS, opts.UsenetIndexerURL, opts.UsenetIndexerAPIKey))
+		} else {
+			r.Register(usenet.New(opts.UsenetAddr, opts.UsenetTLS))
+		}
 	}
 
 	return r

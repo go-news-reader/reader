@@ -55,3 +55,11 @@ func TestRegistryConfigGated(t *testing.T) {
 		t.Fatalf("want 10 providers, got %d: %v", len(kinds), kinds)
 	}
 }
+
+func TestRegistryUsenetSearch(t *testing.T) {
+	// UsenetAddr + indexer URL registers the search-capable Usenet provider.
+	r := Registry(Options{UsenetAddr: "news:119", UsenetIndexerURL: "https://indexer", UsenetIndexerAPIKey: "k"})
+	if !has(r.Kinds(), source.Usenet) {
+		t.Fatal("usenet not registered with indexer")
+	}
+}
