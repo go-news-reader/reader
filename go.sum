@@ -2,10 +2,14 @@ github.com/andybalholm/brotli v1.0.6 h1:Yf9fFpf49Zrxb9NlQaluyE92/+X7UVHlhMNJN2sx
 github.com/andybalholm/brotli v1.0.6/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
 github.com/go-atproto/atproto v0.1.0 h1:gdf/+JTPEq9z51JMmvH6huiBT6WIpOTfhbPMS3QVSrg=
 github.com/go-atproto/atproto v0.1.0/go.mod h1:0ir15Nin/oDgaeIPBpG2ncndlITx0Z9ZFzExl48M0SM=
+github.com/go-birdsite/twitter v0.1.0 h1:s6xFl2oG6b8/o+nkth3Nr992bq+wSVsz/HYqeTBIZtU=
+github.com/go-birdsite/twitter v0.1.0/go.mod h1:K81gyFwTIuec82tIz/Ffo4mOqT/obIqjHhyUnbbmcOc=
 github.com/go-hackernews/hackernews v0.1.0 h1:4d9f4KmqfEnd8WTRyx2ee5jnA4JJz7QHZqA7q3nuGCY=
 github.com/go-hackernews/hackernews v0.1.0/go.mod h1:qqjIppBfii2cO163KCgdBX1RjlcEfp4MROYs4SZjay0=
 github.com/go-instagram/instagram v0.1.0 h1:asUP8y7YgAMYAq0m2dQ4VIFNpPnfpXk+p2Qjqj7jRbQ=
 github.com/go-instagram/instagram v0.1.0/go.mod h1:FNtFVnKzf/mUyFS3St/C2wrUeuR+1c2AmlMf/ICsnj8=
+github.com/go-lemmy/lemmy v0.1.0 h1:BTYxhsrquoFA3Ud3fH3/o7iQQKvGU/HJIWeZswuf418=
+github.com/go-lemmy/lemmy v0.1.0/go.mod h1:Dul9nVfhYUJNgodn3HCWQFLgbO3ReGNZnFiEFLDx6LM=
 github.com/go-mastodon/mastodon v0.1.0 h1:rf4NLOxrr97ZpzwfAKOVLJ9d/xRsP+pA/teEgKsqYAI=
 github.com/go-mastodon/mastodon v0.1.0/go.mod h1:BUNMTzBrelZtGi6qLuQ7s6mffxsETf1htxiquA3yuDU=
 github.com/go-newsgroups/nntp v0.1.0 h1:z4FLpL+rknXPK5R9vJiZQ8iD0PvchqWy7EEdfHagZ/o=
