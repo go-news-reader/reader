@@ -440,6 +440,10 @@ func TestMetaLine(t *testing.T) {
 	if metaLine(source.Item{Author: "a", Score: -1, Comments: 3}) != "a · 3 comments" {
 		t.Fatal("partial")
 	}
+	// Created adds a timestamp (UTC, deterministic).
+	if got := metaLine(source.Item{Author: "pg", Score: -1, Comments: -1, Created: 1700000000}); got != "pg · 14 Nov 2023 22:13" {
+		t.Fatalf("timestamp = %q", got)
+	}
 }
 
 func TestTruncate(t *testing.T) {
