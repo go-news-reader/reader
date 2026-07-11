@@ -20,7 +20,6 @@ import (
 
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/feeds"
-	"github.com/go-news-reader/reader/internal/webui"
 	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/internal/windowapp"
 	"github.com/go-news-reader/reader/source"
@@ -43,7 +42,6 @@ type config struct {
 	out    string
 	asJSON bool
 	serve  string
-	ui     bool
 	window bool
 }
 
@@ -79,9 +77,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	limit := fs.Int("limit", 25, "items per subscription")
 	out := fs.String("o", "", "write PNG to this file (\"\" or \"-\" = stdout)")
 	asJSON := fs.Bool("json", false, "print the merged feed as JSON instead of an image")
-	serve := fs.String("serve", "", "serve a live view at this address, e.g. :8080")
-	uiMode := fs.Bool("ui", false, "with -serve, serve the interactive WebAssembly UI instead of a static image")
-	windowMode := fs.Bool("window", false, "open a native window that blits the UI directly (macOS)")
+	serve := fs.String("serve", "", "serve a live read-only PNG view at this address, e.g. :8080")
+	windowMode := fs.Bool("window", false, "open a native window that blits the UI directly (macOS/Windows/Linux)")
 	mastodon := fs.String("mastodon", "", "Mastodon instance URL (enables mastodon)")
 	lemmy := fs.String("lemmy", "", "Lemmy instance URL (enables lemmy)")
 	usenet := fs.String("usenet", "", "NNTP server host:port (enables usenet)")
@@ -92,7 +89,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	cfg := config{
-		w: *w, h: *h, osName: *osName, dark: *dark, limit: *limit, out: *out, asJSON: *asJSON, serve: *serve, ui: *uiMode, window: *windowMode,
+		w: *w, h: *h, osName: *osName, dark: *dark, limit: *limit, out: *out, asJSON: *asJSON, serve: *serve, window: *windowMode,
 		opts: feeds.Options{
 			MastodonInstance:    *mastodon,
 			LemmyInstance:       *lemmy,
@@ -122,11 +119,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case cfg.asJSON:
 		return emitJSON(a, stdout, stderr)
 	case cfg.serve != "":
-		var h http.Handler = feedHandler(a)
-		if cfg.ui {
-			h = webui.Handler(a, cfg.osName, cfg.dark)
-		}
-		return emitServe(cfg.serve, h, stdout, stderr)
+		return emitServe(cfg.serve, feedHandler(a), stdout, stderr)
 	default:
 		return emitPNG(a, cfg.out, stdout, stderr)
 	}
