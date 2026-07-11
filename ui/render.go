@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"strings"
+	"time"
 
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
@@ -393,6 +394,9 @@ func metaLine(it source.Item) string {
 	}
 	if it.Comments >= 0 {
 		parts = append(parts, fmt.Sprintf("%d comments", it.Comments))
+	}
+	if it.Created > 0 {
+		parts = append(parts, time.Unix(it.Created, 0).UTC().Format("2 Jan 2006 15:04"))
 	}
 	return strings.Join(parts, " · ")
 }
