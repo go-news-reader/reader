@@ -9,6 +9,22 @@ A pure-Go (**CGO=0**) multi-source news & social **aggregator** with a
 many sources — each behind the same small [`source.Provider`](source/source.go)
 contract.
 
+## Install & run
+
+```sh
+go install github.com/go-news-reader/reader/cmd/newsreader@latest
+
+newsreader -sub reddit:golang -sub hackernews: -o feed.png   # render the feed
+newsreader -sub reddit:golang -json                          # dump merged feed
+newsreader -sub reddit:golang -serve :8080                   # live view in a browser
+```
+
+Subscriptions are `kind:channel` (repeatable): `reddit:golang`,
+`hackernews:`, `syndication:https://blog/feed.xml`, `mastodon:#golang`,
+`bluesky:@user.bsky.social`, `lemmy:technology`, `usenet:comp.lang.go`,
+`usenet:search:ubuntu` (with `-indexer`), … Provider endpoints/credentials are
+set with `-mastodon`, `-lemmy`, `-usenet`, `-indexer`.
+
 ## Sources
 
 Each platform has a standalone pure-Go client library in its own org; this repo
@@ -17,36 +33,43 @@ normalized [`source.Item`](source/source.go).
 
 | Source | Client library | Adapter | Access |
 |--------|----------------|---------|--------|
-| Reddit | [`go-reddit/reddit`](https://github.com/go-reddit/reddit) | `provider/reddit` ✅ | uTLS browser fingerprint |
-| RSS / Atom | `go-syndication/feed` | `provider/syndication` | open |
-| Hacker News | `go-hackernews/hackernews` | `provider/hackernews` | open (Firebase API) |
-| Usenet / newsgroups | `go-newsgroups/nntp` | `provider/usenet` | open (NNTP, RFC 3977) |
-| Mastodon | `go-mastodon/mastodon` | `provider/mastodon` | open (REST) |
-| Lemmy | `go-lemmy/lemmy` | `provider/lemmy` | open (REST) |
-| Bluesky | `go-atproto/atproto` | `provider/bluesky` | open (AT Protocol) |
-| Twitter / X | `go-birdsite/twitter` | `provider/twitter` | session cookie (fragile) |
-| Instagram | `go-instagram/instagram` | `provider/instagram` | session cookie (fragile) |
-| TikTok | `go-douyin/tiktok` | `provider/tiktok` | session cookie (fragile) |
+| Reddit | [`go-reddit/reddit`](https://github.com/go-reddit/reddit) | `provider/reddit` | uTLS browser fingerprint |
+| RSS / Atom / JSONFeed | [`go-syndication/feed`](https://github.com/go-syndication/feed) | `provider/syndication` | open |
+| Hacker News | [`go-hackernews/hackernews`](https://github.com/go-hackernews/hackernews) | `provider/hackernews` | open |
+| Usenet / newsgroups | [`go-newsgroups/nntp`](https://github.com/go-newsgroups/nntp) | `provider/usenet` | open (NNTP) + Newznab search |
+| Mastodon | [`go-mastodon/mastodon`](https://github.com/go-mastodon/mastodon) | `provider/mastodon` | open |
+| Lemmy | [`go-lemmy/lemmy`](https://github.com/go-lemmy/lemmy) | `provider/lemmy` | open |
+| Bluesky | [`go-atproto/atproto`](https://github.com/go-atproto/atproto) | `provider/bluesky` | open (AT Protocol) |
+| Twitter / X | [`go-birdsite/twitter`](https://github.com/go-birdsite/twitter) | `provider/twitter` | best-effort (session) |
+| Instagram | [`go-instagram/instagram`](https://github.com/go-instagram/instagram) | `provider/instagram` | best-effort (session) |
+| TikTok | [`go-tiktok/tiktok`](https://github.com/go-tiktok/tiktok) | `provider/tiktok` | best-effort (session) |
 
-## Design
+## NewsBin-style Usenet
+
+The Usenet provider composes a full binary stack: **Newznab search**
+(`go-newsgroups/newznab`, direct indexer or NZBHydra2) → **NZB download** over
+NNTP with yEnc reassembly (`go-newsgroups/nzb` + `go-newsgroups/yenc`) →
+**AutoPAR** verify/repair (`go-newsgroups/par2` over the `go-erasure/reedsolomon`
+GF(2¹⁶) field) → **thumbnails** (`go-images`).
+
+## Architecture
 
 ```
-                          ┌─────────────────────────┐
-   provider/reddit  ─────▶│                         │
-   provider/rss     ─────▶│   source.Registry       │──▶ Aggregate() ──▶ unified
-   provider/mastodon─────▶│   (one Provider / Kind) │      newest-first    feed
-   provider/…       ─────▶│                         │
-                          └─────────────────────────┘
+ provider/*  ──▶  source.Registry ──▶ Aggregate() ──▶ app.App ──▶ ui.Scene ──▶ framebuffer
+ (10 sources)     (one Provider/Kind)   newest-first    (double-buffered,      (go-widgets,
+                                                          damage-gated)          cached sprites)
 ```
 
-- [`source`](source/) — the `Provider`/`Item`/`Query`/`Result` contract and a
-  concurrent `Registry.Aggregate` that merges many subscriptions newest-first,
-  tolerating per-source failures.
-- [`browserhttp`](browserhttp/) — a shared uTLS Chrome-fingerprint `http.Client`
-  for platforms that 403 non-browser clients, pure Go, no host web view.
+- [`source`](source/) — the `Provider`/`Item`/`Query`/`Result` contract + a
+  concurrent `Registry.Aggregate` merging sources newest-first.
+- [`ui`](ui/) — the go-widgets scene: unified feed, per-source sidebar,
+  search, thumbnails. Cards and chrome render into cached sprites so scrolling
+  is a memcpy blit (no per-frame glyph rasterisation).
+- [`app`](app/) — wires a registry + subscriptions into the scene;
+  double-buffered `Frame()` presents only when the damage sequence advances.
 
-All packages carry **100% test coverage** and build for the fleet's nine
-64-bit targets (see [CI](.github/workflows/ci.yml)).
+Every package carries **100% test coverage** and builds for the fleet's nine
+64-bit targets.
 
 ## License
 
