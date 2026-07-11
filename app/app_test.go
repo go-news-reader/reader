@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/go-news-reader/reader/feeds"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
@@ -261,6 +262,104 @@ func TestSetSystemAppearance(t *testing.T) {
 	s.Draw(buf)
 	if hasRGB(buf, accent.R, accent.G, accent.B) {
 		t.Fatal("accent should be dropped when hasAccent is false")
+	}
+}
+
+func TestApplyAccountsRebuildsRegistryAndPersists(t *testing.T) {
+	set := &settings.Settings{
+		Profiles: []settings.Profile{{Name: "Home", Subs: []source.Subscription{{Source: source.Reddit, Channel: "golang"}}}},
+		Active:   0, Theme: settings.ThemeSystem,
+	}
+	path := filepath.Join(t.TempDir(), "s.json")
+	rec := httplog.NewRecorder(4)
+	a := New(Config{
+		Registry: newReg(fakeProv{kind: source.Reddit, items: []source.Item{{ID: "x", Source: source.Reddit}}}),
+		Settings: set, Store: settings.NewStore(path), Recorder: rec, Options: feeds.Options{}, OS: ui.OSMac,
+	})
+	// The rebuilt registry is captured through the builder seam (so no real
+	// providers are constructed) and yields a distinct item, proving the swap.
+	var gotOpts feeds.Options
+	rebuilt := newReg(fakeProv{kind: source.Reddit, items: []source.Item{{ID: "y", Source: source.Reddit}}})
+	a.SetRegistryBuilder(func(o feeds.Options) *source.Registry { gotOpts = o; return rebuilt })
+	var refreshed int
+	a.SetRefreshHook(func() { refreshed++; a.Refresh(context.Background()) })
+
+	// Enter Reddit credentials via the scene editor buffers, then commit.
+	a.Scene().SetAccounts([]settings.Account{{Kind: source.Reddit, Fields: map[string]string{"client_id": "cid", "client_secret": "csec"}}})
+	a.ApplyAccounts()
+
+	if refreshed != 1 {
+		t.Fatalf("refresh hook not called: %d", refreshed)
+	}
+	if gotOpts.RedditClientID != "cid" || gotOpts.RedditClientSecret != "csec" {
+		t.Fatalf("reddit creds not mapped into rebuild options: %+v", gotOpts)
+	}
+	if gotOpts.Recorder != rec {
+		t.Fatal("shared recorder not re-wired into the rebuilt registry")
+	}
+	loaded, err := settings.NewStore(path).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := loaded.Account(source.Reddit); !ok {
+		t.Fatal("reddit account not persisted")
+	}
+	if len(a.Items()) != 1 || a.Items()[0].ID != "y" {
+		t.Fatalf("registry not swapped (items from old reg): %+v", a.Items())
+	}
+}
+
+func TestApplyAccountsNoStore(t *testing.T) {
+	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit})})
+	a.SetRegistryBuilder(func(feeds.Options) *source.Registry { return newReg() })
+	a.SetRefreshHook(func() {})
+	a.ApplyAccounts() // store == nil branch, must not panic
+}
+
+func TestAccountsToOptions(t *testing.T) {
+	accts := []settings.Account{
+		{Kind: source.Reddit, Fields: map[string]string{"client_id": "id", "client_secret": "sec", "username": "u", "password": "p"}},
+		{Kind: source.Mastodon, Fields: map[string]string{"instance": "https://m", "token": "mt"}},
+		{Kind: source.Lemmy, Fields: map[string]string{"instance": "https://l"}},
+		{Kind: source.Usenet, Fields: map[string]string{"addr": "news:119", "tls": "true", "indexer_url": "https://ix", "indexer_key": "k"}},
+		{Kind: source.Instagram, Fields: map[string]string{"session": "ig"}},
+		{Kind: source.TikTok, Fields: map[string]string{"ms_token": "ms", "session": "ts"}},
+		{Kind: source.Twitter, Fields: map[string]string{"token": "tw"}},
+	}
+	o := AccountsToOptions(feeds.Options{}, accts)
+	if o.RedditClientID != "id" || o.RedditClientSecret != "sec" || o.RedditUsername != "u" || o.RedditPassword != "p" {
+		t.Fatalf("reddit mapping wrong: %+v", o)
+	}
+	if o.MastodonInstance != "https://m" || o.MastodonToken != "mt" || o.LemmyInstance != "https://l" {
+		t.Fatalf("mastodon/lemmy mapping wrong: %+v", o)
+	}
+	if o.UsenetAddr != "news:119" || !o.UsenetTLS || o.UsenetIndexerURL != "https://ix" || o.UsenetIndexerAPIKey != "k" {
+		t.Fatalf("usenet mapping wrong: %+v", o)
+	}
+	if o.InstagramSession != "ig" || o.TikTokMSToken != "ms" || o.TikTokSession != "ts" || o.TwitterToken != "tw" {
+		t.Fatalf("scraper mapping wrong: %+v", o)
+	}
+
+	// tls "false" clears; an empty field leaves the base untouched (setIf skip);
+	// an absent tls key preserves the base bool.
+	base := feeds.Options{UsenetTLS: true, MastodonToken: "keep"}
+	o2 := AccountsToOptions(base, []settings.Account{
+		{Kind: source.Usenet, Fields: map[string]string{"tls": "false"}},
+		{Kind: source.Mastodon, Fields: map[string]string{"instance": ""}},
+	})
+	if o2.UsenetTLS {
+		t.Fatal("tls=false should clear UsenetTLS")
+	}
+	if o2.MastodonToken != "keep" {
+		t.Fatal("empty account field must not overwrite the base value")
+	}
+	o3 := AccountsToOptions(feeds.Options{UsenetTLS: true}, []settings.Account{{Kind: source.Usenet, Fields: map[string]string{"addr": "x"}}})
+	if !o3.UsenetTLS {
+		t.Fatal("absent tls key should preserve the base bool")
+	}
+	// An unknown kind is ignored (default-less switch, no-op).
+	if got := AccountsToOptions(feeds.Options{}, []settings.Account{{Kind: source.Bluesky, Fields: map[string]string{"x": "y"}}}); got.RedditClientID != "" {
+		t.Fatalf("unknown kind should be a no-op: %+v", got)
 	}
 }
 

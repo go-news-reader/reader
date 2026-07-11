@@ -11,6 +11,7 @@ import (
 	"image/color"
 	"image/png"
 
+	"github.com/go-news-reader/reader/feeds"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
@@ -26,6 +27,15 @@ type App struct {
 	set   *settings.Settings
 	subs  []source.Subscription // == the active profile's subscriptions
 	scene *ui.Scene
+
+	// Live-rebuild inputs (window path). recorder is the shared HTTP recorder the
+	// registry logs into; baseOpts is the flag-derived feeds config; newRegistry
+	// is the registry builder (a seam so tests avoid constructing real providers).
+	// Together they let ApplyAccounts rebuild the registry with new credentials
+	// while keeping the same recorder wired, so the Network log keeps updating.
+	recorder    *httplog.Recorder
+	baseOpts    feeds.Options
+	newRegistry func(feeds.Options) *source.Registry
 
 	osName string
 	dark   bool
@@ -61,6 +71,10 @@ type Config struct {
 	Recorder *httplog.Recorder
 	// Subscriptions seeds the synthesized profile when Settings is nil.
 	Subscriptions []source.Subscription
+	// Options is the base (flag-derived) feeds configuration. The window path
+	// rebuilds the registry from Options + Settings.Accounts + Recorder whenever
+	// accounts change; the CLI paths leave it zero and pass a prebuilt Registry.
+	Options       feeds.Options
 	Width, Height int
 	OS            string // ui.OSMac | ui.OSLinux | ui.OSWindows
 	Dark          bool
@@ -89,6 +103,7 @@ func New(cfg Config) *App {
 	scene.SetThemeName(set.Theme)
 	scene.SetCachePath(set.CachePath)
 	scene.SetProfiles(set.Profiles, set.Active)
+	scene.SetAccounts(set.Accounts)
 	if rec := cfg.Recorder; rec != nil {
 		// Feed the Network-log view live, converting httplog entries into the
 		// ui-local shape so the ui package need not depend on internal/httplog.
@@ -108,6 +123,7 @@ func New(cfg Config) *App {
 	a := &App{
 		reg: cfg.Registry, store: cfg.Store, set: set,
 		subs: set.ActiveProfile().Subs, scene: scene,
+		recorder: cfg.Recorder, baseOpts: cfg.Options, newRegistry: feeds.Registry,
 		osName: cfg.OS, dark: cfg.Dark, lastRev: -1,
 	}
 	a.refresh = func() { go a.Refresh(context.Background()) }
@@ -117,6 +133,77 @@ func New(cfg Config) *App {
 // SetRefreshHook overrides the asynchronous re-aggregate trigger (tests use a
 // synchronous variant for determinism).
 func (a *App) SetRefreshHook(f func()) { a.refresh = f }
+
+// SetRegistryBuilder overrides how ApplyAccounts rebuilds the provider registry
+// (a seam so tests inject a fake registry instead of real providers).
+func (a *App) SetRegistryBuilder(f func(feeds.Options) *source.Registry) { a.newRegistry = f }
+
+// ApplyAccounts snapshots the scene's edited accounts into the settings,
+// persists them, rebuilds the provider registry with the new credentials
+// (Reddit switches to authenticated OAuth) while keeping the same HTTP recorder
+// wired so the Network log keeps updating, then re-aggregates the feed. The
+// front-end calls it after the accounts editor is committed.
+func (a *App) ApplyAccounts() {
+	a.set = a.scene.Settings() // Settings() now carries the edited Accounts
+	if a.store != nil {
+		_ = a.store.Save(a.set)
+	}
+	a.rebuildRegistry()
+	a.refresh()
+}
+
+// rebuildRegistry constructs a fresh registry from the base options overlaid
+// with the current accounts and the shared recorder, so authenticated providers
+// come up live without a restart.
+func (a *App) rebuildRegistry() {
+	opts := AccountsToOptions(a.baseOpts, a.set.Accounts)
+	opts.Recorder = a.recorder
+	a.reg = a.newRegistry(opts)
+}
+
+// AccountsToOptions overlays stored per-provider credentials onto base feeds
+// options, mapping each account's well-known field keys onto the matching
+// Options fields. Absent fields leave the base value untouched, so flags still
+// apply where no account overrides them.
+func AccountsToOptions(base feeds.Options, accts []settings.Account) feeds.Options {
+	out := base
+	for _, a := range accts {
+		switch a.Kind {
+		case source.Reddit:
+			setIf(&out.RedditClientID, a.Fields["client_id"])
+			setIf(&out.RedditClientSecret, a.Fields["client_secret"])
+			setIf(&out.RedditUsername, a.Fields["username"])
+			setIf(&out.RedditPassword, a.Fields["password"])
+		case source.Mastodon:
+			setIf(&out.MastodonInstance, a.Fields["instance"])
+			setIf(&out.MastodonToken, a.Fields["token"])
+		case source.Lemmy:
+			setIf(&out.LemmyInstance, a.Fields["instance"])
+		case source.Usenet:
+			setIf(&out.UsenetAddr, a.Fields["addr"])
+			if v, ok := a.Fields["tls"]; ok {
+				out.UsenetTLS = v == "true"
+			}
+			setIf(&out.UsenetIndexerURL, a.Fields["indexer_url"])
+			setIf(&out.UsenetIndexerAPIKey, a.Fields["indexer_key"])
+		case source.Instagram:
+			setIf(&out.InstagramSession, a.Fields["session"])
+		case source.TikTok:
+			setIf(&out.TikTokMSToken, a.Fields["ms_token"])
+			setIf(&out.TikTokSession, a.Fields["session"])
+		case source.Twitter:
+			setIf(&out.TwitterToken, a.Fields["token"])
+		}
+	}
+	return out
+}
+
+// setIf copies v into *dst only when v is non-empty.
+func setIf(dst *string, v string) {
+	if v != "" {
+		*dst = v
+	}
+}
 
 // ApplySceneSettings snapshots the scene's edited settings, persists them (when
 // a store is configured), reselects the active profile's subscriptions and

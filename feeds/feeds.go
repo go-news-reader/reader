@@ -37,6 +37,16 @@ import (
 
 // Options configures which providers get registered and with what credentials.
 type Options struct {
+	// RedditClientID + RedditClientSecret switch Reddit from the anonymous
+	// ".json" endpoints to authenticated OAuth against oauth.reddit.com (app-only
+	// "client_credentials" grant), which reads public listings from IPs where the
+	// anonymous endpoints are 403-blocked. Supplying RedditUsername +
+	// RedditPassword additionally selects the per-user "script" grant.
+	RedditClientID     string
+	RedditClientSecret string
+	RedditUsername     string
+	RedditPassword     string
+
 	// MastodonInstance (e.g. "https://mastodon.social") enables the Mastodon
 	// provider; MastodonToken optionally authenticates it.
 	MastodonInstance string
@@ -71,8 +81,8 @@ func Registry(opts Options) *source.Registry {
 	r := source.NewRegistry()
 	hc := loggedClient(opts.Recorder) // nil when no recorder is configured
 
-	// Anonymous, always available.
-	r.Register(newReddit(hc))
+	// Reddit: authenticated OAuth when credentials are present, else anonymous.
+	r.Register(newReddit(hc, opts))
 	r.Register(newHackerNews(hc))
 	r.Register(newBluesky(hc))
 	r.Register(newSyndication(hc))
@@ -115,7 +125,10 @@ func loggedClient(rec *httplog.Recorder) *http.Client {
 // newX registers provider X on the shared logged client hc when present, else on
 // the provider's own default constructor (unchanged behaviour).
 
-func newReddit(hc *http.Client) source.Provider {
+func newReddit(hc *http.Client, opts Options) source.Provider {
+	if opts.RedditClientID != "" && opts.RedditClientSecret != "" {
+		return reddit.NewOAuth(hc, opts.RedditClientID, opts.RedditClientSecret, opts.RedditUsername, opts.RedditPassword)
+	}
 	if hc != nil {
 		return reddit.NewWithHTTPClient(hc)
 	}

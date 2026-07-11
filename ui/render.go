@@ -96,10 +96,11 @@ func (s *Scene) layout() {
 		y += m.sideItemH
 	}
 
-	// Pinned entries at the bottom of the sidebar: the Network log above
-	// ⚙ Settings.
+	// Pinned entries at the bottom of the sidebar, top-to-bottom: 👤 Accounts,
+	// 📡 Network log, ⚙ Settings.
 	s.settingsR = toolkit.Rect{X: 0, Y: s.H - m.sideItemH, W: m.sidebarW, H: m.sideItemH}
 	s.logR = toolkit.Rect{X: 0, Y: s.H - 2*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
+	s.accountsR = toolkit.Rect{X: 0, Y: s.H - 3*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
 
 	// Burger button (left of the topbar) toggles the sidebar. Always present in
 	// the feed view so a collapsed sidebar can be reopened.
@@ -134,6 +135,9 @@ func (s *Scene) Draw(buf []byte) {
 		return
 	case ModeLog:
 		s.drawLog(buf)
+		return
+	case ModeAccounts:
+		s.drawAccounts(buf)
 		return
 	}
 	s.layout()
@@ -251,7 +255,10 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		}
 	}
 
-	// Pinned entries at the bottom: Network log then ⚙ Settings.
+	// Pinned entries at the bottom: 👤 Accounts, 📡 Network log, ⚙ Settings.
+	aly := s.accountsR.Y - m.topbarH
+	p.FillRect(painter.Rect{X: 0, Y: aly - 1, W: m.sidebarW, H: 1}, th.Border)
+	m.side.draw(img, m.pad, aly+(m.sideItemH-m.side.height)/2, "👤 Accounts", mute(th.OnSurface, th.SurfaceAlt))
 	lly := s.logR.Y - m.topbarH
 	p.FillRect(painter.Rect{X: 0, Y: lly - 1, W: m.sidebarW, H: 1}, th.Border)
 	m.side.draw(img, m.pad, lly+(m.sideItemH-m.side.height)/2, "📡 Network log", mute(th.OnSurface, th.SurfaceAlt))
@@ -429,6 +436,8 @@ func (s *Scene) HitTest(x, y int) Hit {
 		return s.hitSettings(x, y)
 	case ModeLog:
 		return s.logHitTest(x, y)
+	case ModeAccounts:
+		return s.accountsHitTest(x, y)
 	}
 	s.layout()
 	m := s.m
@@ -460,6 +469,9 @@ func (s *Scene) HitTest(x, y int) Hit {
 		}
 		if inRect(s.logR, x, y) {
 			return Hit{Kind: HitLog}
+		}
+		if inRect(s.accountsR, x, y) {
+			return Hit{Kind: HitAccounts}
 		}
 		for _, e := range s.subs {
 			if inRect(e.rect, x, y) {

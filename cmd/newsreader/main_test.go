@@ -333,6 +333,14 @@ func TestMainAndDefaultBuild(t *testing.T) {
 	if defaultBuildApp(config{w: 400, h: 300}) == nil {
 		t.Fatal("defaultBuildApp nil")
 	}
+	// With persisted settings, stored per-provider credentials are applied to the
+	// initial registry (the c.set != nil branch), so stored Reddit OAuth is live
+	// from launch.
+	set := settings.Default()
+	set.SetAccount(settings.Account{Kind: source.Reddit, Fields: map[string]string{"client_id": "id", "client_secret": "sec"}})
+	if defaultBuildApp(config{w: 400, h: 300, set: set}) == nil {
+		t.Fatal("defaultBuildApp with accounts nil")
+	}
 	// main() drives osExit; stub it and buildApp so no real exit/network.
 	stubApp(t, fakeProv{})
 	origExit := osExit

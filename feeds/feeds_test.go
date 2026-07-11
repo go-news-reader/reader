@@ -87,6 +87,25 @@ func TestRegistryWithRecorder(t *testing.T) {
 	}
 }
 
+func TestRegistryRedditOAuth(t *testing.T) {
+	// With Reddit credentials the reddit provider is still registered (now via
+	// the OAuth constructor), both with and without a shared logged client.
+	r := Registry(Options{RedditClientID: "id", RedditClientSecret: "sec", RedditUsername: "u", RedditPassword: "p"})
+	if !has(r.Kinds(), source.Reddit) {
+		t.Fatal("reddit not registered with OAuth creds (no recorder)")
+	}
+	rec := httplog.NewRecorder(8)
+	r2 := Registry(Options{Recorder: rec, RedditClientID: "id", RedditClientSecret: "sec"})
+	if !has(r2.Kinds(), source.Reddit) {
+		t.Fatal("reddit not registered with OAuth creds (with recorder)")
+	}
+	// A client id without a secret keeps the anonymous path (OAuth guard false).
+	r3 := Registry(Options{RedditClientID: "id"})
+	if !has(r3.Kinds(), source.Reddit) {
+		t.Fatal("reddit should still register anonymously without a secret")
+	}
+}
+
 func TestLoggedClient(t *testing.T) {
 	if loggedClient(nil) != nil {
 		t.Fatal("nil recorder must yield nil shared client")
