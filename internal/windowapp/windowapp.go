@@ -68,14 +68,16 @@ func (h *Handler) MouseDown(x, y int) {
 	s := h.a.Scene()
 	switch hit := s.HitTest(x, y); hit.Kind {
 	case ui.HitItem:
-		url := hit.Item.Permalink
+		s.OpenDetail(hit.Item) // read it in-app, not in a browser
+	case ui.HitBack:
+		s.CloseDetail()
+	case ui.HitOpenExternal:
+		// HitOpenExternal only fires when the item has a URL, so one is present.
+		url := hit.Item.Link
 		if url == "" {
-			url = hit.Item.Link
+			url = hit.Item.Permalink
 		}
-		if url != "" {
-			_ = openURL(url)
-		}
-		s.FocusSearch(false)
+		_ = openURL(url)
 	case ui.HitSub:
 		s.SetActive(hit.Sub)
 		s.FocusSearch(false)
@@ -96,7 +98,11 @@ func (h *Handler) Key(name string, r rune) {
 	case "Backspace":
 		s.Backspace()
 	case "Escape":
-		s.FocusSearch(false)
+		if s.Mode() == ui.ModeDetail {
+			s.CloseDetail() // Esc returns from the reading view to the feed
+		} else {
+			s.FocusSearch(false)
+		}
 	case "Enter":
 		s.FocusSearch(false)
 	default:
