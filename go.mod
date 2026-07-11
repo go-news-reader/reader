@@ -19,6 +19,9 @@ require (
 	github.com/go-reddit/reddit v0.1.0
 	github.com/go-syndication/feed v0.1.0
 	github.com/go-tiktok/tiktok v0.1.0
+	github.com/go-widgets/painter v0.1.2
+	github.com/go-widgets/toolkit v0.9.3
+	golang.org/x/image v0.44.0
 )
 
 require (
@@ -28,4 +31,5 @@ require (
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 )
