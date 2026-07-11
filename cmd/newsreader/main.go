@@ -15,11 +15,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/feeds"
 	"github.com/go-news-reader/reader/internal/webui"
+	"github.com/go-news-reader/reader/internal/window"
+	"github.com/go-news-reader/reader/internal/windowapp"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
@@ -41,6 +44,7 @@ type config struct {
 	asJSON bool
 	serve  string
 	ui     bool
+	window bool
 }
 
 // Seams so tests avoid the network and real servers.
@@ -49,6 +53,7 @@ var (
 	writeFile = os.WriteFile
 	serveFunc = http.ListenAndServe
 	renderPNG = (*app.App).RenderPNG
+	openWindow = window.Run
 )
 
 func defaultBuildApp(c config) *app.App {
@@ -76,6 +81,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	asJSON := fs.Bool("json", false, "print the merged feed as JSON instead of an image")
 	serve := fs.String("serve", "", "serve a live view at this address, e.g. :8080")
 	uiMode := fs.Bool("ui", false, "with -serve, serve the interactive WebAssembly UI instead of a static image")
+	windowMode := fs.Bool("window", false, "open a native window that blits the UI directly (macOS)")
 	mastodon := fs.String("mastodon", "", "Mastodon instance URL (enables mastodon)")
 	lemmy := fs.String("lemmy", "", "Lemmy instance URL (enables lemmy)")
 	usenet := fs.String("usenet", "", "NNTP server host:port (enables usenet)")
@@ -86,7 +92,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	cfg := config{
-		w: *w, h: *h, osName: *osName, dark: *dark, limit: *limit, out: *out, asJSON: *asJSON, serve: *serve, ui: *uiMode,
+		w: *w, h: *h, osName: *osName, dark: *dark, limit: *limit, out: *out, asJSON: *asJSON, serve: *serve, ui: *uiMode, window: *windowMode,
 		opts: feeds.Options{
 			MastodonInstance:    *mastodon,
 			LemmyInstance:       *lemmy,
@@ -103,6 +109,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	cfg.subs = subs
 
 	a := buildApp(cfg)
+
+	if cfg.window {
+		return emitWindow(a, cfg, stdout, stderr)
+	}
+
 	for _, e := range a.Refresh(context.Background()) {
 		fmt.Fprintln(stderr, "warning:", e)
 	}
@@ -150,6 +161,33 @@ func emitPNG(a *app.App, out string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stderr, "wrote %s (%d bytes)\n", out, len(data))
 	return 0
+}
+
+// emitWindow opens a native window that blits the UI directly, refreshing the
+// feed concurrently so the window appears immediately and fills in once loaded.
+// Off macOS (or if the window can't open) it falls back to a printed notice.
+func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
+	go refreshFeed(a, stderr)
+	runtime.LockOSThread()
+	err := openWindow(window.Config{
+		Title:  "News Reader",
+		Width:  float64(cfg.w),
+		Height: float64(cfg.h),
+	}, windowapp.New(a))
+	if err != nil {
+		fmt.Fprintln(stderr, "newsreader:", err)
+		fmt.Fprintln(stdout, "native window unavailable; use -serve or -o to view the feed")
+		return 1
+	}
+	return 0
+}
+
+// refreshFeed aggregates the subscriptions into a and reports per-source
+// failures. Run in a goroutine by emitWindow so the window appears immediately.
+func refreshFeed(a *app.App, stderr io.Writer) {
+	for _, e := range a.Refresh(context.Background()) {
+		fmt.Fprintln(stderr, "warning:", e)
+	}
 }
 
 func emitServe(addr string, h http.Handler, stdout, stderr io.Writer) int {
