@@ -127,6 +127,17 @@ func TestRunServe(t *testing.T) {
 	if code := run([]string{"-serve", ":0"}, &out, &errb); code != 0 {
 		t.Fatalf("code=%d", code)
 	}
+	// interactive UI handler path
+	var uiHandler http.Handler
+	serveFunc = func(_ string, h http.Handler) error { uiHandler = h; return nil }
+	if code := run([]string{"-serve", ":0", "-ui"}, &out, &errb); code != 0 {
+		t.Fatalf("ui serve code=%d", code)
+	}
+	rec := httptest.NewRecorder()
+	uiHandler.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "reader.wasm") {
+		t.Fatalf("ui index = %d %q", rec.Code, rec.Body.String())
+	}
 	// error path
 	serveFunc = func(string, http.Handler) error { return errors.New("bind") }
 	if code := run([]string{"-serve", ":0"}, &out, &errb); code != 1 {
