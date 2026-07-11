@@ -127,6 +127,17 @@ func (h *Handler) MouseDown(x, y int) {
 	case ui.HitTheme:
 		s.SetThemeName(hit.Value)
 		h.a.ApplySceneSettings()
+	case ui.HitAccounts:
+		s.OpenAccounts()
+	case ui.HitCloseAccounts:
+		s.CloseAccounts()
+		h.a.ApplyAccounts() // persist creds + rebuild registry (Reddit→OAuth) + re-aggregate
+	case ui.HitSelectAccount:
+		s.SelectAccount(source.Kind(hit.Value))
+	case ui.HitFocusAccountField:
+		s.FocusAccountField(hit.Value)
+	case ui.HitToggleAccountBool:
+		s.ToggleAccountBool(hit.Value)
 	default:
 		s.FocusSearch(false)
 	}
@@ -170,15 +181,21 @@ func (h *Handler) Key(name string, r rune) {
 			s.CommitCache()
 			s.CloseSettings()
 			h.a.ApplySceneSettings()
+		case ui.ModeAccounts:
+			s.CloseAccounts() // Esc commits the accounts editor, like Settings
+			h.a.ApplyAccounts()
 		default:
 			s.FocusSearch(false)
 		}
 	case "Enter":
-		if s.Mode() == ui.ModeSettings {
+		switch s.Mode() {
+		case ui.ModeSettings:
 			h.commitSettingsField()
-			return
+		case ui.ModeAccounts:
+			h.a.ApplyAccounts() // apply credentials in place (re-aggregate without leaving)
+		default:
+			s.FocusSearch(false)
 		}
-		s.FocusSearch(false)
 	default:
 		if r != 0 {
 			s.TypeRune(r)

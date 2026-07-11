@@ -329,6 +329,64 @@ func TestKeySettingsCommits(t *testing.T) {
 	}
 }
 
+func TestAccountsRouting(t *testing.T) {
+	a := profApp(t)
+	h := New(a)
+	s := a.Scene()
+
+	// Open the accounts editor via the sidebar entry.
+	click(t, h, ui.HitAccounts)
+	if s.Mode() != ui.ModeAccounts {
+		t.Fatal("HitAccounts should open the accounts editor")
+	}
+	// Pick a provider (Mastodon), which has a bool-less field set.
+	before := s.Mode()
+	found := false
+	for y := 0; y < s.H && !found; y += 2 {
+		for x := 0; x < s.W; x += 2 {
+			if hit := s.HitTest(x, y); hit.Kind == ui.HitSelectAccount && hit.Value == string(source.Usenet) {
+				h.MouseDown(x, y)
+				found = true
+				break
+			}
+		}
+	}
+	if !found || s.Mode() != before {
+		t.Fatal("selecting the Usenet provider failed")
+	}
+	// Focus a text field and type into it.
+	click(t, h, ui.HitFocusAccountField)
+	h.Key("", 'a')
+	// Toggle the Usenet TLS boolean field on.
+	click(t, h, ui.HitToggleAccountBool)
+	accs := s.EditedAccounts()
+	var tlsOn bool
+	for _, acc := range accs {
+		if acc.Kind == source.Usenet && acc.Fields["tls"] == "true" {
+			tlsOn = true
+		}
+	}
+	if !tlsOn {
+		t.Fatalf("TLS toggle did not set tls=true: %+v", accs)
+	}
+	// Enter applies in place (stays in the editor).
+	h.Key("Enter", 0)
+	if s.Mode() != ui.ModeAccounts {
+		t.Fatal("Enter should apply accounts without leaving the editor")
+	}
+	// Done commits and returns to the feed.
+	click(t, h, ui.HitCloseAccounts)
+	if s.Mode() != ui.ModeFeed {
+		t.Fatal("HitCloseAccounts should return to the feed")
+	}
+	// Escape also commits + closes the editor.
+	s.OpenAccounts()
+	h.Key("Escape", 0)
+	if s.Mode() != ui.ModeFeed {
+		t.Fatal("Escape in the accounts editor should return to the feed")
+	}
+}
+
 func TestMouseDownLogAndClose(t *testing.T) {
 	a := profApp(t)
 	h := New(a)

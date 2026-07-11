@@ -35,6 +35,97 @@ type Settings struct {
 	Active    int       `json:"active"`              // index into Profiles
 	Theme     string    `json:"theme"`               // system|light|dark
 	CachePath string    `json:"cachePath,omitempty"` // media cache dir (repositionable)
+	Accounts  []Account `json:"accounts,omitempty"`  // per-provider credentials
+}
+
+// Account holds a user's credentials for one provider. Fields are keyed by the
+// well-known names from [CredentialSchema] (e.g. "client_id", "instance",
+// "token", "addr", "tls"). At most one Account exists per Kind.
+//
+// Secrets (client secrets, tokens, passwords, session cookies) are persisted in
+// the settings.json file, which is written with mode 0600. A future improvement
+// is a platform Keychain / secret-store backend; today the values live on disk.
+type Account struct {
+	Kind   source.Kind       `json:"kind"`
+	Fields map[string]string `json:"fields,omitempty"`
+}
+
+// Account returns the stored account for kind, if any.
+func (s *Settings) Account(kind source.Kind) (Account, bool) {
+	for _, a := range s.Accounts {
+		if a.Kind == kind {
+			return a, true
+		}
+	}
+	return Account{}, false
+}
+
+// SetAccount upserts a by its Kind (replacing any existing account for that
+// provider, else appending).
+func (s *Settings) SetAccount(a Account) {
+	for i := range s.Accounts {
+		if s.Accounts[i].Kind == a.Kind {
+			s.Accounts[i] = a
+			return
+		}
+	}
+	s.Accounts = append(s.Accounts, a)
+}
+
+// CredField is one credential input in the accounts editor. Secret fields are
+// masked when drawn; Bool fields render as a true/false toggle.
+type CredField struct {
+	Key    string
+	Label  string
+	Secret bool
+	Bool   bool
+}
+
+// ProviderCreds is the credential schema for one provider: the fields the
+// accounts editor renders and the app maps onto provider construction.
+type ProviderCreds struct {
+	Kind   source.Kind
+	Label  string
+	Fields []CredField
+}
+
+// CredentialSchema returns the per-provider credential fields the accounts
+// editor renders. Reddit is first because authenticated OAuth is its primary
+// purpose: client id + secret enable app-only OAuth (reads public listings from
+// IPs where the anonymous ".json" endpoints 403); adding username + password
+// switches to the per-user "script" grant.
+func CredentialSchema() []ProviderCreds {
+	return []ProviderCreds{
+		{Kind: source.Reddit, Label: "Reddit", Fields: []CredField{
+			{Key: "client_id", Label: "Client ID"},
+			{Key: "client_secret", Label: "Client secret", Secret: true},
+			{Key: "username", Label: "Username"},
+			{Key: "password", Label: "Password", Secret: true},
+		}},
+		{Kind: source.Mastodon, Label: "Mastodon", Fields: []CredField{
+			{Key: "instance", Label: "Instance URL"},
+			{Key: "token", Label: "Access token", Secret: true},
+		}},
+		{Kind: source.Lemmy, Label: "Lemmy", Fields: []CredField{
+			{Key: "instance", Label: "Instance URL"},
+		}},
+		{Kind: source.Usenet, Label: "Usenet", Fields: []CredField{
+			{Key: "addr", Label: "Server host:port"},
+			{Key: "tls", Label: "Implicit TLS", Bool: true},
+			{Key: "indexer_url", Label: "Newznab indexer URL"},
+			{Key: "indexer_key", Label: "Newznab API key", Secret: true},
+		}},
+		{Kind: source.Instagram, Label: "Instagram", Fields: []CredField{
+			{Key: "session", Label: "Session cookie", Secret: true},
+		}},
+		{Kind: source.TikTok, Label: "TikTok", Fields: []CredField{
+			{Key: "ms_token", Label: "ms_token", Secret: true},
+			{Key: "session", Label: "Session cookie", Secret: true},
+		}},
+		{Kind: source.Twitter, Label: "X / Twitter", Fields: []CredField{
+			{Key: "token", Label: "Bearer token", Secret: true},
+		}},
+	}
 }
 
 // defaultSubs is the seed subscription set — Reddit is back by default,
@@ -98,6 +189,25 @@ func (s *Settings) Normalize() {
 	if s.CachePath == "" {
 		s.CachePath = defaultCachePath()
 	}
+	s.dedupAccounts()
+}
+
+// dedupAccounts keeps at most one account per Kind (first wins) and drops
+// entries with a blank Kind, tolerating a hand-edited or corrupt file.
+func (s *Settings) dedupAccounts() {
+	if len(s.Accounts) == 0 {
+		return
+	}
+	seen := map[source.Kind]bool{}
+	out := s.Accounts[:0]
+	for _, a := range s.Accounts {
+		if a.Kind == "" || seen[a.Kind] {
+			continue
+		}
+		seen[a.Kind] = true
+		out = append(out, a)
+	}
+	s.Accounts = out
 }
 
 // DefaultPath is the per-user settings file location

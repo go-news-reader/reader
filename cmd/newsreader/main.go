@@ -89,10 +89,18 @@ func defaultBuildApp(c config) *app.App {
 	// One recorder captures every provider's HTTP traffic; the same instance
 	// feeds the scene's Network-log view.
 	rec := httplog.NewRecorder(200)
-	c.opts.Recorder = rec
+	// The initial registry already honours any persisted per-provider credentials
+	// (so stored Reddit OAuth is live from launch); the accounts editor rebuilds
+	// it live from the same base options afterwards.
+	initOpts := c.opts
+	if c.set != nil {
+		initOpts = app.AccountsToOptions(c.opts, c.set.Accounts)
+	}
+	initOpts.Recorder = rec
 	return app.New(app.Config{
-		Registry:      feeds.Registry(c.opts),
+		Registry:      feeds.Registry(initOpts),
 		Recorder:      rec,
+		Options:       c.opts,  // flag-derived base for live account rebuilds
 		Settings:      c.set,   // nil except in -window mode
 		Store:         c.store, // nil except in -window mode
 		Subscriptions: c.subs,  // used when Settings is nil

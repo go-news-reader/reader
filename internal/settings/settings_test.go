@@ -167,6 +167,127 @@ func TestDefaultPath(t *testing.T) {
 	}
 }
 
+func TestAccountLookupAndUpsert(t *testing.T) {
+	s := &Settings{}
+	if _, ok := s.Account(source.Reddit); ok {
+		t.Fatal("empty settings should have no reddit account")
+	}
+	s.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"client_id": "a"}})
+	if len(s.Accounts) != 1 {
+		t.Fatalf("append expected, got %d", len(s.Accounts))
+	}
+	// Upsert replaces in place rather than appending a duplicate.
+	s.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"client_id": "b"}})
+	if len(s.Accounts) != 1 {
+		t.Fatalf("upsert should not append: %d", len(s.Accounts))
+	}
+	got, ok := s.Account(source.Reddit)
+	if !ok || got.Fields["client_id"] != "b" {
+		t.Fatalf("account = %+v ok=%v", got, ok)
+	}
+	// A second provider appends.
+	s.SetAccount(Account{Kind: source.Mastodon, Fields: map[string]string{"instance": "https://m"}})
+	if len(s.Accounts) != 2 {
+		t.Fatalf("second provider should append: %d", len(s.Accounts))
+	}
+	if _, ok := s.Account(source.Lemmy); ok {
+		t.Fatal("lemmy lookup should miss")
+	}
+}
+
+func TestNormalizeDedupAccounts(t *testing.T) {
+	// Empty account list is left untouched (early return).
+	s0 := &Settings{Profiles: []Profile{{Name: "x"}}, Theme: ThemeDark, CachePath: "/c"}
+	s0.Normalize()
+	if len(s0.Accounts) != 0 {
+		t.Fatalf("empty accounts should stay empty: %+v", s0.Accounts)
+	}
+	// Duplicate kinds collapse to the first; blank kinds are dropped.
+	s := &Settings{
+		Profiles:  []Profile{{Name: "x"}},
+		Theme:     ThemeDark,
+		CachePath: "/c",
+		Accounts: []Account{
+			{Kind: source.Reddit, Fields: map[string]string{"client_id": "first"}},
+			{Kind: source.Reddit, Fields: map[string]string{"client_id": "dup"}},
+			{Kind: "", Fields: map[string]string{"x": "y"}},
+			{Kind: source.Mastodon, Fields: map[string]string{"instance": "m"}},
+		},
+	}
+	s.Normalize()
+	if len(s.Accounts) != 2 {
+		t.Fatalf("dedup => %d accounts: %+v", len(s.Accounts), s.Accounts)
+	}
+	r, _ := s.Account(source.Reddit)
+	if r.Fields["client_id"] != "first" {
+		t.Fatalf("first duplicate should win: %+v", r)
+	}
+	if _, ok := s.Account(source.Mastodon); !ok {
+		t.Fatal("mastodon account dropped")
+	}
+}
+
+func TestCredentialSchema(t *testing.T) {
+	sc := CredentialSchema()
+	if len(sc) == 0 || sc[0].Kind != source.Reddit {
+		t.Fatalf("schema should start with reddit: %+v", sc)
+	}
+	// Reddit exposes the four OAuth fields, with the two secrets masked.
+	var reddit ProviderCreds
+	for _, pc := range sc {
+		if pc.Kind == source.Reddit {
+			reddit = pc
+		}
+	}
+	keys := map[string]CredField{}
+	for _, f := range reddit.Fields {
+		keys[f.Key] = f
+	}
+	for _, k := range []string{"client_id", "client_secret", "username", "password"} {
+		if _, ok := keys[k]; !ok {
+			t.Fatalf("reddit missing field %q", k)
+		}
+	}
+	if !keys["client_secret"].Secret || !keys["password"].Secret {
+		t.Fatal("reddit secrets should be masked")
+	}
+	if keys["client_id"].Secret {
+		t.Fatal("client_id should not be secret")
+	}
+	// Usenet exposes a bool TLS toggle.
+	var tlsBool bool
+	for _, pc := range sc {
+		if pc.Kind == source.Usenet {
+			for _, f := range pc.Fields {
+				if f.Key == "tls" && f.Bool {
+					tlsBool = true
+				}
+			}
+		}
+	}
+	if !tlsBool {
+		t.Fatal("usenet tls should be a bool field")
+	}
+}
+
+func TestAccountsRoundTrip(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "s.json")
+	st := NewStore(p)
+	in := Default()
+	in.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"client_id": "id", "client_secret": "sec"}})
+	if err := st.Save(in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := st.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := out.Account(source.Reddit)
+	if !ok || got.Fields["client_secret"] != "sec" {
+		t.Fatalf("account not persisted: %+v ok=%v", got, ok)
+	}
+}
+
 func TestDefaultPathError(t *testing.T) {
 	for _, k := range []string{"HOME", "XDG_CONFIG_HOME", "AppData"} {
 		t.Setenv(k, "")

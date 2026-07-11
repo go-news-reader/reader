@@ -77,6 +77,13 @@ const (
 	HitFocusCache    // focus the media-cache path input
 	HitTheme         // Value = "system"|"light"|"dark"
 	HitCloseSettings // leave the settings view
+
+	// Accounts-view actions (Mode == ModeAccounts):
+	HitAccounts          // the sidebar 👤 Accounts entry (open the accounts editor)
+	HitCloseAccounts     // leave the accounts view (commit)
+	HitSelectAccount     // Value = source kind for the provider being edited
+	HitFocusAccountField // Value = credential field key to focus
+	HitToggleAccountBool // Value = bool credential field key to flip (Usenet TLS)
 )
 
 // Mode selects which view the scene renders.
@@ -87,6 +94,7 @@ const (
 	ModeDetail               // a single item's full detail / reading view
 	ModeSettings             // the in-canvas preferences editor
 	ModeLog                  // the in-canvas HTTP-exchange (Network) log
+	ModeAccounts             // the in-canvas per-provider credentials editor
 )
 
 // Hit is the result of [Scene.HitTest].
@@ -131,6 +139,20 @@ type Scene struct {
 	sRenameR     toolkit.Rect // rename input rect
 	sDoneR       toolkit.Rect // "Done" button rect
 
+	// Accounts editor (ModeAccounts) state. accBuf holds the editable credential
+	// values per provider (seeded from settings.Accounts); accSel is the provider
+	// being edited; accFocus is the focused field key ("" = none).
+	accBuf      map[source.Kind]map[string]string
+	accSel      source.Kind
+	accFocus    string
+	accScrollY  int
+	accContentH int
+	accLabels   []sLabel
+	accProvBtns []accProvBtn
+	accRows     []accFieldRow
+	accBackR    toolkit.Rect
+	accDoneR    toolkit.Rect
+
 	// Optional decoded thumbnails keyed by Item.ID (blitted when present).
 	Thumbs map[string]*image.RGBA
 
@@ -166,6 +188,7 @@ type Scene struct {
 	profTabs  []profTabHit
 	settingsR toolkit.Rect
 	logR      toolkit.Rect // sidebar Network-log entry
+	accountsR toolkit.Rect // sidebar Accounts entry
 	burgerR   toolkit.Rect // topbar burger button (feed view)
 	searchR   toolkit.Rect
 	rows      []rowLayout
@@ -302,6 +325,7 @@ func (s *Scene) Settings() *settings.Settings {
 		Active:    s.activeProf,
 		Theme:     s.themeName,
 		CachePath: s.cachePath,
+		Accounts:  s.EditedAccounts(),
 	}
 }
 
@@ -368,6 +392,13 @@ func (s *Scene) TypeRune(r rune) {
 		}
 		return
 	}
+	if s.mode == ModeAccounts {
+		if s.accFocus != "" {
+			s.accSetField(s.accFocus, s.accFieldValue(s.accSel, s.accFocus)+string(r))
+			s.touch()
+		}
+		return
+	}
 	if s.searchFocused {
 		s.search += string(r)
 		s.touch()
@@ -379,6 +410,13 @@ func (s *Scene) Backspace() {
 	if s.mode == ModeSettings {
 		if f := s.focusedField(); f != nil && *f != "" {
 			*f = trimLastRune(*f)
+			s.touch()
+		}
+		return
+	}
+	if s.mode == ModeAccounts {
+		if cur := s.accFieldValue(s.accSel, s.accFocus); s.accFocus != "" && cur != "" {
+			s.accSetField(s.accFocus, trimLastRune(cur))
 			s.touch()
 		}
 		return
@@ -450,6 +488,13 @@ func (s *Scene) Scroll(dy int) {
 		s.logScrollY += dy
 		s.layoutLog()
 		s.logScrollY = clampScroll(s.logScrollY, s.logContentH-(s.H-s.m.topbarH))
+		s.touch()
+		return
+	}
+	if s.mode == ModeAccounts {
+		s.accScrollY += dy
+		s.layoutAccounts()
+		s.accScrollY = clampScroll(s.accScrollY, s.accContentH-(s.H-s.m.topbarH))
 		s.touch()
 		return
 	}

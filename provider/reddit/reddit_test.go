@@ -3,7 +3,10 @@ package reddit
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	goreddit "github.com/go-reddit/reddit"
@@ -41,6 +44,91 @@ func TestNewWithHTTPClient(t *testing.T) {
 	// The injected client backs the reddit client; the provider is still wired.
 	if p := NewWithHTTPClient(&http.Client{}); p.client == nil {
 		t.Fatal("client not set from injected HTTP client")
+	}
+}
+
+// oauthRT is an http.RoundTripper that serves both Reddit's OAuth token
+// endpoint and the authenticated listing host from canned JSON, so the full
+// OAuth request path can be exercised offline with no real credentials. It
+// records what the listing request targeted, proving the provider hit
+// oauth.reddit.com with a bearer token rather than the anonymous ".json" host.
+type oauthRT struct {
+	tokenHits int
+	grantType string
+	listHost  string
+	authHdr   string
+}
+
+func (rt *oauthRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	body := ""
+	if strings.Contains(req.URL.Path, "access_token") {
+		rt.tokenHits++
+		if req.Body != nil {
+			b, _ := io.ReadAll(req.Body)
+			if v, err := url.ParseQuery(string(b)); err == nil {
+				rt.grantType = v.Get("grant_type")
+			}
+		}
+		body = `{"access_token":"TOK","token_type":"bearer","expires_in":3600}`
+	} else {
+		rt.listHost = req.URL.Host
+		rt.authHdr = req.Header.Get("Authorization")
+		body = `{"data":{"after":"","children":[{"kind":"t3","data":{"id":"z1","title":"Hi","subreddit":"golang"}}]}}`
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestNewOAuthAppOnly(t *testing.T) {
+	rt := &oauthRT{}
+	p := NewOAuth(&http.Client{Transport: rt}, "id", "secret", "", "")
+
+	res, err := p.Feed(context.Background(), source.Query{Channel: "golang", Limit: 5})
+	if err != nil {
+		t.Fatalf("Feed: %v", err)
+	}
+	if len(res.Items) != 1 || res.Items[0].ID != "z1" {
+		t.Fatalf("items = %+v", res.Items)
+	}
+	// The provider fetched an app-only token and used it as a bearer against the
+	// OAuth host — the whole point of the feature.
+	if rt.tokenHits == 0 {
+		t.Fatal("no token request was made")
+	}
+	if rt.grantType != "client_credentials" {
+		t.Fatalf("grant_type = %q, want client_credentials", rt.grantType)
+	}
+	if rt.listHost != "oauth.reddit.com" {
+		t.Fatalf("listing host = %q, want oauth.reddit.com", rt.listHost)
+	}
+	if rt.authHdr != "Bearer TOK" {
+		t.Fatalf("authorization = %q, want Bearer TOK", rt.authHdr)
+	}
+}
+
+func TestNewOAuthScriptGrant(t *testing.T) {
+	rt := &oauthRT{}
+	p := NewOAuth(&http.Client{Transport: rt}, "id", "secret", "bob", "pw")
+	if _, err := p.Feed(context.Background(), source.Query{}); err != nil {
+		t.Fatalf("Feed: %v", err)
+	}
+	// Username + password select the per-user password grant.
+	if rt.grantType != "password" {
+		t.Fatalf("grant_type = %q, want password", rt.grantType)
+	}
+	if rt.listHost != "oauth.reddit.com" {
+		t.Fatalf("listing host = %q", rt.listHost)
+	}
+}
+
+func TestNewOAuthNilClient(t *testing.T) {
+	// A nil client is tolerated: the constructor falls back to the browser
+	// fingerprint client and still wires the provider (no network here).
+	if p := NewOAuth(nil, "id", "secret", "", ""); p.client == nil {
+		t.Fatal("nil client should fall back and still build the provider")
 	}
 }
 
