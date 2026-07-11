@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/feeds"
+	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/internal/windowapp"
 	"github.com/go-news-reader/reader/source"
@@ -31,7 +32,8 @@ var osExit = os.Exit
 
 func main() { osExit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
-// config is the parsed command line.
+// config is the parsed command line plus the resolved persistence state (only
+// the -window path populates set/store).
 type config struct {
 	subs   []source.Subscription
 	opts   feeds.Options
@@ -43,16 +45,29 @@ type config struct {
 	asJSON bool
 	serve  string
 	window bool
+
+	set   *settings.Settings // window mode: the loaded/seeded settings
+	store *settings.Store    // window mode: the persistence backend
 }
 
-// Seams so tests avoid the network and real servers.
+// Seams so tests avoid the network, real servers, and the real home directory.
 var (
-	buildApp  = defaultBuildApp
-	writeFile = os.WriteFile
-	serveFunc = http.ListenAndServe
-	renderPNG = (*app.App).RenderPNG
-	openWindow = window.Run
+	buildApp      = defaultBuildApp
+	writeFile     = os.WriteFile
+	serveFunc     = http.ListenAndServe
+	renderPNG     = (*app.App).RenderPNG
+	openWindow    = window.Run
+	settingsStore = defaultSettingsStore
 )
+
+// defaultSettingsStore returns a Store at the per-user settings path.
+func defaultSettingsStore() (*settings.Store, error) {
+	p, err := settings.DefaultPath()
+	if err != nil {
+		return nil, err
+	}
+	return settings.NewStore(p), nil
+}
 
 // defaultOSToken maps the actual runtime OS to a ui look-and-feel token so the
 // app wears its native palette (WhiteSur / Fluent / Adwaita) on each system.
@@ -72,7 +87,9 @@ func osToken(goos string) string {
 func defaultBuildApp(c config) *app.App {
 	return app.New(app.Config{
 		Registry:      feeds.Registry(c.opts),
-		Subscriptions: c.subs,
+		Settings:      c.set,   // nil except in -window mode
+		Store:         c.store, // nil except in -window mode
+		Subscriptions: c.subs,  // used when Settings is nil
 		Width:         c.w,
 		Height:        c.h,
 		OS:            c.osName,
@@ -120,11 +137,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	cfg.subs = subs
 
-	a := buildApp(cfg)
-
 	if cfg.window {
-		return emitWindow(a, cfg, stdout, stderr)
+		return runWindow(cfg, stdout, stderr)
 	}
+
+	a := buildApp(cfg)
 
 	for _, e := range a.Refresh(context.Background()) {
 		fmt.Fprintln(stderr, "warning:", e)
@@ -169,6 +186,30 @@ func emitPNG(a *app.App, out string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stderr, "wrote %s (%d bytes)\n", out, len(data))
 	return 0
+}
+
+// runWindow loads the persisted settings (seeding the default profile from any
+// -sub flags on first run), builds the app around them, and opens the native
+// window. Profile switches and settings-view edits persist back through the store.
+func runWindow(cfg config, stdout, stderr io.Writer) int {
+	st, err := settingsStore()
+	if err != nil {
+		fmt.Fprintln(stderr, "newsreader:", err)
+		return 1
+	}
+	_, statErr := os.Stat(st.Path)
+	firstRun := os.IsNotExist(statErr)
+	set, err := st.Load()
+	if err != nil {
+		fmt.Fprintln(stderr, "newsreader:", err)
+		return 1
+	}
+	// On a fresh install, -sub flags seed/replace the default profile's subs.
+	if firstRun && len(cfg.subs) > 0 {
+		set.Profiles[set.Active].Subs = cfg.subs
+	}
+	cfg.set, cfg.store = set, st
+	return emitWindow(buildApp(cfg), cfg, stdout, stderr)
 }
 
 // emitWindow opens a native window that blits the UI directly, refreshing the

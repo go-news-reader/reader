@@ -14,17 +14,18 @@ import (
 
 // metrics holds the scaled pixel geometry + fonts for the current frame.
 type metrics struct {
-	sidebarW, topbarH, pad     int
-	rowH, cardGap              int
-	thumbW, thumbH, badgeH     int
-	sideItemH, searchH         int
-	title, meta, badge, side   textFace
-	search                     textFace
+	sidebarW, topbarH, pad    int
+	rowH, cardGap             int
+	thumbW, thumbH, badgeH    int
+	sideItemH, searchH        int
+	profileTabH, tabPad, btnH int
+	title, meta, badge, side  textFace
+	search, tab               textFace
 }
 
 func (s *Scene) computeMetrics() metrics {
 	rpx := func(n int) int { return int(float64(n)*s.Scale + 0.5) }
-	return metrics{
+	m := metrics{
 		sidebarW:  rpx(200),
 		topbarH:   rpx(48),
 		pad:       rpx(12),
@@ -35,16 +36,27 @@ func (s *Scene) computeMetrics() metrics {
 		badgeH:    rpx(18),
 		sideItemH: rpx(34),
 		searchH:   rpx(28),
+		tabPad:    rpx(8),
 		title:     getFace(rpx(15), true),
 		meta:      getFace(rpx(12), false),
 		badge:     getFace(rpx(10), true),
 		side:      getFace(rpx(13), false),
 		search:    getFace(rpx(13), false),
+		tab:       getFace(rpx(12), true),
 	}
+	m.profileTabH = m.tab.height + rpx(12)
+	m.btnH = m.tab.height + rpx(8)
+	return m
 }
 
 // subHit maps a sidebar entry rect to its subscription index (AllFilter = All).
 type subHit struct {
+	index int
+	rect  toolkit.Rect
+}
+
+// profTabHit maps a sidebar profile tab rect to its profile index.
+type profTabHit struct {
 	index int
 	rect  toolkit.Rect
 }
@@ -61,15 +73,31 @@ func (s *Scene) layout() {
 	s.m = s.computeMetrics()
 	m := s.m
 
-	// Sidebar entries: "All" then one per subscription.
+	// Profile tabs band at the top of the sidebar.
+	s.profTabs = s.profTabs[:0]
+	tabTop := m.topbarH
+	tx := m.tabPad
+	for i, p := range s.Profiles {
+		w := m.tab.width(p.Name) + 2*m.tabPad
+		s.profTabs = append(s.profTabs, profTabHit{index: i, rect: toolkit.Rect{X: tx, Y: tabTop + rpxOf(s, 4), W: w, H: m.profileTabH - rpxOf(s, 8)}})
+		tx += w + rpxOf(s, 4)
+	}
+
+	// Sidebar entries: "All" then one per subscription, below the tab band.
 	s.subs = s.subs[:0]
 	y := m.topbarH
+	if len(s.Profiles) > 0 {
+		y += m.profileTabH
+	}
 	s.subs = append(s.subs, subHit{index: AllFilter, rect: toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}})
 	y += m.sideItemH
 	for i := range s.Subs {
 		s.subs = append(s.subs, subHit{index: i, rect: toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}})
 		y += m.sideItemH
 	}
+
+	// ⚙ Settings entry pinned to the bottom of the sidebar.
+	s.settingsR = toolkit.Rect{X: 0, Y: s.H - m.sideItemH, W: m.sidebarW, H: m.sideItemH}
 
 	// Search field in the topbar (right of the title).
 	s.searchR = toolkit.Rect{X: m.sidebarW + m.pad, Y: (m.topbarH - m.searchH) / 2, W: s.W - m.sidebarW - 2*m.pad, H: m.searchH}
@@ -86,8 +114,12 @@ func (s *Scene) layout() {
 
 // Draw paints the whole scene into buf (s.W*s.H*4 RGBA bytes).
 func (s *Scene) Draw(buf []byte) {
-	if s.mode == ModeDetail {
+	switch s.mode {
+	case ModeDetail:
 		s.drawDetail(buf)
+		return
+	case ModeSettings:
+		s.drawSettings(buf)
 		return
 	}
 	s.layout()
@@ -137,7 +169,9 @@ type sidebarKey struct {
 	scale   float64
 	theme   *toolkit.Theme
 	active  int
+	activeP int
 	subsRev int
+	profRev int
 }
 type topbarKey struct {
 	w       int
@@ -152,14 +186,31 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	m := s.m
 	th := s.theme
 	h := s.H - m.topbarH
-	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, subsRev: s.subsRev}
+	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev}
 	if s.sidebarSpr != nil && s.sidebarKey == k {
 		return s.sidebarSpr
+	}
+	onAccent := th.Background
+	if v, ok := th.Extra["OnAccent"]; ok {
+		onAccent = v
 	}
 	buf := make([]byte, m.sidebarW*h*4)
 	p := painter.NewPixelPainter(buf, m.sidebarW, h)
 	img := &image.RGBA{Pix: buf, Stride: m.sidebarW * 4, Rect: image.Rect(0, 0, m.sidebarW, h)}
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: m.sidebarW, H: h}, th.SurfaceAlt)
+
+	// Profile tabs (sidebar-local coords).
+	for _, t := range s.profTabs {
+		ly := t.rect.Y - m.topbarH
+		col := th.OnSurface
+		if t.index == s.activeProf {
+			p.FillRoundRect(painter.Rect{X: t.rect.X, Y: ly, W: t.rect.W, H: t.rect.H}, rpxOf(s, 5), th.Accent)
+			col = onAccent
+		}
+		m.tab.draw(img, t.rect.X+m.tabPad, ly+(t.rect.H-m.tab.height)/2, s.Profiles[t.index].Name, col)
+	}
+
+	// Subscription rows.
 	for _, e := range s.subs {
 		ly := e.rect.Y - m.topbarH // sidebar-local Y
 		label := "All Sources"
@@ -180,6 +231,12 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 			m.side.draw(img, m.pad, ty, label, col)
 		}
 	}
+
+	// ⚙ Settings entry pinned to the bottom.
+	sly := s.settingsR.Y - m.topbarH
+	p.FillRect(painter.Rect{X: 0, Y: sly - 1, W: m.sidebarW, H: 1}, th.Border)
+	m.side.draw(img, m.pad, sly+(m.sideItemH-m.side.height)/2, "⚙ Settings", mute(th.OnSurface, th.SurfaceAlt))
+
 	s.sidebarKey, s.sidebarSpr = k, img
 	return img
 }
@@ -340,8 +397,11 @@ func (s *Scene) drawDot(p *painter.PixelPainter, x, cy int, col toolkit.RGBA) {
 
 // HitTest maps a click at (x, y) to an action.
 func (s *Scene) HitTest(x, y int) Hit {
-	if s.mode == ModeDetail {
+	switch s.mode {
+	case ModeDetail:
 		return s.detailHitTest(x, y)
+	case ModeSettings:
+		return s.hitSettings(x, y)
 	}
 	s.layout()
 	m := s.m
@@ -352,6 +412,14 @@ func (s *Scene) HitTest(x, y int) Hit {
 		return Hit{Kind: HitNone}
 	}
 	if x < m.sidebarW {
+		for _, t := range s.profTabs {
+			if inRect(t.rect, x, y) {
+				return Hit{Kind: HitProfile, Profile: t.index}
+			}
+		}
+		if inRect(s.settingsR, x, y) {
+			return Hit{Kind: HitSettings}
+		}
 		for _, e := range s.subs {
 			if inRect(e.rect, x, y) {
 				return Hit{Kind: HitSub, Sub: e.index}

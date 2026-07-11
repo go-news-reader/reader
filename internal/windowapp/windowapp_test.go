@@ -4,9 +4,49 @@ import (
 	"testing"
 
 	"github.com/go-news-reader/reader/app"
+	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
+
+// profApp builds an App with two profiles and a synchronous no-op refresh hook
+// (so ApplySceneSettings never spawns a goroutine during the test).
+func profApp(t *testing.T) *app.App {
+	t.Helper()
+	set := &settings.Settings{
+		Profiles: []settings.Profile{
+			{Name: "Home", Subs: []source.Subscription{{Source: source.Reddit, Channel: "golang"}}},
+			{Name: "Tech", Subs: []source.Subscription{{Source: source.Lemmy, Channel: "tech"}}},
+		},
+		Active: 0, Theme: settings.ThemeSystem,
+	}
+	a := app.New(app.Config{Registry: source.NewRegistry(), Settings: set, Width: 1000, Height: 700})
+	a.Scene().SetScale(1)
+	a.SetRefreshHook(func() {})
+	return a
+}
+
+// findHit scans the surface for the first coordinate whose HitTest matches kind.
+func findHit(s *ui.Scene, kind ui.HitKind) (int, int, bool) {
+	for y := 0; y < s.H; y += 3 {
+		for x := 0; x < s.W; x += 3 {
+			if s.HitTest(x, y).Kind == kind {
+				return x, y, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+// click routes a MouseDown at the first coordinate matching kind (fatal if none).
+func click(t *testing.T, h *Handler, kind ui.HitKind) {
+	t.Helper()
+	x, y, ok := findHit(h.a.Scene(), kind)
+	if !ok {
+		t.Fatalf("no hit region for kind %d", kind)
+	}
+	h.MouseDown(x, y)
+}
 
 // newApp builds an App with an empty registry at a known size and scale.
 func newApp(t *testing.T) *app.App {
@@ -102,6 +142,19 @@ func TestMouseDownSub(t *testing.T) {
 	}
 }
 
+func TestMouseDownSubRow(t *testing.T) {
+	// With a profile-tab band present, exercise a real subscription-row click
+	// (which lands below the tabs) so the HitSub branch runs.
+	a := profApp(t)
+	h := New(a)
+	s := a.Scene()
+	s.SetActive(0)
+	click(t, h, ui.HitSub) // the "All Sources" row selects AllFilter
+	if s.Active != ui.AllFilter {
+		t.Fatalf("sub row click Active = %d", s.Active)
+	}
+}
+
 func TestMouseDownSearch(t *testing.T) {
 	a := newApp(t)
 	New(a).MouseDown(250, 24) // topbar search field
@@ -152,6 +205,109 @@ func TestKey(t *testing.T) {
 	h.Key("Escape", 0)
 	if s.Mode() != ui.ModeFeed {
 		t.Fatal("Escape in detail should close it")
+	}
+}
+
+func TestMouseDownProfileAndSettings(t *testing.T) {
+	a := profApp(t)
+	h := New(a)
+	s := a.Scene()
+
+	// Click the second profile tab (index 1) -> active profile switches.
+	var switched bool
+	for y := 0; y < s.H && !switched; y += 3 {
+		for x := 0; x < s.W; x += 3 {
+			if hit := s.HitTest(x, y); hit.Kind == ui.HitProfile && hit.Profile == 1 {
+				h.MouseDown(x, y)
+				switched = true
+				break
+			}
+		}
+	}
+	if !switched || s.ActiveProfileIndex() != 1 {
+		t.Fatalf("profile not switched: %d", s.ActiveProfileIndex())
+	}
+	// Open the settings editor via the sidebar entry.
+	click(t, h, ui.HitSettings)
+	if s.Mode() != ui.ModeSettings {
+		t.Fatal("settings did not open")
+	}
+	// Drive every settings action that has a hit region.
+	click(t, h, ui.HitSelectProfile) // pick a profile to edit
+	click(t, h, ui.HitNewProfile)    // add a profile
+	click(t, h, ui.HitSelectKind)    // choose a source in the palette
+	click(t, h, ui.HitFocusChannel)  // focus the channel field
+	if s.Focus() != ui.FocusChannel {
+		t.Fatal("channel not focused")
+	}
+	click(t, h, ui.HitAddSub) // commit the (empty) channel as a sub
+	click(t, h, ui.HitRemoveSub)
+	click(t, h, ui.HitRenameProfile) // focus rename
+	if s.Focus() != ui.FocusRename {
+		t.Fatal("rename not focused")
+	}
+	click(t, h, ui.HitFocusCache)
+	if s.Focus() != ui.FocusCache {
+		t.Fatal("cache not focused")
+	}
+	click(t, h, ui.HitTheme) // pick a theme
+	click(t, h, ui.HitDeleteProfile)
+	// Close the editor -> back to the feed.
+	click(t, h, ui.HitCloseSettings)
+	if s.Mode() != ui.ModeFeed {
+		t.Fatal("settings did not close")
+	}
+}
+
+func TestKeySettingsCommits(t *testing.T) {
+	a := profApp(t)
+	h := New(a)
+	s := a.Scene()
+	s.OpenSettings()
+
+	// Enter with the channel field focused adds a subscription.
+	s.FocusChannel()
+	s.TypeRune('r')
+	s.TypeRune('s')
+	n := len(s.ActiveProfile().Subs)
+	h.Key("Enter", 0)
+	if len(s.ActiveProfile().Subs) != n+1 {
+		t.Fatalf("Enter did not add sub: %d", len(s.ActiveProfile().Subs))
+	}
+	// Enter with the rename field focused renames the profile.
+	s.FocusRename()
+	for _, r := range "Renamed" {
+		s.TypeRune(r)
+	}
+	h.Key("Enter", 0)
+	// Enter with the cache field focused commits the cache path.
+	s.FocusCache()
+	for _, r := range "/mnt/c" {
+		s.TypeRune(r)
+	}
+	h.Key("Enter", 0)
+	if s.CachePath() == "" {
+		t.Fatal("cache not committed on Enter")
+	}
+	// Enter with no field focused (fresh OpenSettings) is a harmless no-op.
+	s.OpenSettings()
+	if s.Focus() != ui.FocusNone {
+		t.Fatal("fresh settings should have no focus")
+	}
+	h.Key("Enter", 0)
+
+	// Escape closes the settings editor.
+	h.Key("Escape", 0)
+	if s.Mode() != ui.ModeFeed {
+		t.Fatal("Escape should close settings")
+	}
+	// Backspace routes into the focused settings field.
+	s.OpenSettings()
+	s.FocusChannel()
+	s.TypeRune('x')
+	h.Key("Backspace", 0)
+	if s.Focus() != ui.FocusChannel {
+		t.Fatal("backspace should keep channel focus")
 	}
 }
 

@@ -283,9 +283,13 @@ func TestHitTest(t *testing.T) {
 	if h := s.HitTest(10, m.topbarH+m.sideItemH+m.sideItemH/2); h.Kind != HitSub || h.Sub != 0 {
 		t.Fatalf("sub hit = %+v", h)
 	}
-	// Sidebar below the last entry -> none.
-	if s.HitTest(10, s.H-2).Kind != HitNone {
-		t.Fatal("sidebar miss")
+	// The ⚙ Settings entry is pinned to the bottom of the sidebar.
+	if s.HitTest(10, s.H-2).Kind != HitSettings {
+		t.Fatal("bottom sidebar should be Settings")
+	}
+	// Empty sidebar gap between the last sub and the Settings entry -> none.
+	if s.HitTest(10, m.topbarH+4*m.sideItemH).Kind != HitNone {
+		t.Fatal("sidebar gap miss")
 	}
 	// Feed gap between cards -> none.
 	gapY := m.topbarH + m.pad + m.rowH + m.cardGap/2
