@@ -52,14 +52,18 @@ func (s Subscription) name() string {
 type HitKind int
 
 const (
-	HitNone         HitKind = iota
-	HitItem                 // a feed item (open it in the detail view) — Item set
-	HitSub                  // a sidebar subscription (filter the feed) — Sub set (AllFilter = All)
-	HitSearch               // the topbar search field (focus it)
-	HitBack                 // the detail view's back button (return to the feed)
-	HitOpenExternal         // the detail view's "open original" button — Item set
-	HitProfile              // a sidebar profile tab (switch active profile) — Profile set
-	HitSettings             // the sidebar ⚙ Settings entry (open preferences)
+	HitNone           HitKind = iota
+	HitItem                   // a feed item (open it in the detail view) — Item set
+	HitSub                    // a sidebar subscription (filter the feed) — Sub set (AllFilter = All)
+	HitSearch                 // the topbar search field (focus it)
+	HitBack                   // the detail view's back button (return to the feed)
+	HitOpenExternal           // the detail view's "open original" button — Item set
+	HitProfile                // a sidebar profile tab (switch active profile) — Profile set
+	HitSettings               // the sidebar ⚙ Settings entry (open preferences)
+	HitLog                    // the sidebar Network-log entry (open the HTTP log)
+	HitCloseLog               // the log view's "< Back" button (return to the feed)
+	HitBurger                 // the topbar burger button (collapse/expand the sidebar)
+	HitSidebarDivider         // the draggable divider at the sidebar's right edge
 
 	// Settings-view actions (Mode == ModeSettings):
 	HitSelectProfile // Profile = index being edited
@@ -82,6 +86,7 @@ const (
 	ModeFeed     Mode = iota // the topbar + sidebar + unified feed
 	ModeDetail               // a single item's full detail / reading view
 	ModeSettings             // the in-canvas preferences editor
+	ModeLog                  // the in-canvas HTTP-exchange (Network) log
 )
 
 // Hit is the result of [Scene.HitTest].
@@ -140,10 +145,28 @@ type Scene struct {
 	detailContentH int
 	backR, openR   toolkit.Rect
 
+	// Network-log (ModeLog) view: a scrollable, newest-first list of the HTTP
+	// exchanges the providers made, fed live from an injected source so the app
+	// need not push updates. logSource is nil when no recorder is wired.
+	logSource   func() []LogEntry
+	logScrollY  int
+	logContentH int
+	logRowH     int
+	logBackR    toolkit.Rect
+
+	// Unified sidebar width model (feed view). The effective sidebar width is 0
+	// when collapsed, else the user-dragged width (device px, clamped) or the
+	// default. draggingSidebar is set while the divider is being dragged.
+	sidebarCollapsed bool
+	sidebarUserW     int // device px; 0 => default width
+	draggingSidebar  bool
+
 	m         metrics
 	subs      []subHit
 	profTabs  []profTabHit
 	settingsR toolkit.Rect
+	logR      toolkit.Rect // sidebar Network-log entry
+	burgerR   toolkit.Rect // topbar burger button (feed view)
 	searchR   toolkit.Rect
 	rows      []rowLayout
 	contentH  int
@@ -420,6 +443,13 @@ func (s *Scene) Scroll(dy int) {
 		s.detailScrollY += dy
 		s.layoutDetail()
 		s.detailScrollY = clampScroll(s.detailScrollY, s.detailContentH-(s.H-s.m.topbarH))
+		s.touch()
+		return
+	}
+	if s.mode == ModeLog {
+		s.logScrollY += dy
+		s.layoutLog()
+		s.logScrollY = clampScroll(s.logScrollY, s.logContentH-(s.H-s.m.topbarH))
 		s.touch()
 		return
 	}

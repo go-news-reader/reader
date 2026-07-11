@@ -3,6 +3,7 @@ package lemmy
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -20,6 +21,12 @@ type fakeClient struct {
 func (f *fakeClient) Posts(_ context.Context, opts golem.PostsOptions) (*golem.PostList, error) {
 	f.got = opts
 	return f.list, f.err
+}
+
+func TestNewWithHTTPClient(t *testing.T) {
+	if p := NewWithHTTPClient(&http.Client{}, "https://lemmy.world"); p.client == nil {
+		t.Fatal("client not set from injected HTTP client")
+	}
 }
 
 func TestKindAndNew(t *testing.T) {

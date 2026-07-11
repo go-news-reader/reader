@@ -3,6 +3,7 @@ package hackernews
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	gohn "github.com/go-hackernews/hackernews"
@@ -20,6 +21,12 @@ type fakeClient struct {
 func (f *fakeClient) Stories(_ context.Context, kind gohn.StoryKind, limit int) ([]gohn.Item, error) {
 	f.gotKind, f.gotLimit = kind, limit
 	return f.items, f.err
+}
+
+func TestNewWithHTTPClient(t *testing.T) {
+	if p := NewWithHTTPClient(&http.Client{}); p.client == nil {
+		t.Fatal("client not set from injected HTTP client")
+	}
 }
 
 func TestKindAndNew(t *testing.T) {

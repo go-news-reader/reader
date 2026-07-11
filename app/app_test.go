@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
@@ -46,6 +47,25 @@ func newReg(provs ...source.Provider) *source.Registry {
 		r.Register(p)
 	}
 	return r
+}
+
+func TestNewWithRecorderFeedsLogView(t *testing.T) {
+	rec := httplog.NewRecorder(8)
+	rec.Log(httplog.Entry{Method: "GET", URL: "https://ex/1", Status: 200, Bytes: 10})
+	rec.Log(httplog.Entry{Method: "GET", URL: "https://ex/2", Err: "boom"})
+	a := New(Config{Registry: newReg(), Recorder: rec, Width: 400, Height: 300})
+	// The scene's log source converts httplog entries into ui.LogEntry, newest
+	// first, so the Network-log view shows the recorder's exchanges.
+	got := a.Scene().LogEntries()
+	if len(got) != 2 {
+		t.Fatalf("log entries = %d, want 2", len(got))
+	}
+	if got[0].URL != "https://ex/2" || got[0].Err != "boom" {
+		t.Fatalf("newest-first / field mapping wrong: %+v", got[0])
+	}
+	if got[1].Status != 200 || got[1].Bytes != 10 {
+		t.Fatalf("entry mapping wrong: %+v", got[1])
+	}
 }
 
 func TestNewDefaultsAndAccessors(t *testing.T) {

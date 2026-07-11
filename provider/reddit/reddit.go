@@ -6,6 +6,7 @@ package reddit
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
@@ -30,7 +31,14 @@ type Provider struct {
 // New returns an anonymous Reddit provider backed by the portable browser
 // fingerprint HTTP client (pure Go, CGO=0, no host web view).
 func New() *Provider {
-	hc := browserhttp.NewClient(30 * time.Second)
+	return NewWithHTTPClient(browserhttp.NewClient(30 * time.Second))
+}
+
+// NewWithHTTPClient returns an anonymous Reddit provider driving hc (e.g. the
+// shared, request-logging client the aggregator builds so the Network log can
+// show Reddit's traffic). The browser User-Agent is kept so the fingerprint
+// still matches.
+func NewWithHTTPClient(hc *http.Client) *Provider {
 	c := goreddit.NewClient(
 		goreddit.WithHTTPClient(hc),
 		goreddit.WithUserAgent(browserhttp.DefaultUserAgent),

@@ -271,8 +271,12 @@ func TestHitTest(t *testing.T) {
 	if s.HitTest(m.sidebarW+m.pad+5, m.topbarH/2).Kind != HitSearch {
 		t.Fatal("search hit")
 	}
-	// Topbar, not on search (over the title area).
-	if s.HitTest(5, m.topbarH/2).Kind != HitNone {
+	// Burger button occupies the left of the topbar.
+	if s.HitTest(5, m.topbarH/2).Kind != HitBurger {
+		t.Fatal("topbar left should be the burger")
+	}
+	// Topbar, not on burger or search (over the title area) -> none.
+	if s.HitTest(m.topbarH+2, m.topbarH/2).Kind != HitNone {
 		t.Fatal("topbar none")
 	}
 	// Sidebar "All".
@@ -286,6 +290,10 @@ func TestHitTest(t *testing.T) {
 	// The ⚙ Settings entry is pinned to the bottom of the sidebar.
 	if s.HitTest(10, s.H-2).Kind != HitSettings {
 		t.Fatal("bottom sidebar should be Settings")
+	}
+	// The 📡 Network log entry sits just above Settings.
+	if s.HitTest(10, s.H-m.sideItemH-2).Kind != HitLog {
+		t.Fatal("entry above Settings should be the Network log")
 	}
 	// Empty sidebar gap between the last sub and the Settings entry -> none.
 	if s.HitTest(10, m.topbarH+4*m.sideItemH).Kind != HitNone {

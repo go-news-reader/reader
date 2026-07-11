@@ -9,6 +9,7 @@ package mastodon
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
 	gomasto "github.com/go-mastodon/mastodon"
@@ -31,8 +32,20 @@ type Provider struct {
 
 // New returns a provider for the given instance (e.g. "https://mastodon.social").
 // An optional bearer token authenticates the reads.
-func New(instance, token string) *Provider {
+func New(instance, token string) *Provider { return newWith(nil, instance, token) }
+
+// NewWithHTTPClient returns a provider whose reads go through hc (e.g. the
+// shared, request-logging client so the Network log captures Mastodon traffic).
+func NewWithHTTPClient(hc *http.Client, instance, token string) *Provider {
+	return newWith(hc, instance, token)
+}
+
+// newWith builds the provider, wiring hc when non-nil.
+func newWith(hc *http.Client, instance, token string) *Provider {
 	var opts []gomasto.Option
+	if hc != nil {
+		opts = append(opts, gomasto.WithHTTPClient(hc))
+	}
 	if token != "" {
 		opts = append(opts, gomasto.WithToken(token))
 	}

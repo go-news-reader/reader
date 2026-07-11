@@ -3,6 +3,7 @@ package bluesky
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -12,12 +13,12 @@ import (
 )
 
 type fakeClient struct {
-	feed    *goat.Feed
-	err     error
-	called  string
-	gotArg  string
-	gotCur  string
-	gotLim  int
+	feed   *goat.Feed
+	err    error
+	called string
+	gotArg string
+	gotCur string
+	gotLim int
 }
 
 func (f *fakeClient) AuthorFeed(_ context.Context, actor string, limit int, cursor string) (*goat.Feed, error) {
@@ -27,6 +28,12 @@ func (f *fakeClient) AuthorFeed(_ context.Context, actor string, limit int, curs
 func (f *fakeClient) SearchPosts(_ context.Context, q string, limit int, cursor string) (*goat.Feed, error) {
 	f.called, f.gotArg = "search", q
 	return f.feed, f.err
+}
+
+func TestNewWithHTTPClient(t *testing.T) {
+	if p := NewWithHTTPClient(&http.Client{}); p.client == nil {
+		t.Fatal("client not set from injected HTTP client")
+	}
 }
 
 func TestKindAndNew(t *testing.T) {

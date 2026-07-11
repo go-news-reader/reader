@@ -181,6 +181,8 @@ func registerClasses() (objc.Class, objc.Class, error) {
 				{Cmd: objc.RegisterName("acceptsFirstResponder"), Fn: viewAcceptsFirstResponder},
 				{Cmd: objc.RegisterName("drawRect:"), Fn: viewDrawRect},
 				{Cmd: objc.RegisterName("mouseDown:"), Fn: viewMouseDown},
+				{Cmd: objc.RegisterName("mouseDragged:"), Fn: viewMouseDragged},
+				{Cmd: objc.RegisterName("mouseUp:"), Fn: viewMouseUp},
 				{Cmd: objc.RegisterName("scrollWheel:"), Fn: viewScrollWheel},
 				{Cmd: objc.RegisterName("keyDown:"), Fn: viewKeyDown},
 			})
@@ -387,6 +389,28 @@ func viewMouseDown(self objc.ID, _ objc.SEL, event objc.ID) {
 	}
 	x, y := viewCoords(self, event)
 	handler.MouseDown(x, y)
+	present()
+}
+
+// viewMouseDragged forwards a left-button drag (mouseDragged: is delivered to
+// the view that received mouseDown:), driving interactions like the sidebar
+// divider resize.
+func viewMouseDragged(self objc.ID, _ objc.SEL, event objc.ID) {
+	if handler == nil {
+		return
+	}
+	x, y := viewCoords(self, event)
+	handler.MouseMove(x, y)
+	present()
+}
+
+// viewMouseUp forwards a left-button release, ending any in-progress drag.
+func viewMouseUp(self objc.ID, _ objc.SEL, event objc.ID) {
+	if handler == nil {
+		return
+	}
+	x, y := viewCoords(self, event)
+	handler.MouseUp(x, y)
 	present()
 }
 

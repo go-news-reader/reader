@@ -6,6 +6,7 @@ package lemmy
 
 import (
 	"context"
+	"net/http"
 	"strconv"
 
 	golem "github.com/go-lemmy/lemmy"
@@ -28,6 +29,12 @@ type Provider struct {
 // future authenticated listings.
 func New(instance string) *Provider {
 	return &Provider{client: golem.New(instance)}
+}
+
+// NewWithHTTPClient returns a provider whose reads go through hc (e.g. the
+// shared, request-logging client so the Network log captures Lemmy traffic).
+func NewWithHTTPClient(hc *http.Client, instance string) *Provider {
+	return &Provider{client: golem.New(instance, golem.WithHTTPClient(hc))}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).

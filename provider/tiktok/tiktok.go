@@ -10,6 +10,7 @@ package tiktok
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	gott "github.com/go-tiktok/tiktok"
@@ -35,8 +36,20 @@ type Provider struct {
 
 // New returns a provider. msToken and sessionID are optional credentials for
 // authenticated reads (empty for anonymous, best-effort).
-func New(msToken, sessionID string) *Provider {
+func New(msToken, sessionID string) *Provider { return newWith(nil, msToken, sessionID) }
+
+// NewWithHTTPClient returns a provider whose reads go through hc (e.g. the
+// shared, request-logging client so the Network log captures TikTok traffic).
+func NewWithHTTPClient(hc *http.Client, msToken, sessionID string) *Provider {
+	return newWith(hc, msToken, sessionID)
+}
+
+// newWith builds the provider, wiring hc when non-nil.
+func newWith(hc *http.Client, msToken, sessionID string) *Provider {
 	var opts []gott.Option
+	if hc != nil {
+		opts = append(opts, gott.WithHTTPClient(hc))
+	}
 	if msToken != "" {
 		opts = append(opts, gott.WithMSToken(msToken))
 	}

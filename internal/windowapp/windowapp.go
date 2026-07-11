@@ -90,6 +90,14 @@ func (h *Handler) MouseDown(x, y int) {
 		h.a.ApplySceneSettings() // persist + re-aggregate the new profile
 	case ui.HitSettings:
 		s.OpenSettings()
+	case ui.HitLog:
+		s.OpenLog()
+	case ui.HitCloseLog:
+		s.CloseLog()
+	case ui.HitBurger:
+		s.ToggleSidebar()
+	case ui.HitSidebarDivider:
+		s.BeginSidebarResize()
 	case ui.HitCloseSettings:
 		s.CommitRename()
 		s.CommitCache()
@@ -124,6 +132,13 @@ func (h *Handler) MouseDown(x, y int) {
 	}
 }
 
+// MouseMove forwards pointer motion to the scene, which applies it only while a
+// sidebar-divider drag is in progress.
+func (h *Handler) MouseMove(x, y int) { h.a.Scene().MouseMove(x, y) }
+
+// MouseUp ends any in-progress sidebar-divider drag.
+func (h *Handler) MouseUp(x, y int) { h.a.Scene().EndSidebarResize() }
+
 // Scroll scrolls the feed by a device-pixel wheel delta.
 func (h *Handler) Scroll(dy int) { h.a.Scene().Scroll(dy) }
 
@@ -148,6 +163,8 @@ func (h *Handler) Key(name string, r rune) {
 		switch s.Mode() {
 		case ui.ModeDetail:
 			s.CloseDetail() // Esc returns from the reading view to the feed
+		case ui.ModeLog:
+			s.CloseLog() // Esc returns from the Network log to the feed
 		case ui.ModeSettings:
 			s.CommitRename()
 			s.CommitCache()

@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/feeds"
+	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/internal/windowapp"
@@ -85,8 +86,13 @@ func osToken(goos string) string {
 }
 
 func defaultBuildApp(c config) *app.App {
+	// One recorder captures every provider's HTTP traffic; the same instance
+	// feeds the scene's Network-log view.
+	rec := httplog.NewRecorder(200)
+	c.opts.Recorder = rec
 	return app.New(app.Config{
 		Registry:      feeds.Registry(c.opts),
+		Recorder:      rec,
 		Settings:      c.set,   // nil except in -window mode
 		Store:         c.store, // nil except in -window mode
 		Subscriptions: c.subs,  // used when Settings is nil

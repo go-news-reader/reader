@@ -3,6 +3,7 @@ package twitter
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -20,6 +21,12 @@ type fakeClient struct {
 func (f *fakeClient) UserTweets(_ context.Context, screenName string) (*gotw.Timeline, error) {
 	f.got = screenName
 	return f.tl, f.err
+}
+
+func TestNewWithHTTPClient(t *testing.T) {
+	if p := NewWithHTTPClient(&http.Client{}, "tok"); p.client == nil {
+		t.Fatal("client not set from injected HTTP client")
+	}
 }
 
 func TestKindAndNew(t *testing.T) {

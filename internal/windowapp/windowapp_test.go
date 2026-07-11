@@ -329,6 +329,85 @@ func TestKeySettingsCommits(t *testing.T) {
 	}
 }
 
+func TestMouseDownLogAndClose(t *testing.T) {
+	a := profApp(t)
+	h := New(a)
+	s := a.Scene()
+	// The sidebar Network-log entry opens the log view.
+	click(t, h, ui.HitLog)
+	if s.Mode() != ui.ModeLog {
+		t.Fatal("HitLog should open the Network log")
+	}
+	// Its "< Back" button closes it.
+	click(t, h, ui.HitCloseLog)
+	if s.Mode() != ui.ModeFeed {
+		t.Fatal("HitCloseLog should return to the feed")
+	}
+	// Escape also closes the log.
+	s.OpenLog()
+	h.Key("Escape", 0)
+	if s.Mode() != ui.ModeFeed {
+		t.Fatal("Escape in the log should return to the feed")
+	}
+}
+
+func TestMouseDownBurgerToggles(t *testing.T) {
+	a := newApp(t)
+	h := New(a)
+	s := a.Scene()
+	if s.SidebarCollapsed() {
+		t.Fatal("sidebar should start expanded")
+	}
+	h.MouseDown(5, 10) // burger at the topbar's left
+	if !s.SidebarCollapsed() {
+		t.Fatal("burger click should collapse the sidebar")
+	}
+	h.MouseDown(5, 10) // second click restores it
+	if s.SidebarCollapsed() {
+		t.Fatal("second burger click should expand the sidebar")
+	}
+}
+
+// dividerX returns the leftmost x at which HitTest reports the sidebar divider,
+// which tracks the sidebar's right edge (a proxy for the effective width).
+func dividerX(t *testing.T, s *ui.Scene) int {
+	t.Helper()
+	for x := 0; x < s.W; x++ {
+		if s.HitTest(x, s.H/2).Kind == ui.HitSidebarDivider {
+			return x
+		}
+	}
+	t.Fatal("no divider hit region")
+	return 0
+}
+
+func TestSidebarDividerDrag(t *testing.T) {
+	a := newApp(t)
+	h := New(a)
+	s := a.Scene()
+	before := dividerX(t, s)
+	// Grab the divider and drag it wider; the edge (and its divider) move right.
+	h.MouseDown(before, s.H/2)
+	if !s.DraggingSidebar() {
+		t.Fatal("MouseDown on the divider should begin a resize")
+	}
+	h.MouseMove(before+150, s.H/2)
+	afterDrag := dividerX(t, s)
+	if afterDrag <= before {
+		t.Fatalf("drag did not widen the sidebar: edge %d <= %d", afterDrag, before)
+	}
+	h.MouseUp(before+150, s.H/2)
+	if s.DraggingSidebar() {
+		t.Fatal("MouseUp should end the resize")
+	}
+	// After release, a further move must not resize (the edge stays put).
+	held := dividerX(t, s)
+	h.MouseMove(before+300, s.H/2)
+	if dividerX(t, s) != held {
+		t.Fatal("move after release must not resize")
+	}
+}
+
 func TestBrowserCommand(t *testing.T) {
 	cases := []struct {
 		goos, wantCmd string

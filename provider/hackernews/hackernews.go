@@ -6,6 +6,7 @@ package hackernews
 
 import (
 	"context"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -29,6 +30,12 @@ type Provider struct {
 
 // New returns a Hacker News provider using the public Firebase API.
 func New() *Provider { return &Provider{client: gohn.New()} }
+
+// NewWithHTTPClient returns a provider whose fetches go through hc (e.g. the
+// shared, request-logging client so the Network log captures HN's traffic).
+func NewWithHTTPClient(hc *http.Client) *Provider {
+	return &Provider{client: gohn.New(gohn.WithHTTPClient(hc))}
+}
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
 func NewWithClient(c client) *Provider { return &Provider{client: c} }

@@ -60,7 +60,9 @@ const (
 	wmPaint       = 0x000F
 	wmKeyDown     = 0x0100
 	wmChar        = 0x0102
+	wmMouseMove   = 0x0200
 	wmLButtonDown = 0x0201
+	wmLButtonUp   = 0x0202
 	wmMouseWheel  = 0x020A
 	wmTimer       = 0x0113
 
@@ -227,6 +229,32 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			scale := wScale
 			wmu.Unlock()
 			wHandler.MouseDown(int(float64(x)*scale), int(float64(y)*scale))
+			if present() {
+				procInvalidateRect.Call(hwnd, 0, 0)
+			}
+		}
+		return 0
+	case wmMouseMove:
+		// Forward motion only while the left button is held (a drag), so idle
+		// hovers do not flood the handler.
+		if wHandler != nil && winLeftButtonHeld(uint32(wparam)) {
+			x, y := winMouseCoords(uint32(lparam))
+			wmu.Lock()
+			scale := wScale
+			wmu.Unlock()
+			wHandler.MouseMove(int(float64(x)*scale), int(float64(y)*scale))
+			if present() {
+				procInvalidateRect.Call(hwnd, 0, 0)
+			}
+		}
+		return 0
+	case wmLButtonUp:
+		if wHandler != nil {
+			x, y := winMouseCoords(uint32(lparam))
+			wmu.Lock()
+			scale := wScale
+			wmu.Unlock()
+			wHandler.MouseUp(int(float64(x)*scale), int(float64(y)*scale))
 			if present() {
 				procInvalidateRect.Call(hwnd, 0, 0)
 			}
