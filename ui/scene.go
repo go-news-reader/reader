@@ -51,10 +51,20 @@ func (s Subscription) name() string {
 type HitKind int
 
 const (
-	HitNone   HitKind = iota
-	HitItem           // a feed item (open its permalink) — Item set
-	HitSub            // a sidebar subscription (filter the feed) — Sub set (AllFilter = All)
-	HitSearch         // the topbar search field (focus it)
+	HitNone         HitKind = iota
+	HitItem                 // a feed item (open it in the detail view) — Item set
+	HitSub                  // a sidebar subscription (filter the feed) — Sub set (AllFilter = All)
+	HitSearch               // the topbar search field (focus it)
+	HitBack                 // the detail view's back button (return to the feed)
+	HitOpenExternal         // the detail view's "open original" button — Item set
+)
+
+// Mode selects which view the scene renders.
+type Mode int
+
+const (
+	ModeFeed   Mode = iota // the topbar + sidebar + unified feed
+	ModeDetail             // a single item's full detail / reading view
 )
 
 // Hit is the result of [Scene.HitTest].
@@ -82,6 +92,13 @@ type Scene struct {
 	// Topbar search/filter.
 	search        string
 	searchFocused bool
+
+	// Detail (reading) view: ModeDetail shows a single opened item in-app.
+	mode           Mode
+	detail         source.Item
+	detailScrollY  int
+	detailContentH int
+	backR, openR   toolkit.Rect
 
 	m       metrics
 	subs    []subHit
@@ -221,21 +238,54 @@ func (s *Scene) Backspace() {
 	}
 }
 
-// Scroll adjusts the vertical scroll, clamped to the content height.
+// Mode reports whether the feed or the detail view is showing.
+func (s *Scene) Mode() Mode { return s.mode }
+
+// Detail returns the item currently open in the detail view.
+func (s *Scene) Detail() source.Item { return s.detail }
+
+// OpenDetail switches to the in-app reading view for it (instead of a browser).
+func (s *Scene) OpenDetail(it source.Item) {
+	s.mode = ModeDetail
+	s.detail = it
+	s.detailScrollY = 0
+	s.touch()
+}
+
+// CloseDetail returns from the detail view to the feed.
+func (s *Scene) CloseDetail() {
+	s.mode = ModeFeed
+	s.touch()
+}
+
+// Scroll adjusts the vertical scroll of whichever view is showing, clamped to
+// its content height.
 func (s *Scene) Scroll(dy int) {
+	if s.mode == ModeDetail {
+		s.detailScrollY += dy
+		s.layoutDetail()
+		s.detailScrollY = clampScroll(s.detailScrollY, s.detailContentH-(s.H-s.m.topbarH))
+		s.touch()
+		return
+	}
 	s.ScrollY += dy
 	s.layout()
-	max := s.contentH - (s.H - s.m.topbarH)
+	s.ScrollY = clampScroll(s.ScrollY, s.contentH-(s.H-s.m.topbarH))
+	s.touch()
+}
+
+// clampScroll bounds v to [0, max] (max<0 => 0).
+func clampScroll(v, max int) int {
 	if max < 0 {
 		max = 0
 	}
-	if s.ScrollY > max {
-		s.ScrollY = max
+	if v > max {
+		v = max
 	}
-	if s.ScrollY < 0 {
-		s.ScrollY = 0
+	if v < 0 {
+		v = 0
 	}
-	s.touch()
+	return v
 }
 
 // filtered returns the items matching the active subscription filter and the

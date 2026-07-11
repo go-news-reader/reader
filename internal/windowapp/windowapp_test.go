@@ -51,44 +51,46 @@ func TestScroll(t *testing.T) {
 	}
 }
 
-func TestMouseDownItem(t *testing.T) {
+func TestMouseDownItemOpensDetail(t *testing.T) {
 	a := newApp(t)
 	a.Scene().SetItems([]source.Item{{ID: "1", Source: source.Reddit, Title: "hi", Permalink: "https://ex/1", Score: -1, Comments: -1}})
-	var opened string
-	orig := openURL
-	openURL = func(u string) error { opened = u; return nil }
-	t.Cleanup(func() { openURL = orig })
-
-	New(a).MouseDown(250, 60) // feed row 0
-	if opened != "https://ex/1" {
-		t.Fatalf("opened = %q", opened)
-	}
-	if a.Scene().SearchFocused() {
-		t.Fatal("click should blur search")
+	New(a).MouseDown(250, 60) // feed row 0 -> opens the in-app reading view
+	s := a.Scene()
+	if s.Mode() != ui.ModeDetail || s.Detail().ID != "1" {
+		t.Fatalf("item click should open detail; mode=%v id=%q", s.Mode(), s.Detail().ID)
 	}
 }
 
-func TestMouseDownItemLinkFallback(t *testing.T) {
+func TestMouseDownDetailBack(t *testing.T) {
 	a := newApp(t)
-	a.Scene().SetItems([]source.Item{{ID: "1", Source: source.Reddit, Title: "hi", Link: "https://ex/link", Score: -1, Comments: -1}})
+	s := a.Scene()
+	s.OpenDetail(source.Item{ID: "1", Title: "t"})
+	New(a).MouseDown(20, 24) // Back button in the detail topbar
+	if s.Mode() != ui.ModeFeed {
+		t.Fatal("Back should return to the feed")
+	}
+}
+
+func TestMouseDownDetailOpenExternal(t *testing.T) {
+	a := newApp(t)
+	s := a.Scene()
 	var opened string
 	orig := openURL
 	openURL = func(u string) error { opened = u; return nil }
 	t.Cleanup(func() { openURL = orig })
 
-	New(a).MouseDown(250, 60)
+	// Link is used when present.
+	s.OpenDetail(source.Item{ID: "1", Title: "t", Link: "https://ex/link"})
+	New(a).MouseDown(s.W-20, 24) // "Open original" button (right of the topbar)
 	if opened != "https://ex/link" {
-		t.Fatalf("opened = %q (want Link fallback)", opened)
+		t.Fatalf("opened = %q, want the Link", opened)
 	}
-}
-
-func TestMouseDownItemNoURL(t *testing.T) {
-	a := newApp(t)
-	a.Scene().SetItems([]source.Item{{ID: "1", Source: source.Reddit, Title: "hi", Score: -1, Comments: -1}})
-	orig := openURL
-	openURL = func(string) error { t.Fatal("must not open when no URL"); return nil }
-	t.Cleanup(func() { openURL = orig })
-	New(a).MouseDown(250, 60)
+	// Permalink is the fallback when Link is empty.
+	s.OpenDetail(source.Item{ID: "2", Title: "t", Permalink: "https://ex/perm"})
+	New(a).MouseDown(s.W-20, 24)
+	if opened != "https://ex/perm" {
+		t.Fatalf("opened = %q, want the Permalink fallback", opened)
+	}
 }
 
 func TestMouseDownSub(t *testing.T) {
@@ -144,6 +146,12 @@ func TestKey(t *testing.T) {
 	h.Key("Escape", 0)
 	if s.SearchFocused() {
 		t.Fatal("Escape should blur search")
+	}
+	// In the detail view, Escape returns to the feed.
+	s.OpenDetail(source.Item{ID: "x", Title: "t"})
+	h.Key("Escape", 0)
+	if s.Mode() != ui.ModeFeed {
+		t.Fatal("Escape in detail should close it")
 	}
 }
 

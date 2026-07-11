@@ -85,6 +85,10 @@ func (s *Scene) layout() {
 
 // Draw paints the whole scene into buf (s.W*s.H*4 RGBA bytes).
 func (s *Scene) Draw(buf []byte) {
+	if s.mode == ModeDetail {
+		s.drawDetail(buf)
+		return
+	}
 	s.layout()
 	m := s.m
 	p := painter.NewPixelPainter(buf, s.W, s.H)
@@ -335,6 +339,9 @@ func (s *Scene) drawDot(p *painter.PixelPainter, x, cy int, col toolkit.RGBA) {
 
 // HitTest maps a click at (x, y) to an action.
 func (s *Scene) HitTest(x, y int) Hit {
+	if s.mode == ModeDetail {
+		return s.detailHitTest(x, y)
+	}
 	s.layout()
 	m := s.m
 	if y < m.topbarH {

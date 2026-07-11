@@ -282,6 +282,18 @@ func TestMainAndDefaultBuild(t *testing.T) {
 	_ = code
 }
 
+func TestOSToken(t *testing.T) {
+	cases := map[string]string{"windows": "windows", "darwin": "mac", "linux": "linux", "plan9": "linux"}
+	for goos, want := range cases {
+		if got := osToken(goos); got != want {
+			t.Errorf("osToken(%q) = %q, want %q", goos, got, want)
+		}
+	}
+	if defaultOSToken() == "" {
+		t.Fatal("defaultOSToken empty")
+	}
+}
+
 func TestMultiFlag(t *testing.T) {
 	var m multiFlag
 	m.Set("a")

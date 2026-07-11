@@ -54,6 +54,21 @@ var (
 	openWindow = window.Run
 )
 
+// defaultOSToken maps the actual runtime OS to a ui look-and-feel token so the
+// app wears its native palette (WhiteSur / Fluent / Adwaita) on each system.
+func defaultOSToken() string { return osToken(runtime.GOOS) }
+
+func osToken(goos string) string {
+	switch goos {
+	case "windows":
+		return ui.OSWindows
+	case "darwin":
+		return ui.OSMac
+	default:
+		return ui.OSLinux
+	}
+}
+
 func defaultBuildApp(c config) *app.App {
 	return app.New(app.Config{
 		Registry:      feeds.Registry(c.opts),
@@ -72,7 +87,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.Var(&subSpecs, "sub", "subscription as kind:channel (repeatable), e.g. reddit:golang")
 	w := fs.Int("w", 1000, "window width")
 	h := fs.Int("h", 700, "window height")
-	osName := fs.String("os", ui.OSMac, "look & feel: mac|linux|windows")
+	osName := fs.String("os", defaultOSToken(), "look & feel: mac|linux|windows (default: this system)")
 	dark := fs.Bool("dark", false, "dark theme")
 	limit := fs.Int("limit", 25, "items per subscription")
 	out := fs.String("o", "", "write PNG to this file (\"\" or \"-\" = stdout)")
