@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/go-news-reader/reader/app"
+	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
 )
 
@@ -177,6 +178,52 @@ func TestFeedHandler(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/frame.png", nil))
 	if rec.Code != 500 {
 		t.Fatalf("frame error = %d", rec.Code)
+	}
+}
+
+func TestRunWindow(t *testing.T) {
+	stubApp(t, fakeProv{})
+	orig := openWindow
+	var gotTitle string
+	openWindow = func(c window.Config, h window.Handler) error {
+		gotTitle = c.Title
+		if h == nil {
+			t.Fatal("nil handler")
+		}
+		return nil
+	}
+	t.Cleanup(func() { openWindow = orig })
+	var out, errb bytes.Buffer
+	if code := run([]string{"-window", "-sub", "reddit:golang"}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d err=%s", code, errb.String())
+	}
+	if gotTitle != "News Reader" {
+		t.Fatalf("title = %q", gotTitle)
+	}
+}
+
+func TestRunWindowUnsupported(t *testing.T) {
+	stubApp(t, fakeProv{})
+	orig := openWindow
+	openWindow = func(window.Config, window.Handler) error { return errors.New("unsupported") }
+	t.Cleanup(func() { openWindow = orig })
+	var out, errb bytes.Buffer
+	if code := run([]string{"-window"}, &out, &errb); code != 1 {
+		t.Fatalf("code=%d", code)
+	}
+	if !strings.Contains(out.String(), "native window unavailable") {
+		t.Fatalf("stdout = %q", out.String())
+	}
+}
+
+func TestRefreshFeed(t *testing.T) {
+	reg := source.NewRegistry()
+	reg.Register(fakeProv{err: errors.New("boom")})
+	a := app.New(app.Config{Registry: reg, Subscriptions: []source.Subscription{{Source: source.Reddit}}, Width: 360, Height: 240})
+	var errb bytes.Buffer
+	refreshFeed(a, &errb)
+	if !strings.Contains(errb.String(), "warning:") {
+		t.Fatalf("no warning: %q", errb.String())
 	}
 }
 
