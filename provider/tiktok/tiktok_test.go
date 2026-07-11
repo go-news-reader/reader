@@ -95,3 +95,28 @@ func TestFeedNoMoreCursor(t *testing.T) {
 		t.Fatalf("limit passthrough=%d", f.gotCount)
 	}
 }
+
+func TestFeedAuthError(t *testing.T) {
+	// No credential configured: any failure prompts for a token.
+	p := NewWithClient(&fakeClient{err: errors.New("tiktok: item_list request failed: status 500")})
+	_, err := p.Feed(context.Background(), source.Query{Channel: "sec"})
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.TikTok {
+		t.Fatalf("no-cred failure not mapped to AuthError: %v", err)
+	}
+	// With a credential, an explicit 403 still prompts.
+	p2 := NewWithClient(&fakeClient{err: errors.New("tiktok: status 403")})
+	p2.hasCred = true
+	if _, err := p2.Feed(context.Background(), source.Query{Channel: "sec"}); func() bool {
+		_, ok := source.AsAuthError(err)
+		return !ok
+	}() {
+		t.Fatal("403 with cred not mapped to AuthError")
+	}
+	// With a credential, a transient error passes through.
+	p3 := NewWithClient(&fakeClient{err: errors.New("tiktok: empty response body")})
+	p3.hasCred = true
+	_, err = p3.Feed(context.Background(), source.Query{Channel: "sec"})
+	if _, ok := source.AsAuthError(err); ok {
+		t.Fatalf("transient error misclassified as auth: %v", err)
+	}
+}

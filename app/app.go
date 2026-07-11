@@ -268,16 +268,43 @@ func (a *App) Frame() (buf []byte, changed bool) {
 func (a *App) Scene() *ui.Scene { return a.scene }
 
 // Refresh aggregates the active profile's subscriptions (concurrently,
-// newest-first) and loads the merged items into the scene.
+// newest-first) and loads the merged items into the scene. It splits the
+// failures: every provider that needs sign-in/configuration becomes a clickable
+// in-feed prompt (de-duplicated, in subscription order), while any remaining
+// non-auth failure is shown in the status line.
 func (a *App) Refresh(ctx context.Context) []error {
 	items, errs := a.reg.Aggregate(ctx, a.subs)
 	a.scene.SetItems(items)
-	if len(errs) > 0 {
-		a.scene.Status = errs[0].Error()
-	} else {
-		a.scene.Status = ""
-	}
+	a.scene.SetAuthPrompts(authPrompts(errs))
+	a.scene.Status = firstNonAuthError(errs)
 	return errs
+}
+
+// authPrompts extracts a de-duplicated, subscription-ordered list of providers
+// whose fetch failed because they need authentication or configuration.
+func authPrompts(errs []error) []ui.AuthPrompt {
+	var out []ui.AuthPrompt
+	seen := map[source.Kind]bool{}
+	for _, e := range errs {
+		ae, ok := source.AsAuthError(e)
+		if !ok || seen[ae.Kind] {
+			continue
+		}
+		seen[ae.Kind] = true
+		out = append(out, ui.AuthPrompt{Kind: ae.Kind, Reason: ae.Reason})
+	}
+	return out
+}
+
+// firstNonAuthError returns the message of the first failure that is not an
+// auth/config prompt (those get the banner instead), or "" when there is none.
+func firstNonAuthError(errs []error) string {
+	for _, e := range errs {
+		if _, ok := source.AsAuthError(e); !ok {
+			return e.Error()
+		}
+	}
+	return ""
 }
 
 // Items returns the currently loaded feed.

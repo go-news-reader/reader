@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net/http"
+	"net/textproto"
 	"strings"
 
 	"github.com/go-newsgroups/newznab"
@@ -119,7 +120,7 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 
 	g, err := c.Group(group)
 	if err != nil {
-		return source.Result{}, err
+		return source.Result{}, mapErr(err)
 	}
 
 	count := q.Limit
@@ -132,7 +133,7 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	}
 	overviews, err := c.Over(low, g.High)
 	if err != nil {
-		return source.Result{}, err
+		return source.Result{}, mapErr(err)
 	}
 
 	items := make([]source.Item, 0, len(overviews))
@@ -140,6 +141,28 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		items = append(items, mapOverview(group, ov))
 	}
 	return source.Result{Items: items}, nil
+}
+
+// nntpAuthCodes are the NNTP response codes that mean the server needs (or
+// refused) credentials: 480 authentication required, 481 authentication failed,
+// 482 authentication rejected, 502 permission/no-permission.
+var nntpAuthCodes = map[int]bool{480: true, 481: true, 482: true, 502: true}
+
+// mapErr translates an authentication/permission failure into a typed
+// source.AuthError so the UI can prompt the user for server or indexer
+// credentials. It fires on an NNTP auth response code (a typed
+// *textproto.Error), on an AUTHINFO rejection (the nntp client formats those as
+// text), and on a Newznab indexer HTTP 401/403. Everything else — a dial
+// timeout, a malformed response — stays a transient error.
+func mapErr(err error) error {
+	var te *textproto.Error
+	if errors.As(err, &te) && nntpAuthCodes[te.Code] {
+		return source.NeedsAuth(source.Usenet, "server/indexer credentials required")
+	}
+	if strings.Contains(err.Error(), "AUTHINFO") || source.ErrHasAuthStatus(err) {
+		return source.NeedsAuth(source.Usenet, "server/indexer credentials required")
+	}
+	return err
 }
 
 func mapOverview(group string, ov gonntp.Overview) source.Item {
@@ -164,7 +187,7 @@ func (p *Provider) searchFeed(ctx context.Context, term string, q source.Query) 
 	}
 	res, err := p.search.Search(ctx, newznab.SearchOptions{Query: term, Limit: q.Limit})
 	if err != nil {
-		return source.Result{}, err
+		return source.Result{}, mapErr(err)
 	}
 	items := make([]source.Item, 0, len(res.Items))
 	for _, it := range res.Items {

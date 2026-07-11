@@ -6,6 +6,7 @@ package reddit
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -89,7 +90,7 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		page, err = p.client.Subreddit(ctx, strings.TrimPrefix(q.Channel, "r/"), sort, opts)
 	}
 	if err != nil {
-		return source.Result{}, err
+		return source.Result{}, mapErr(err)
 	}
 
 	items := make([]source.Item, 0, len(page.Posts))
@@ -97,6 +98,19 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		items = append(items, mapPost(post))
 	}
 	return source.Result{Items: items, Cursor: page.After}, nil
+}
+
+// mapErr translates a Reddit client failure into a typed source.AuthError when
+// it is a 401/403 — the anonymous ".json" endpoints 403 from data-center IPs and
+// a rejected OAuth grant returns 401 — so the UI can prompt the user to sign in
+// with a Reddit app instead of showing a raw status. Other failures (network,
+// 429, 5xx) pass through unchanged as transient errors.
+func mapErr(err error) error {
+	var apiErr *goreddit.APIError
+	if errors.As(err, &apiErr) && source.HTTPAuthStatus(apiErr.StatusCode) {
+		return source.NeedsAuth(source.Reddit, "sign in with a Reddit app (oauth)")
+	}
+	return err
 }
 
 // parseSort maps a generic sort hint onto reddit's vocabulary, defaulting to

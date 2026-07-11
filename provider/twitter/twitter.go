@@ -27,7 +27,8 @@ type client interface {
 
 // Provider fetches a public account's tweets as normalized items.
 type Provider struct {
-	client client
+	client  client
+	hasCred bool // an auth token was configured
 }
 
 // New returns a provider. authToken is an optional bearer token for
@@ -49,7 +50,7 @@ func newWith(hc *http.Client, authToken string) *Provider {
 	if authToken != "" {
 		opts = append(opts, gotw.WithAuthToken(authToken))
 	}
-	return &Provider{client: gotw.New(opts...)}
+	return &Provider{client: gotw.New(opts...), hasCred: authToken != ""}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
@@ -67,6 +68,13 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	}
 	tl, err := p.client.UserTweets(ctx, name)
 	if err != nil {
+		// Heuristic for this best-effort scraper: X locks these endpoints and
+		// usually needs an auth token, so any failure with no token configured
+		// (or an explicit 401/403) is really "give me a token". Transient errors
+		// with a token set pass through untouched.
+		if !p.hasCred || source.ErrHasAuthStatus(err) {
+			return source.Result{}, source.NeedsAuth(source.Twitter, "session/token required")
+		}
 		return source.Result{}, err
 	}
 

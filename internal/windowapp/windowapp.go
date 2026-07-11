@@ -98,6 +98,11 @@ func (h *Handler) MouseDown(x, y int) {
 		s.ToggleSidebar()
 	case ui.HitSidebarDivider:
 		s.BeginSidebarResize()
+	case ui.HitFixAuth:
+		// A click on an in-feed "needs sign-in" banner opens the Accounts editor
+		// pre-focused on the provider that needs fixing.
+		s.OpenAccounts()
+		s.SelectAccount(source.Kind(hit.Value))
 	case ui.HitCloseSettings:
 		s.CommitRename()
 		s.CommitCache()

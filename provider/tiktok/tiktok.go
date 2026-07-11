@@ -31,7 +31,8 @@ type client interface {
 
 // Provider fetches a TikTok user's recent videos as items.
 type Provider struct {
-	client client
+	client  client
+	hasCred bool // an msToken or sessionid was configured
 }
 
 // New returns a provider. msToken and sessionID are optional credentials for
@@ -56,7 +57,7 @@ func newWith(hc *http.Client, msToken, sessionID string) *Provider {
 	if sessionID != "" {
 		opts = append(opts, gott.WithSessionID(sessionID))
 	}
-	return &Provider{client: gott.New(opts...)}
+	return &Provider{client: gott.New(opts...), hasCred: msToken != "" || sessionID != ""}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
@@ -78,6 +79,14 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	}
 	feed, err := p.client.UserPosts(ctx, secUID, count, q.Cursor)
 	if err != nil {
+		// Heuristic for this best-effort scraper: without an msToken/sessionid
+		// TikTok's web API returns 403/429 or empty anti-bot bodies, so any
+		// failure with no credential configured (or an explicit 401/403) is
+		// really "give me a session token". Transient errors with a credential
+		// set pass through untouched.
+		if !p.hasCred || source.ErrHasAuthStatus(err) {
+			return source.Result{}, source.NeedsAuth(source.TikTok, "session/token required")
+		}
 		return source.Result{}, err
 	}
 

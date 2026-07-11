@@ -58,6 +58,11 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		Page:      page,
 	})
 	if err != nil {
+		// A 401/403 means the instance refuses anonymous reads and needs a
+		// logged-in session; surface a typed prompt rather than a raw status.
+		if source.ErrHasAuthStatus(err) {
+			return source.Result{}, source.NeedsAuth(source.Lemmy, "instance requires a signed-in session")
+		}
 		return source.Result{}, err
 	}
 

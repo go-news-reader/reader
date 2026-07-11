@@ -122,3 +122,21 @@ func TestAuthorName(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestFeedAuthError(t *testing.T) {
+	// A 401/403 from the instance maps to a typed source.AuthError.
+	p := NewWithClient(&fakeClient{err: errors.New("mastodon: GET /x: unexpected status 403: forbidden")})
+	_, err := p.Feed(context.Background(), source.Query{})
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Mastodon {
+		t.Fatalf("403 not mapped to Mastodon AuthError: %v", err)
+	}
+	// A transient error is left untouched.
+	p2 := NewWithClient(&fakeClient{err: errors.New("dial tcp: connection refused")})
+	_, err = p2.Feed(context.Background(), source.Query{})
+	if err == nil {
+		t.Fatal("want transient error")
+	}
+	if _, ok := source.AsAuthError(err); ok {
+		t.Fatalf("transient error misclassified as auth: %v", err)
+	}
+}

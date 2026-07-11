@@ -104,3 +104,16 @@ func TestMapPostNoThumbnail(t *testing.T) {
 		t.Fatalf("no thumbnail should yield no media: %+v", it.Media)
 	}
 }
+
+func TestFeedAuthError(t *testing.T) {
+	p := NewWithClient(&fakeClient{err: errors.New("lemmy: unexpected status 401: unauthorized")})
+	_, err := p.Feed(context.Background(), source.Query{Channel: "tech"})
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Lemmy {
+		t.Fatalf("401 not mapped to Lemmy AuthError: %v", err)
+	}
+	p2 := NewWithClient(&fakeClient{err: errors.New("boom")})
+	_, err = p2.Feed(context.Background(), source.Query{Channel: "tech"})
+	if _, ok := source.AsAuthError(err); ok {
+		t.Fatalf("transient error misclassified as auth: %v", err)
+	}
+}

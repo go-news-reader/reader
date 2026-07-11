@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"net/textproto"
 	"testing"
 	"time"
 
@@ -138,5 +139,32 @@ func TestDialPrimitiveDefaults(t *testing.T) {
 	}
 	if _, err := nntpDialTLS(ctx, "127.0.0.1:1", &tls.Config{}); err == nil {
 		t.Fatal("expected TLS dial error to closed port")
+	}
+}
+
+func TestFeedAuthError(t *testing.T) {
+	// An NNTP auth-required response code (480) maps to a typed AuthError.
+	fc := &fakeConn{groupErr: &textproto.Error{Code: 480, Msg: "authentication required"}}
+	_, err := NewWithDial(dialing(fc, nil)).Feed(context.Background(), source.Query{Channel: "comp.lang.go"})
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Usenet {
+		t.Fatalf("480 not mapped to Usenet AuthError: %v", err)
+	}
+	// An AUTHINFO rejection (formatted as text by the nntp client) maps too.
+	fc2 := &fakeConn{groupErr: errors.New("nntp: AUTHINFO PASS rejected code 481: bad login")}
+	_, err = NewWithDial(dialing(fc2, nil)).Feed(context.Background(), source.Query{Channel: "x"})
+	if _, ok := source.AsAuthError(err); !ok {
+		t.Fatalf("AUTHINFO rejection not mapped: %v", err)
+	}
+	// An HTTP-style 403 surfacing on OVER (indexer-ish) maps too.
+	fc3 := &fakeConn{group: &gonntp.Group{Low: 1, High: 3}, overErr: errors.New("unexpected status 403")}
+	_, err = NewWithDial(dialing(fc3, nil)).Feed(context.Background(), source.Query{Channel: "x"})
+	if _, ok := source.AsAuthError(err); !ok {
+		t.Fatalf("403 OVER error not mapped: %v", err)
+	}
+	// A non-auth NNTP error (411 no such group) passes through untouched.
+	fc4 := &fakeConn{groupErr: errors.New("411 no such group")}
+	_, err = NewWithDial(dialing(fc4, nil)).Feed(context.Background(), source.Query{Channel: "x"})
+	if _, ok := source.AsAuthError(err); ok {
+		t.Fatalf("411 misclassified as auth: %v", err)
 	}
 }

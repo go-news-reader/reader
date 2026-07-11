@@ -376,3 +376,52 @@ func TestDefaultRefreshHook(t *testing.T) {
 	// Give the goroutine a chance without asserting on its async result.
 	_ = a.Items()
 }
+
+func TestRefreshAuthPromptsMixed(t *testing.T) {
+	reg := newReg(
+		fakeProv{kind: source.Reddit, err: source.NeedsAuth(source.Reddit, "sign in with a Reddit app (oauth)")},
+		fakeProv{kind: source.Mastodon, err: source.NeedsAuth(source.Mastodon, "access token required/invalid")},
+		fakeProv{kind: source.HackerNews, err: errors.New("boom")}, // a genuine non-auth failure
+	)
+	a := New(Config{
+		Registry: reg,
+		Subscriptions: []source.Subscription{
+			{Source: source.Reddit},
+			{Source: source.Reddit, Channel: "golang"}, // same kind -> de-duplicated
+			{Source: source.Mastodon},
+			{Source: source.HackerNews},
+		},
+		Width: 400, Height: 300,
+	})
+	a.Refresh(context.Background())
+
+	prompts := a.Scene().AuthPrompts()
+	if len(prompts) != 2 {
+		t.Fatalf("prompts = %+v, want 2 (deduped)", prompts)
+	}
+	// Stable subscription order: Reddit before Mastodon.
+	if prompts[0].Kind != source.Reddit || prompts[1].Kind != source.Mastodon {
+		t.Fatalf("prompt order/dedup wrong: %+v", prompts)
+	}
+	// The lone non-auth failure lands in the status line.
+	if a.Scene().Status == "" {
+		t.Fatal("non-auth error should be shown in the status line")
+	}
+}
+
+func TestRefreshAuthOnlyClearsStatus(t *testing.T) {
+	reg := newReg(fakeProv{kind: source.Instagram, err: source.NeedsAuth(source.Instagram, "session/token required")})
+	a := New(Config{
+		Registry:      reg,
+		Subscriptions: []source.Subscription{{Source: source.Instagram, Channel: "nasa"}},
+		Width:         400, Height: 300,
+	})
+	a.Refresh(context.Background())
+	if got := a.Scene().AuthPrompts(); len(got) != 1 || got[0].Kind != source.Instagram {
+		t.Fatalf("prompts = %+v", got)
+	}
+	// All failures were auth prompts, so the status line is cleared.
+	if a.Scene().Status != "" {
+		t.Fatalf("status = %q, want empty (all failures were auth prompts)", a.Scene().Status)
+	}
+}
