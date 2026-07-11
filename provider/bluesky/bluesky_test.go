@@ -102,3 +102,16 @@ func TestMapPostURIWithoutSlash(t *testing.T) {
 		t.Fatalf("id=%q", it.ID)
 	}
 }
+
+func TestFeedAuthError(t *testing.T) {
+	p := NewWithClient(&fakeClient{err: errors.New("atproto: xrpc error 403: Forbidden")})
+	_, err := p.Feed(context.Background(), source.Query{Channel: "@alice"})
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Bluesky {
+		t.Fatalf("403 not mapped to Bluesky AuthError: %v", err)
+	}
+	p2 := NewWithClient(&fakeClient{err: errors.New("boom")})
+	_, err = p2.Feed(context.Background(), source.Query{Channel: "@alice"})
+	if _, ok := source.AsAuthError(err); ok {
+		t.Fatalf("transient error misclassified as auth: %v", err)
+	}
+}

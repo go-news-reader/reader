@@ -504,3 +504,20 @@ func TestDefaultOpenURL(t *testing.T) {
 		t.Fatalf("execStart not called: %q %v", gotName, gotArgs)
 	}
 }
+
+func TestMouseDownFixAuthOpensAccounts(t *testing.T) {
+	a := newApp(t)
+	s := a.Scene()
+	s.SetAuthPrompts([]ui.AuthPrompt{
+		{Kind: source.Mastodon, Reason: "access token required/invalid"},
+	})
+	h := New(a)
+	// Click the in-feed "needs sign-in" banner.
+	click(t, h, ui.HitFixAuth)
+	if s.Mode() != ui.ModeAccounts {
+		t.Fatalf("mode = %v, want ModeAccounts", s.Mode())
+	}
+	if s.SelectedAccount() != source.Mastodon {
+		t.Fatalf("selected account = %q, want mastodon", s.SelectedAccount())
+	}
+}

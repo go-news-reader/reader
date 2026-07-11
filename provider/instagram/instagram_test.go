@@ -88,3 +88,31 @@ func TestFirstNonEmpty(t *testing.T) {
 		t.Fatal("firstNonEmpty")
 	}
 }
+
+func TestFeedAuthError(t *testing.T) {
+	// No sessionid configured: any fetch failure becomes a sign-in prompt.
+	p := NewWithClient(&fakeClient{err: errors.New("instagram: unexpected status 500")})
+	_, err := p.Feed(context.Background(), source.Query{Channel: "nasa"})
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Instagram {
+		t.Fatalf("no-cred failure not mapped to AuthError: %v", err)
+	}
+	// With a session configured, an explicit 403 (blocked read) still prompts.
+	p2 := NewWithClient(&fakeClient{err: errors.New("instagram: unexpected status 403")})
+	p2.hasCred = true
+	if _, err := p2.Feed(context.Background(), source.Query{Channel: "nasa"}); func() bool {
+		_, ok := source.AsAuthError(err)
+		return !ok
+	}() {
+		t.Fatal("403 with cred not mapped to AuthError")
+	}
+	// With a session configured, a transient error passes through.
+	p3 := NewWithClient(&fakeClient{err: errors.New("dial tcp: timeout")})
+	p3.hasCred = true
+	_, err = p3.Feed(context.Background(), source.Query{Channel: "nasa"})
+	if err == nil {
+		t.Fatal("want transient error")
+	}
+	if _, ok := source.AsAuthError(err); ok {
+		t.Fatalf("transient error misclassified as auth: %v", err)
+	}
+}

@@ -271,3 +271,25 @@ func TestIsImageURL(t *testing.T) {
 		}
 	}
 }
+
+func TestFeedAuthErrorMapping(t *testing.T) {
+	// A 403 (anonymous data-center block) or 401 (rejected OAuth) becomes a typed
+	// source.AuthError so the UI prompts the user to sign in with a Reddit app.
+	for _, code := range []int{401, 403} {
+		f := &fakeFetcher{err: &goreddit.APIError{StatusCode: code, Status: "forbidden"}}
+		_, err := NewWithClient(f).Feed(context.Background(), source.Query{Channel: "golang"})
+		ae, ok := source.AsAuthError(err)
+		if !ok || ae.Kind != source.Reddit {
+			t.Fatalf("status %d not mapped to Reddit AuthError: %v", code, err)
+		}
+	}
+	// A non-auth APIError (e.g. 500) passes through untouched.
+	f := &fakeFetcher{err: &goreddit.APIError{StatusCode: 500, Status: "server error"}}
+	_, err := NewWithClient(f).Feed(context.Background(), source.Query{Channel: "golang"})
+	if err == nil {
+		t.Fatal("want error")
+	}
+	if _, ok := source.AsAuthError(err); ok {
+		t.Fatalf("500 misclassified as auth: %v", err)
+	}
+}

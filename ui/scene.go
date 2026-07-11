@@ -48,6 +48,14 @@ func (s Subscription) name() string {
 	}
 }
 
+// AuthPrompt names a provider whose subscription failed because it needs the
+// user to sign in or supply configuration. The feed renders one clickable
+// "needs sign-in" banner per prompt; a click opens the Accounts editor for Kind.
+type AuthPrompt struct {
+	Kind   source.Kind
+	Reason string
+}
+
 // HitKind classifies what a click landed on.
 type HitKind int
 
@@ -64,6 +72,7 @@ const (
 	HitCloseLog               // the log view's "< Back" button (return to the feed)
 	HitBurger                 // the topbar burger button (collapse/expand the sidebar)
 	HitSidebarDivider         // the draggable divider at the sidebar's right edge
+	HitFixAuth                // an in-feed "needs sign-in" banner row — Value = source kind
 
 	// Settings-view actions (Mode == ModeSettings):
 	HitSelectProfile // Profile = index being edited
@@ -110,13 +119,16 @@ type Hit struct {
 type Scene struct {
 	W, H int
 
-	theme   *toolkit.Theme
-	Items   []source.Item // the unified feed (merge newest-first before setting)
-	Subs    []Subscription
-	Active  int // selected subscription index, or AllFilter
-	Status  string
-	ScrollY int
-	Scale   float64 // display scale (zoom × devicePixelRatio); 0 => 1
+	theme  *toolkit.Theme
+	Items  []source.Item // the unified feed (merge newest-first before setting)
+	Subs   []Subscription
+	Active int // selected subscription index, or AllFilter
+	Status string
+
+	// authPrompts drive the in-feed "needs sign-in" banner (one row each).
+	authPrompts []AuthPrompt
+	ScrollY     int
+	Scale       float64 // display scale (zoom × devicePixelRatio); 0 => 1
 
 	// Profiles are the named sidebar tabs; the active one supplies Subs.
 	Profiles   []settings.Profile
@@ -192,6 +204,7 @@ type Scene struct {
 	burgerR   toolkit.Rect // topbar burger button (feed view)
 	searchR   toolkit.Rect
 	rows      []rowLayout
+	authRows  []authRowLayout // in-feed sign-in banner rows (above the cards)
 	contentH  int
 
 	// cardCache holds rendered card sprites so scrolling is a memcpy-blit
@@ -251,6 +264,14 @@ func (s *Scene) SetItems(items []source.Item) {
 	s.invalidateCards()
 	s.touch()
 }
+
+// SetAuthPrompts replaces the set of providers that need sign-in/configuration,
+// as collected by the app after an aggregate. The feed renders one clickable
+// banner per prompt above the cards; an empty slice removes the banner.
+func (s *Scene) SetAuthPrompts(p []AuthPrompt) { s.authPrompts = p; s.touch() }
+
+// AuthPrompts returns the current in-feed sign-in prompts.
+func (s *Scene) AuthPrompts() []AuthPrompt { return s.authPrompts }
 
 // SetSubs replaces the sidebar subscriptions.
 func (s *Scene) SetSubs(subs []Subscription) { s.Subs = subs; s.subsRev++; s.touch() }

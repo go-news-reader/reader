@@ -19,6 +19,7 @@ type metrics struct {
 	thumbW, thumbH, badgeH    int
 	sideItemH, searchH        int
 	profileTabH, tabPad, btnH int
+	bannerH, navIcon          int
 	title, meta, badge, side  textFace
 	search, tab               textFace
 }
@@ -46,6 +47,8 @@ func (s *Scene) computeMetrics() metrics {
 	}
 	m.profileTabH = m.tab.height + rpx(12)
 	m.btnH = m.tab.height + rpx(8)
+	m.bannerH = m.side.height + rpx(16)
+	m.navIcon = m.side.height + rpx(4)
 	return m
 }
 
@@ -65,6 +68,13 @@ type profTabHit struct {
 type rowLayout struct {
 	item source.Item
 	top  int
+}
+
+// authRowLayout positions one "needs sign-in" banner row by its top offset
+// within the scrollable feed content, carrying the prompt index it renders.
+type authRowLayout struct {
+	idx int
+	top int
 }
 
 // layout recomputes metrics, sidebar entries, the search rect and feed rows.
@@ -114,9 +124,18 @@ func (s *Scene) layout() {
 	}
 	s.searchR = toolkit.Rect{X: headerW + m.pad, Y: (m.topbarH - m.searchH) / 2, W: s.W - headerW - 2*m.pad, H: m.searchH}
 
+	// "Needs sign-in" banner rows sit at the very top of the scrollable feed
+	// content, above the cards, so they scroll with the feed and compose with the
+	// card hit-testing through the same offset.
+	s.authRows = s.authRows[:0]
+	top := m.pad
+	for i := range s.authPrompts {
+		s.authRows = append(s.authRows, authRowLayout{idx: i, top: top})
+		top += m.bannerH + m.cardGap
+	}
+
 	// Feed rows.
 	s.rows = s.rows[:0]
-	top := m.pad
 	for _, it := range s.filtered() {
 		s.rows = append(s.rows, rowLayout{item: it, top: top})
 		top += m.rowH + m.cardGap
@@ -157,6 +176,14 @@ func (s *Scene) Draw(buf []byte) {
 	feedTop := m.topbarH
 	feedX := m.sidebarW + m.pad
 	feedW := s.W - m.sidebarW - 2*m.pad
+	// "Needs sign-in" banners (drawn above the cards, scrolling with the feed).
+	for _, a := range s.authRows {
+		y := feedTop + a.top - s.ScrollY
+		if y+m.bannerH < feedTop || y >= s.H {
+			continue
+		}
+		s.drawAuthBanner(p, img, s.authPrompts[a.idx], feedX, y, feedW, onAccent)
+	}
 	for _, r := range s.rows {
 		y := feedTop + r.top - s.ScrollY
 		if y+m.rowH < feedTop || y >= s.H {
@@ -255,16 +282,19 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		}
 	}
 
-	// Pinned entries at the bottom: 👤 Accounts, 📡 Network log, ⚙ Settings.
-	aly := s.accountsR.Y - m.topbarH
-	p.FillRect(painter.Rect{X: 0, Y: aly - 1, W: m.sidebarW, H: 1}, th.Border)
-	m.side.draw(img, m.pad, aly+(m.sideItemH-m.side.height)/2, "👤 Accounts", mute(th.OnSurface, th.SurfaceAlt))
-	lly := s.logR.Y - m.topbarH
-	p.FillRect(painter.Rect{X: 0, Y: lly - 1, W: m.sidebarW, H: 1}, th.Border)
-	m.side.draw(img, m.pad, lly+(m.sideItemH-m.side.height)/2, "📡 Network log", mute(th.OnSurface, th.SurfaceAlt))
-	sly := s.settingsR.Y - m.topbarH
-	p.FillRect(painter.Rect{X: 0, Y: sly - 1, W: m.sidebarW, H: 1}, th.Border)
-	m.side.draw(img, m.pad, sly+(m.sideItemH-m.side.height)/2, "⚙ Settings", mute(th.OnSurface, th.SurfaceAlt))
+	// Pinned entries at the bottom: Accounts, Network log, Settings. Each icon is
+	// drawn (not a font glyph) so nothing renders as a tofu box.
+	navCol := mute(th.OnSurface, th.SurfaceAlt)
+	navTextX := m.pad + m.navIcon + rpxOf(s, 6)
+	drawNavRow := func(localY int, icon func(*painter.PixelPainter, toolkit.Rect, toolkit.RGBA, int), text string) {
+		p.FillRect(painter.Rect{X: 0, Y: localY - 1, W: m.sidebarW, H: 1}, th.Border)
+		ir := toolkit.Rect{X: m.pad, Y: localY + (m.sideItemH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
+		icon(p, ir, navCol, s.iconStroke())
+		m.side.draw(img, navTextX, localY+(m.sideItemH-m.side.height)/2, text, navCol)
+	}
+	drawNavRow(s.accountsR.Y-m.topbarH, drawUserIcon, "Accounts")
+	drawNavRow(s.logR.Y-m.topbarH, drawListIcon, "Network log")
+	drawNavRow(s.settingsR.Y-m.topbarH, drawSlidersIcon, "Settings")
 
 	s.sidebarKey, s.sidebarSpr = k, img
 	return img
@@ -282,9 +312,11 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	p := painter.NewPixelPainter(buf, s.W, m.topbarH)
 	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, m.topbarH)}
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
-	// Burger button at the left, then the title. The burger is always drawn so a
-	// collapsed sidebar can be reopened.
-	m.title.draw(img, s.burgerR.X+(s.burgerR.W-m.title.width("☰"))/2, (m.topbarH-m.title.height)/2, "☰", onAccent)
+	// Burger button at the left, then the title. The burger is a drawn menu icon
+	// (three bars) rather than a font glyph, and is always drawn so a collapsed
+	// sidebar can be reopened.
+	ic := m.navIcon
+	drawMenuIcon(p, toolkit.Rect{X: s.burgerR.X + (s.burgerR.W-ic)/2, Y: (m.topbarH - ic) / 2, W: ic, H: ic}, onAccent, s.iconStroke())
 	m.title.draw(img, s.burgerR.W+m.pad, (m.topbarH-m.title.height)/2, "News", onAccent)
 	// Search box (topbar is full-width at y=0, so local == absolute coords).
 	p.FillRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Surface)
@@ -342,6 +374,21 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 		s.drawThumb(p, img, it, r, muteS)
 	}
 	_ = onAccent
+}
+
+// drawAuthBanner paints one clickable "needs sign-in" row: an accent pill with a
+// drawn padlock and "<Provider> needs sign-in — Open Accounts". onAccent is the
+// readable ink on the accent fill (theme Extra["OnAccent"] when present).
+func (s *Scene) drawAuthBanner(p *painter.PixelPainter, img *image.RGBA, ap AuthPrompt, x, y, w int, onAccent toolkit.RGBA) {
+	m := s.m
+	th := s.theme
+	p.FillRoundRect(painter.Rect{X: x, Y: y, W: w, H: m.bannerH}, rpxOf(s, 6), th.Accent)
+	iconR := toolkit.Rect{X: x + m.pad, Y: y + (m.bannerH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
+	drawLockIcon(p, iconR, onAccent, s.iconStroke())
+	lbl := sourceLabel(ap.Kind) + " needs sign-in — Open Accounts"
+	tx := iconR.X + iconR.W + m.pad/2
+	ty := y + (m.bannerH-m.side.height)/2
+	m.side.draw(img, tx, ty, truncate(m.side, lbl, x+w-tx-m.pad), onAccent)
 }
 
 // cardKey identifies a cached card sprite. A card only re-renders when its
@@ -482,6 +529,11 @@ func (s *Scene) HitTest(x, y int) Hit {
 	}
 	// Feed.
 	contentY := y - m.topbarH + s.ScrollY
+	for _, a := range s.authRows {
+		if contentY >= a.top && contentY < a.top+m.bannerH {
+			return Hit{Kind: HitFixAuth, Value: string(s.authPrompts[a.idx].Kind)}
+		}
+	}
 	for _, r := range s.rows {
 		if contentY >= r.top && contentY < r.top+m.rowH {
 			return Hit{Kind: HitItem, Item: r.item}

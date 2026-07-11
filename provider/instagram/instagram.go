@@ -27,7 +27,8 @@ type client interface {
 
 // Provider fetches a public Instagram profile's recent posts as items.
 type Provider struct {
-	client client
+	client  client
+	hasCred bool // a sessionid was configured
 }
 
 // New returns a provider. sessionID is an optional sessionid cookie for
@@ -49,7 +50,7 @@ func newWith(hc *http.Client, sessionID string) *Provider {
 	if sessionID != "" {
 		opts = append(opts, goig.WithSessionID(sessionID))
 	}
-	return &Provider{client: goig.New(opts...)}
+	return &Provider{client: goig.New(opts...), hasCred: sessionID != ""}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
@@ -67,6 +68,14 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	}
 	prof, err := p.client.UserProfile(ctx, user)
 	if err != nil {
+		// Heuristic for this best-effort scraper: without a sessionid it cannot
+		// work at all, and Instagram also answers a blocked read with 401/403 (or
+		// a login redirect). Either case is really "give me a session token", so
+		// map it to a typed prompt; genuine transient errors (with a session
+		// configured) pass through untouched.
+		if !p.hasCred || source.ErrHasAuthStatus(err) {
+			return source.Result{}, source.NeedsAuth(source.Instagram, "session/token required")
+		}
 		return source.Result{}, err
 	}
 

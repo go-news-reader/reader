@@ -51,7 +51,10 @@ func (r *Registry) Kinds() []Kind {
 func (r *Registry) Feed(ctx context.Context, kind Kind, q Query) (Result, error) {
 	p, ok := r.Get(kind)
 	if !ok {
-		return Result{}, fmt.Errorf("source: no provider registered for %q", kind)
+		// An unregistered kind means an endpoint-gated provider (Mastodon
+		// instance, Usenet server, …) was subscribed to but never configured, so
+		// report it as a typed "needs configuration" signal the UI can act on.
+		return Result{}, NeedsAuth(kind, "not configured")
 	}
 	return p.Feed(ctx, q)
 }

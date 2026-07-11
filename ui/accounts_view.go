@@ -89,6 +89,9 @@ func (s *Scene) CloseAccounts() { s.mode = ModeFeed; s.touch() }
 // SelectAccount picks which provider the editor operates on.
 func (s *Scene) SelectAccount(k source.Kind) { s.accSel = k; s.accFocus = ""; s.touch() }
 
+// SelectedAccount reports which provider the accounts editor is operating on.
+func (s *Scene) SelectedAccount() source.Kind { return s.accSel }
+
 // FocusAccountField gives keyboard focus to a credential field.
 func (s *Scene) FocusAccountField(key string) { s.accFocus = key; s.touch() }
 

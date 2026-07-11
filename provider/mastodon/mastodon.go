@@ -74,6 +74,11 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		tl, err = p.client.PublicTimeline(ctx, opts)
 	}
 	if err != nil {
+		// A 401/403 from the instance means the read needs (or was refused) an
+		// access token; surface it as a typed prompt instead of a raw status.
+		if source.ErrHasAuthStatus(err) {
+			return source.Result{}, source.NeedsAuth(source.Mastodon, "access token required/invalid")
+		}
 		return source.Result{}, err
 	}
 

@@ -63,6 +63,11 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		return source.Result{}, ErrNoChannel
 	}
 	if err != nil {
+		// A 401/403 from the AppView means this feed needs an authenticated
+		// session (some AppView calls are gated); prompt the user to sign in.
+		if source.ErrHasAuthStatus(err) {
+			return source.Result{}, source.NeedsAuth(source.Bluesky, "sign in to your Bluesky account")
+		}
 		return source.Result{}, err
 	}
 
