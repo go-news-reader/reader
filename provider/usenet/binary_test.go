@@ -7,12 +7,13 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"testing"
 	"time"
 
 	goimages "github.com/go-images/images"
-	gonntp "github.com/go-newsgroups/nntp"
 	"github.com/go-newsgroups/newznab"
+	gonntp "github.com/go-newsgroups/nntp"
 	"github.com/go-newsgroups/par2"
 	"github.com/go-newsgroups/yenc"
 
@@ -35,6 +36,15 @@ func (f *fakeSearcher) Search(_ context.Context, o newznab.SearchOptions) (*newz
 func TestNewWithSearch(t *testing.T) {
 	if NewWithSearch("news:119", false, "https://indexer", "key").search == nil {
 		t.Fatal("search client not set")
+	}
+}
+
+func TestNewWithSearchClient(t *testing.T) {
+	// The injected HTTP client backs the indexer's Newznab calls; the NNTP dial
+	// is not HTTP and is untouched. Both the dial and the search client are set.
+	p := NewWithSearchClient(&http.Client{}, "news:119", true, "https://indexer", "key")
+	if p.search == nil || p.dial == nil {
+		t.Fatal("search client / dial not set")
 	}
 }
 
@@ -95,7 +105,7 @@ type binaryFakeConn struct {
 	closed   bool
 }
 
-func (c *binaryFakeConn) Group(string) (*gonntp.Group, error)     { return nil, nil }
+func (c *binaryFakeConn) Group(string) (*gonntp.Group, error)      { return nil, nil }
 func (c *binaryFakeConn) Over(int, int) ([]gonntp.Overview, error) { return nil, nil }
 func (c *binaryFakeConn) Article(id string) (*gonntp.Article, error) {
 	if c.artErr != nil {
@@ -267,8 +277,8 @@ func TestAutoPARFinalVerifyError(t *testing.T) {
 
 func TestSplitPAR2(t *testing.T) {
 	blobs, data := SplitPAR2(map[string][]byte{
-		"movie.mkv":     []byte("video"),
-		"movie.par2":    []byte("par2a"),
+		"movie.mkv":       []byte("video"),
+		"movie.par2":      []byte("par2a"),
 		"movie.vol0.PAR2": []byte("par2b"),
 	})
 	if len(blobs) != 2 {

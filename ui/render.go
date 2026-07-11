@@ -26,7 +26,7 @@ type metrics struct {
 func (s *Scene) computeMetrics() metrics {
 	rpx := func(n int) int { return int(float64(n)*s.Scale + 0.5) }
 	m := metrics{
-		sidebarW:  rpx(200),
+		sidebarW:  s.sidebarWidthPx(),
 		topbarH:   rpx(48),
 		pad:       rpx(12),
 		rowH:      rpx(84),
@@ -96,11 +96,22 @@ func (s *Scene) layout() {
 		y += m.sideItemH
 	}
 
-	// ⚙ Settings entry pinned to the bottom of the sidebar.
+	// Pinned entries at the bottom of the sidebar: the Network log above
+	// ⚙ Settings.
 	s.settingsR = toolkit.Rect{X: 0, Y: s.H - m.sideItemH, W: m.sidebarW, H: m.sideItemH}
+	s.logR = toolkit.Rect{X: 0, Y: s.H - 2*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
 
-	// Search field in the topbar (right of the title).
-	s.searchR = toolkit.Rect{X: m.sidebarW + m.pad, Y: (m.topbarH - m.searchH) / 2, W: s.W - m.sidebarW - 2*m.pad, H: m.searchH}
+	// Burger button (left of the topbar) toggles the sidebar. Always present in
+	// the feed view so a collapsed sidebar can be reopened.
+	s.burgerR = toolkit.Rect{X: 0, Y: 0, W: m.topbarH, H: m.topbarH}
+
+	// Search field in the topbar, right of the burger+title header. The header
+	// reserves at least the sidebar width, so nothing overlaps when collapsed.
+	headerW := s.burgerR.W + m.pad + m.title.width("News") + m.pad
+	if headerW < m.sidebarW {
+		headerW = m.sidebarW
+	}
+	s.searchR = toolkit.Rect{X: headerW + m.pad, Y: (m.topbarH - m.searchH) / 2, W: s.W - headerW - 2*m.pad, H: m.searchH}
 
 	// Feed rows.
 	s.rows = s.rows[:0]
@@ -120,6 +131,9 @@ func (s *Scene) Draw(buf []byte) {
 		return
 	case ModeSettings:
 		s.drawSettings(buf)
+		return
+	case ModeLog:
+		s.drawLog(buf)
 		return
 	}
 	s.layout()
@@ -153,7 +167,11 @@ func (s *Scene) Draw(buf []byte) {
 	}
 
 	// --- chrome (cached sprites; static across scroll like Evas smart objects) ---
-	blitAt(img, s.sidebarSprite(), 0, m.topbarH)
+	if m.sidebarW > 0 {
+		blitAt(img, s.sidebarSprite(), 0, m.topbarH)
+		// A subtle 1px divider at the sidebar's right edge hints it is draggable.
+		p.FillRect(painter.Rect{X: m.sidebarW - 1, Y: m.topbarH, W: 1, H: s.H - m.topbarH}, th.Border)
+	}
 	blitAt(img, s.topbarSprite(onAccent), 0, 0)
 
 	// --- status footer text (optional) ---
@@ -174,11 +192,12 @@ type sidebarKey struct {
 	profRev int
 }
 type topbarKey struct {
-	w       int
-	scale   float64
-	theme   *toolkit.Theme
-	search  string
-	focused bool
+	w        int
+	sidebarW int
+	scale    float64
+	theme    *toolkit.Theme
+	search   string
+	focused  bool
 }
 
 // sidebarSprite renders (or reuses) the sidebar column at local origin.
@@ -232,7 +251,10 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		}
 	}
 
-	// ⚙ Settings entry pinned to the bottom.
+	// Pinned entries at the bottom: Network log then ⚙ Settings.
+	lly := s.logR.Y - m.topbarH
+	p.FillRect(painter.Rect{X: 0, Y: lly - 1, W: m.sidebarW, H: 1}, th.Border)
+	m.side.draw(img, m.pad, lly+(m.sideItemH-m.side.height)/2, "📡 Network log", mute(th.OnSurface, th.SurfaceAlt))
 	sly := s.settingsR.Y - m.topbarH
 	p.FillRect(painter.Rect{X: 0, Y: sly - 1, W: m.sidebarW, H: 1}, th.Border)
 	m.side.draw(img, m.pad, sly+(m.sideItemH-m.side.height)/2, "⚙ Settings", mute(th.OnSurface, th.SurfaceAlt))
@@ -245,7 +267,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	m := s.m
 	th := s.theme
-	k := topbarKey{w: s.W, scale: s.Scale, theme: th, search: s.search, focused: s.searchFocused}
+	k := topbarKey{w: s.W, sidebarW: m.sidebarW, scale: s.Scale, theme: th, search: s.search, focused: s.searchFocused}
 	if s.topbarSpr != nil && s.topbarKey == k {
 		return s.topbarSpr
 	}
@@ -253,7 +275,10 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	p := painter.NewPixelPainter(buf, s.W, m.topbarH)
 	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, m.topbarH)}
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
-	m.title.draw(img, m.pad, (m.topbarH-m.title.height)/2, "News", onAccent)
+	// Burger button at the left, then the title. The burger is always drawn so a
+	// collapsed sidebar can be reopened.
+	m.title.draw(img, s.burgerR.X+(s.burgerR.W-m.title.width("☰"))/2, (m.topbarH-m.title.height)/2, "☰", onAccent)
+	m.title.draw(img, s.burgerR.W+m.pad, (m.topbarH-m.title.height)/2, "News", onAccent)
 	// Search box (topbar is full-width at y=0, so local == absolute coords).
 	p.FillRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Surface)
 	if s.searchFocused {
@@ -402,14 +427,27 @@ func (s *Scene) HitTest(x, y int) Hit {
 		return s.detailHitTest(x, y)
 	case ModeSettings:
 		return s.hitSettings(x, y)
+	case ModeLog:
+		return s.logHitTest(x, y)
 	}
 	s.layout()
 	m := s.m
 	if y < m.topbarH {
+		if inRect(s.burgerR, x, y) {
+			return Hit{Kind: HitBurger}
+		}
 		if inRect(s.searchR, x, y) {
 			return Hit{Kind: HitSearch}
 		}
 		return Hit{Kind: HitNone}
+	}
+	// A thin grip at the sidebar's right edge starts a divider drag (feed only,
+	// and only when the sidebar is shown).
+	if m.sidebarW > 0 {
+		grip := rpxOf(s, 3)
+		if x >= m.sidebarW-grip && x <= m.sidebarW+grip {
+			return Hit{Kind: HitSidebarDivider}
+		}
 	}
 	if x < m.sidebarW {
 		for _, t := range s.profTabs {
@@ -419,6 +457,9 @@ func (s *Scene) HitTest(x, y int) Hit {
 		}
 		if inRect(s.settingsR, x, y) {
 			return Hit{Kind: HitSettings}
+		}
+		if inRect(s.logR, x, y) {
+			return Hit{Kind: HitLog}
 		}
 		for _, e := range s.subs {
 			if inRect(e.rect, x, y) {

@@ -9,6 +9,7 @@ package twitter
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	gotw "github.com/go-birdsite/twitter"
@@ -31,8 +32,20 @@ type Provider struct {
 
 // New returns a provider. authToken is an optional bearer token for
 // authenticated reads (empty for anonymous, best-effort).
-func New(authToken string) *Provider {
+func New(authToken string) *Provider { return newWith(nil, authToken) }
+
+// NewWithHTTPClient returns a provider whose reads go through hc (e.g. the
+// shared, request-logging client so the Network log captures Twitter/X traffic).
+func NewWithHTTPClient(hc *http.Client, authToken string) *Provider {
+	return newWith(hc, authToken)
+}
+
+// newWith builds the provider, wiring hc when non-nil.
+func newWith(hc *http.Client, authToken string) *Provider {
 	var opts []gotw.Option
+	if hc != nil {
+		opts = append(opts, gotw.WithHTTPClient(hc))
+	}
 	if authToken != "" {
 		opts = append(opts, gotw.WithAuthToken(authToken))
 	}

@@ -4,12 +4,14 @@
 // The query channel selects what to fetch:
 //   - "@handle" or "handle" → that actor's author feed
 //   - "#<query>"            → a post search for <query>
+//
 // An empty channel is an error (Bluesky has no anonymous global feed here).
 package bluesky
 
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	goat "github.com/go-atproto/atproto"
@@ -33,6 +35,12 @@ type Provider struct {
 
 // New returns a provider backed by the public Bluesky AppView (anonymous reads).
 func New() *Provider { return &Provider{client: goat.New()} }
+
+// NewWithHTTPClient returns a provider whose reads go through hc (e.g. the
+// shared, request-logging client so the Network log captures Bluesky's traffic).
+func NewWithHTTPClient(hc *http.Client) *Provider {
+	return &Provider{client: goat.New(goat.WithHTTPClient(hc))}
+}
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
 func NewWithClient(c client) *Provider { return &Provider{client: c} }

@@ -109,8 +109,12 @@ func Run(cfg Config, h Handler) error {
 		handler: h,
 	}
 
+	// Button1Motion reports pointer motion only while the left button is held, so
+	// a drag arrives as MotionNotify without idle hovers flooding the loop.
 	const eventMask = xproto.EventMaskExposure |
 		xproto.EventMaskButtonPress |
+		xproto.EventMaskButtonRelease |
+		xproto.EventMaskButton1Motion |
 		xproto.EventMaskKeyPress |
 		xproto.EventMaskStructureNotify
 	xproto.CreateWindow(conn, screen.RootDepth, wid, screen.Root,
@@ -192,6 +196,18 @@ func (x *x11) handleEvent(ev xgb.Event) {
 		}
 		if e.Detail == 1 {
 			x.handler.MouseDown(int(e.EventX), int(e.EventY))
+			x.present()
+		}
+	case xproto.MotionNotifyEvent:
+		// Button1Motion-masked, so this only arrives during a left-button drag.
+		if x.handler != nil {
+			x.handler.MouseMove(int(e.EventX), int(e.EventY))
+			x.present()
+		}
+	case xproto.ButtonReleaseEvent:
+		// Ignore wheel-button releases (4/5); only the left button ends a drag.
+		if x.handler != nil && e.Detail == 1 {
+			x.handler.MouseUp(int(e.EventX), int(e.EventY))
 			x.present()
 		}
 	case xproto.KeyPressEvent:

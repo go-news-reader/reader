@@ -3,6 +3,7 @@ package mastodon
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -32,6 +33,12 @@ func (f *fakeClient) HashtagTimeline(_ context.Context, tag string, o gomasto.Ti
 func (f *fakeClient) AccountStatuses(_ context.Context, acct string, o gomasto.TimelineOptions) (*gomasto.Timeline, error) {
 	f.called, f.gotAcct = "acct", acct
 	return f.tl, f.err
+}
+
+func TestNewWithHTTPClient(t *testing.T) {
+	if p := NewWithHTTPClient(&http.Client{}, "https://mastodon.social", "tok"); p.client == nil {
+		t.Fatal("client not set from injected HTTP client")
+	}
 }
 
 func TestKindAndNew(t *testing.T) {

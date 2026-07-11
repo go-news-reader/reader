@@ -9,6 +9,7 @@ package instagram
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	goig "github.com/go-instagram/instagram"
@@ -31,8 +32,20 @@ type Provider struct {
 
 // New returns a provider. sessionID is an optional sessionid cookie for
 // authenticated reads (empty for anonymous, best-effort).
-func New(sessionID string) *Provider {
+func New(sessionID string) *Provider { return newWith(nil, sessionID) }
+
+// NewWithHTTPClient returns a provider whose reads go through hc (e.g. the
+// shared, request-logging client so the Network log captures Instagram traffic).
+func NewWithHTTPClient(hc *http.Client, sessionID string) *Provider {
+	return newWith(hc, sessionID)
+}
+
+// newWith builds the provider, wiring hc when non-nil.
+func newWith(hc *http.Client, sessionID string) *Provider {
 	var opts []goig.Option
+	if hc != nil {
+		opts = append(opts, goig.WithHTTPClient(hc))
+	}
 	if sessionID != "" {
 		opts = append(opts, goig.WithSessionID(sessionID))
 	}

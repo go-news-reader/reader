@@ -3,6 +3,7 @@ package instagram
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -20,6 +21,12 @@ type fakeClient struct {
 func (f *fakeClient) UserProfile(_ context.Context, username string) (*goig.Profile, error) {
 	f.got = username
 	return f.prof, f.err
+}
+
+func TestNewWithHTTPClient(t *testing.T) {
+	if p := NewWithHTTPClient(&http.Client{}, "sess"); p.client == nil {
+		t.Fatal("client not set from injected HTTP client")
+	}
 }
 
 func TestKindAndNew(t *testing.T) {

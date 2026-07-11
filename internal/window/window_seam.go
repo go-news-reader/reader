@@ -46,6 +46,14 @@ func winSize(lparam uint32) (w, h int) {
 	return int(lparam & 0xffff), int(lparam >> 16)
 }
 
+// mkLButton is the WM_MOUSEMOVE wParam bit set while the left button is held.
+const mkLButton = 0x0001
+
+// winLeftButtonHeld reports whether a WM_MOUSEMOVE wParam indicates the left
+// button is down, so pointer motion is forwarded as a drag rather than an idle
+// hover.
+func winLeftButtonHeld(wparam uint32) bool { return wparam&mkLButton != 0 }
+
 // winWheelDelta extracts the signed wheel delta from the high word of a
 // WM_MOUSEWHEEL wParam (GET_WHEEL_DELTA_WPARAM).
 func winWheelDelta(wparam uint32) int {

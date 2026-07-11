@@ -3,6 +3,7 @@ package feeds
 import (
 	"testing"
 
+	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/source"
 )
 
@@ -61,5 +62,37 @@ func TestRegistryUsenetSearch(t *testing.T) {
 	r := Registry(Options{UsenetAddr: "news:119", UsenetIndexerURL: "https://indexer", UsenetIndexerAPIKey: "k"})
 	if !has(r.Kinds(), source.Usenet) {
 		t.Fatal("usenet not registered with indexer")
+	}
+}
+
+func TestRegistryWithRecorder(t *testing.T) {
+	// A recorder builds the shared logged client and routes every HTTP provider
+	// (including the Newznab indexer) through it. Exercises every logged branch.
+	rec := httplog.NewRecorder(8)
+	r := Registry(Options{
+		Recorder:            rec,
+		MastodonInstance:    "https://mastodon.social",
+		MastodonToken:       "tok",
+		LemmyInstance:       "https://lemmy.world",
+		UsenetAddr:          "news.example.org:119",
+		UsenetIndexerURL:    "https://indexer",
+		UsenetIndexerAPIKey: "k",
+		InstagramSession:    "s",
+		TikTokMSToken:       "m",
+		TikTokSession:       "ts",
+		TwitterToken:        "tw",
+	})
+	if len(r.Kinds()) != 10 {
+		t.Fatalf("want 10 providers with recorder, got %d: %v", len(r.Kinds()), r.Kinds())
+	}
+}
+
+func TestLoggedClient(t *testing.T) {
+	if loggedClient(nil) != nil {
+		t.Fatal("nil recorder must yield nil shared client")
+	}
+	hc := loggedClient(httplog.NewRecorder(2))
+	if hc == nil || hc.Transport == nil {
+		t.Fatal("recorder should yield a client with a logging transport")
 	}
 }

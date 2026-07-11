@@ -50,6 +50,21 @@ func TestWinSize(t *testing.T) {
 	}
 }
 
+func TestWinLeftButtonHeld(t *testing.T) {
+	if !winLeftButtonHeld(mkLButton) {
+		t.Fatal("MK_LBUTTON set should report held")
+	}
+	if !winLeftButtonHeld(mkLButton | 0x0010) { // left + other bits
+		t.Fatal("left held among other modifiers should report held")
+	}
+	if winLeftButtonHeld(0x0010) { // some other bit, no left button
+		t.Fatal("no MK_LBUTTON should report not held")
+	}
+	if winLeftButtonHeld(0) {
+		t.Fatal("zero wparam should report not held")
+	}
+}
+
 func TestWinWheel(t *testing.T) {
 	// One notch up in win32 = +120; must scroll up (negative device pixels).
 	if got := winWheelScroll(winWheelDelta(120 << 16)); got != -wheelPixelsPerNotch {

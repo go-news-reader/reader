@@ -13,6 +13,8 @@ type stubHandler struct{}
 func (stubHandler) Frame() ([]byte, int, int, bool) { return nil, 0, 0, false }
 func (stubHandler) Resize(int, int, float64)        {}
 func (stubHandler) MouseDown(int, int)              {}
+func (stubHandler) MouseMove(int, int)              {}
+func (stubHandler) MouseUp(int, int)                {}
 func (stubHandler) Scroll(int)                      {}
 func (stubHandler) Key(string, rune)                {}
 

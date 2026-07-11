@@ -3,6 +3,7 @@ package tiktok
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -22,6 +23,12 @@ type fakeClient struct {
 func (f *fakeClient) UserPosts(_ context.Context, secUid string, count int, cursor string) (*gott.UserFeed, error) {
 	f.gotSec, f.gotCount, f.gotCur = secUid, count, cursor
 	return f.feed, f.err
+}
+
+func TestNewWithHTTPClient(t *testing.T) {
+	if p := NewWithHTTPClient(&http.Client{}, "ms", "sess"); p.client == nil {
+		t.Fatal("client not set from injected HTTP client")
+	}
 }
 
 func TestKindAndNew(t *testing.T) {

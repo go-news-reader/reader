@@ -11,6 +11,7 @@ import (
 	"image/color"
 	"image/png"
 
+	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
@@ -55,6 +56,9 @@ type Config struct {
 	Settings *settings.Settings
 	// Store persists settings edits/profile switches. Optional (nil = no disk).
 	Store *settings.Store
+	// Recorder, when set, feeds the scene's Network-log view. It should be the
+	// same recorder the provider registry logs into.
+	Recorder *httplog.Recorder
 	// Subscriptions seeds the synthesized profile when Settings is nil.
 	Subscriptions []source.Subscription
 	Width, Height int
@@ -85,6 +89,21 @@ func New(cfg Config) *App {
 	scene.SetThemeName(set.Theme)
 	scene.SetCachePath(set.CachePath)
 	scene.SetProfiles(set.Profiles, set.Active)
+	if rec := cfg.Recorder; rec != nil {
+		// Feed the Network-log view live, converting httplog entries into the
+		// ui-local shape so the ui package need not depend on internal/httplog.
+		scene.SetLogSource(func() []ui.LogEntry {
+			snap := rec.Snapshot()
+			out := make([]ui.LogEntry, len(snap))
+			for i, e := range snap {
+				out[i] = ui.LogEntry{
+					When: e.When, Method: e.Method, URL: e.URL,
+					Status: e.Status, Bytes: e.Bytes, Dur: e.Dur, Err: e.Err,
+				}
+			}
+			return out
+		})
+	}
 
 	a := &App{
 		reg: cfg.Registry, store: cfg.Store, set: set,

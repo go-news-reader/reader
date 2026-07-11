@@ -8,10 +8,11 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"net/http"
 	"strings"
 
-	gonntp "github.com/go-newsgroups/nntp"
 	"github.com/go-newsgroups/newznab"
+	gonntp "github.com/go-newsgroups/nntp"
 
 	"github.com/go-news-reader/reader/source"
 )
@@ -82,6 +83,14 @@ func New(addr string, useTLS bool) *Provider {
 // a Newznab indexer (works with a direct indexer or an NZBHydra2 endpoint).
 func NewWithSearch(addr string, useTLS bool, indexerURL, apiKey string) *Provider {
 	return &Provider{dial: dialer(addr, useTLS), search: newznab.New(indexerURL, apiKey)}
+}
+
+// NewWithSearchClient is like NewWithSearch but routes the Newznab indexer's
+// HTTP calls through hc (e.g. the shared, request-logging client so the Network
+// log captures the indexer traffic). The NNTP transport is not HTTP and is not
+// logged.
+func NewWithSearchClient(hc *http.Client, addr string, useTLS bool, indexerURL, apiKey string) *Provider {
+	return &Provider{dial: dialer(addr, useTLS), search: newznab.New(indexerURL, apiKey, newznab.WithHTTPClient(hc))}
 }
 
 // NewWithDial wraps a custom dial function (used by tests with a fake conn).

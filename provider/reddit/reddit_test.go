@@ -3,6 +3,7 @@ package reddit
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	goreddit "github.com/go-reddit/reddit"
@@ -33,6 +34,13 @@ func (f *fakeFetcher) Frontpage(_ context.Context, sort goreddit.Sort, opts gore
 func TestKind(t *testing.T) {
 	if New().Kind() != source.Reddit {
 		t.Fatal("Kind != reddit")
+	}
+}
+
+func TestNewWithHTTPClient(t *testing.T) {
+	// The injected client backs the reddit client; the provider is still wired.
+	if p := NewWithHTTPClient(&http.Client{}); p.client == nil {
+		t.Fatal("client not set from injected HTTP client")
 	}
 }
 

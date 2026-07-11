@@ -51,8 +51,14 @@ type Handler interface {
 	// Resize maps the new logical size to device pixels; scale is the backing
 	// scale factor (device pixels per point).
 	Resize(w, h int, scale float64)
-	// MouseDown reports a left click at device-pixel coordinates.
+	// MouseDown reports a left button press at device-pixel coordinates.
 	MouseDown(x, y int)
+	// MouseMove reports pointer motion at device-pixel coordinates. It fires
+	// continuously during a left-button drag (back-ends need not emit idle
+	// hovers) so the handler can drive interactions like a divider resize.
+	MouseMove(x, y int)
+	// MouseUp reports a left button release at device-pixel coordinates.
+	MouseUp(x, y int)
 	// Scroll reports a wheel delta in device pixels.
 	Scroll(dy int)
 	// Key reports a key press: name is a symbolic label for editing keys
