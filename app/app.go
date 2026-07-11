@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"image"
+	"image/color"
 	"image/png"
 
 	"github.com/go-news-reader/reader/internal/settings"
@@ -27,6 +28,12 @@ type App struct {
 
 	osName string
 	dark   bool
+
+	// accent, when hasAccent, overrides the palette's accent with a value
+	// harvested from the host UI (macOS controlAccentColor). Re-applied on every
+	// theme rebuild so profile/theme switches keep the system accent.
+	accent    color.RGBA
+	hasAccent bool
 
 	// refresh triggers an asynchronous re-aggregate after a settings change.
 	// A field so front-ends/tests can substitute a synchronous variant.
@@ -103,8 +110,32 @@ func (a *App) ApplySceneSettings() {
 		_ = a.store.Save(set)
 	}
 	a.subs = set.ActiveProfile().Subs
-	a.scene.SetTheme(ui.ResolveTheme(set.Theme, a.osName, a.dark))
+	a.applyTheme()
 	a.refresh()
+}
+
+// applyTheme resolves the palette from the persisted theme name, the host OS and
+// the current dark preference, then layers the harvested system accent on top so
+// it survives every profile/theme switch. All theme changes funnel through here.
+func (a *App) applyTheme() {
+	t := ui.ResolveTheme(a.scene.ThemeName(), a.osName, a.dark)
+	if a.hasAccent {
+		t = ui.WithAccent(t, a.accent.R, a.accent.G, a.accent.B)
+	}
+	a.scene.SetTheme(t)
+}
+
+// SetSystemAppearance applies look-and-feel harvested from the host UI: the
+// effective dark/light mode (honoured only when the user's theme is "system"),
+// the accent colour, and — when fontTTF parses — the system font. Called by the
+// native window back-end at launch and whenever the system appearance changes.
+func (a *App) SetSystemAppearance(dark bool, accent color.RGBA, hasAccent bool, fontTTF []byte) {
+	a.dark = dark
+	a.accent, a.hasAccent = accent, hasAccent
+	if len(fontTTF) > 0 {
+		ui.SetSystemFont(fontTTF)
+	}
+	a.applyTheme()
 }
 
 // Frame returns the current framebuffer, redrawing into the back buffer only
@@ -166,5 +197,5 @@ var encodePNG = png.Encode
 // SetTheme reselects the palette (e.g. on a system light/dark change).
 func (a *App) SetTheme(osName string, dark bool) {
 	a.osName, a.dark = osName, dark
-	a.scene.SetTheme(ui.ResolveTheme(a.scene.ThemeName(), osName, dark))
+	a.applyTheme()
 }

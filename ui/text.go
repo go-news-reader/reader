@@ -25,9 +25,28 @@ var (
 	boldSrc    *opentype.Font
 	fontOnce   sync.Once
 
-	faceMu    sync.Mutex
-	faceCache = map[faceKey]textFace{}
+	faceMu     sync.Mutex
+	faceCache  = map[faceKey]textFace{}
+	sysFontSrc *opentype.Font // host system font; overrides the embedded faces when set
 )
+
+// SetSystemFont installs a host UI typeface (e.g. macOS SF from
+// /System/Library/Fonts/SFNS.ttf) so the reader matches the native look. SF is
+// shipped as a variable font whose only instance the pure-Go rasteriser can
+// reach is Regular, so bold weights are synthesised (see textFace.synthBold).
+// It returns false and keeps the embedded Go fonts if ttf can't be parsed. The
+// face cache is dropped so already-built faces re-derive from the new source.
+func SetSystemFont(ttf []byte) bool {
+	f, err := opentype.Parse(ttf)
+	if err != nil {
+		return false
+	}
+	faceMu.Lock()
+	sysFontSrc = f
+	faceCache = map[faceKey]textFace{}
+	faceMu.Unlock()
+	return true
+}
 
 type faceKey struct {
 	px   int
@@ -42,11 +61,14 @@ func loadFonts() {
 }
 
 // textFace bundles a font.Face with its cached vertical metrics so callers can
-// position by the line's top-left corner rather than the baseline.
+// position by the line's top-left corner rather than the baseline. synthBold is
+// set for "bold" faces derived from a system font that exposes no bold instance;
+// draw then over-strikes the glyphs one pixel across to fake the weight.
 type textFace struct {
-	face   font.Face
-	ascent int
-	height int
+	face      font.Face
+	ascent    int
+	height    int
+	synthBold bool
 }
 
 // getFace returns a cached face at px pixels (DPI 72 ⇒ 1pt = 1px), regular or
@@ -63,13 +85,17 @@ func getFace(px int, bold bool) textFace {
 	if f, ok := faceCache[k]; ok {
 		return f
 	}
-	src := regularSrc
+	src, synth := regularSrc, false
 	if bold {
 		src = boldSrc
 	}
+	if sysFontSrc != nil {
+		src = sysFontSrc // one variable font for every weight...
+		synth = bold     // ...so fake bold by over-striking.
+	}
 	face, _ := opentype.NewFace(src, &opentype.FaceOptions{Size: float64(px), DPI: 72, Hinting: font.HintingFull})
 	m := face.Metrics()
-	tf := textFace{face: face, ascent: m.Ascent.Round(), height: m.Height.Round()}
+	tf := textFace{face: face, ascent: m.Ascent.Round(), height: m.Height.Round(), synthBold: synth}
 	faceCache[k] = tf
 	return tf
 }
@@ -87,6 +113,12 @@ func (tf textFace) draw(img *image.RGBA, x, top int, s string, col toolkit.RGBA)
 		Dot:  fixed.P(x, top+tf.ascent),
 	}
 	d.DrawString(s)
+	if tf.synthBold {
+		// Second pass one pixel right thickens every stem — a passable bold for
+		// a font that only offers its Regular instance.
+		d.Dot = fixed.P(x+1, top+tf.ascent)
+		d.DrawString(s)
+	}
 }
 
 // drawRight renders s right-aligned so its right edge sits at x.

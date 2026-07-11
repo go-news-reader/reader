@@ -72,6 +72,24 @@ func withOnAccent(t *toolkit.Theme, onAccent toolkit.RGBA) *toolkit.Theme {
 	return t
 }
 
+// WithAccent overrides a theme's accent colour with a harvested system accent
+// (e.g. macOS -[NSColor controlAccentColor]) and recomputes the on-accent label
+// colour so topbar text stays legible whatever hue the user picked.
+func WithAccent(t *toolkit.Theme, r, g, b uint8) *toolkit.Theme {
+	t.Accent = toolkit.RGBA{R: r, G: g, B: b, A: 0xFF}
+	return withOnAccent(t, onAccentFor(t.Accent))
+}
+
+// onAccentFor returns black or white for text drawn on c, whichever contrasts
+// better, using a perceived-luminance (Rec. 601) threshold.
+func onAccentFor(c toolkit.RGBA) toolkit.RGBA {
+	lum := (299*int(c.R) + 587*int(c.G) + 114*int(c.B)) / 1000
+	if lum > 150 {
+		return toolkit.RGBA{A: 0xFF} // dark text on a light accent
+	}
+	return toolkit.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+}
+
 // adwaitaLight / adwaitaDark approximate GNOME's libadwaita default palette.
 func adwaitaLight() *toolkit.Theme {
 	return withOnAccent(&toolkit.Theme{

@@ -18,13 +18,20 @@ package window
 
 import (
 	"fmt"
+	"image/color"
+	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
 )
+
+// sfFontPath is the macOS system (SF Pro) font; harvested so the UI renders in
+// the real system typeface. A var so a host without it degrades gracefully.
+var sfFontPath = "/System/Library/Fonts/SFNS.ttf"
 
 // selectors resolved once at first use.
 var (
@@ -58,6 +65,15 @@ var (
 	selInitBitmapRep             = objc.RegisterName("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:hasAlpha:isPlanar:colorSpaceName:bytesPerRow:bitsPerPixel:")
 	selDrawInRectFull            = objc.RegisterName("drawInRect:fromRect:operation:fraction:respectFlipped:hints:")
 	selScheduledTimer            = objc.RegisterName("scheduledTimerWithTimeInterval:target:selector:userInfo:repeats:")
+	selEffectiveAppearance       = objc.RegisterName("effectiveAppearance")
+	selName                      = objc.RegisterName("name")
+	selRespondsToSelector        = objc.RegisterName("respondsToSelector:")
+	selControlAccentColor        = objc.RegisterName("controlAccentColor")
+	selSRGBColorSpace            = objc.RegisterName("sRGBColorSpace")
+	selColorUsingColorSpace      = objc.RegisterName("colorUsingColorSpace:")
+	selRedComponent              = objc.RegisterName("redComponent")
+	selGreenComponent            = objc.RegisterName("greenComponent")
+	selBlueComponent             = objc.RegisterName("blueComponent")
 )
 
 // NSWindowStyleMask bits.
@@ -97,6 +113,15 @@ var (
 	view     objc.ID
 	win      objc.ID
 )
+
+// lastAppr caches the most recently pushed appearance so the per-frame poll only
+// forwards a change (avoids re-theming every tick). Touched on the main thread.
+var lastAppr struct {
+	set       bool
+	dark      bool
+	r, g, b   uint8
+	hasAccent bool
+}
 
 // frameworksLoaded guards the one-time dlopen of Foundation/AppKit.
 var frameworksLoaded bool
@@ -244,8 +269,85 @@ func present() {
 	}
 }
 
-// agentTick is the NSTimer callback: damage-gated repaint each frame.
-func agentTick(_ objc.ID, _ objc.SEL, _ objc.ID) { present() }
+// readAppearance queries the live macOS look: the effective dark/light mode from
+// -[NSApp effectiveAppearance] and the user's accent from +[NSColor
+// controlAccentColor] (10.14+), converted to sRGB. hasAccent is false on older
+// systems where the selector is absent.
+func readAppearance() (dark bool, r, g, b uint8, hasAccent bool) {
+	appr := objc.ID(objc.GetClass("NSApplication")).Send(selSharedApplication).Send(selEffectiveAppearance)
+	if appr != 0 {
+		dark = strings.Contains(goString(appr.Send(selName)), "Dark")
+	}
+	colorClass := objc.ID(objc.GetClass("NSColor"))
+	if colorClass.Send(selRespondsToSelector, selControlAccentColor) == 0 {
+		return dark, 0, 0, 0, false
+	}
+	c := colorClass.Send(selControlAccentColor)
+	if c == 0 {
+		return dark, 0, 0, 0, false
+	}
+	srgb := objc.ID(objc.GetClass("NSColorSpace")).Send(selSRGBColorSpace)
+	if c = c.Send(selColorUsingColorSpace, srgb); c == 0 {
+		return dark, 0, 0, 0, false
+	}
+	return dark,
+		unitToByte(objc.Send[float64](c, selRedComponent)),
+		unitToByte(objc.Send[float64](c, selGreenComponent)),
+		unitToByte(objc.Send[float64](c, selBlueComponent)),
+		true
+}
+
+// unitToByte maps a 0..1 colour component to 0..255, clamped.
+func unitToByte(v float64) uint8 {
+	switch {
+	case v <= 0:
+		return 0
+	case v >= 1:
+		return 255
+	default:
+		return uint8(v*255 + 0.5)
+	}
+}
+
+// pushAppearance forwards the current host appearance to the handler when it
+// implements AppearanceSink, but only if it changed since the last push (or
+// withFont forces a full push that also carries the system font at launch).
+func pushAppearance(withFont bool) {
+	sink, ok := handler.(AppearanceSink)
+	if !ok {
+		return
+	}
+	dark, r, g, b, has := readAppearance()
+	unchanged := lastAppr.set && dark == lastAppr.dark && has == lastAppr.hasAccent &&
+		r == lastAppr.r && g == lastAppr.g && b == lastAppr.b
+	if unchanged && !withFont {
+		return
+	}
+	lastAppr = struct {
+		set       bool
+		dark      bool
+		r, g, b   uint8
+		hasAccent bool
+	}{true, dark, r, g, b, has}
+
+	ap := SystemAppearance{Dark: dark, HasAccent: has}
+	if has {
+		ap.Accent = color.RGBA{R: r, G: g, B: b, A: 0xFF}
+	}
+	if withFont {
+		if ttf, err := os.ReadFile(sfFontPath); err == nil {
+			ap.FontTTF = ttf
+		}
+	}
+	sink.SystemAppearance(ap)
+}
+
+// agentTick is the NSTimer callback: poll for a system appearance change, then
+// damage-gated repaint each frame.
+func agentTick(_ objc.ID, _ objc.SEL, _ objc.ID) {
+	pushAppearance(false)
+	present()
+}
 
 // agentWindowDidResize re-derives the device size from the content view bounds
 // and backing scale and forwards it to the Handler, then repaints.
@@ -374,6 +476,8 @@ func Run(cfg Config, h Handler) error {
 	}
 	curScale = scale
 	h.Resize(int(cfg.Width*scale), int(cfg.Height*scale), scale)
+	// Adopt the live system look (dark/light, accent, SF font) before frame 0.
+	pushAppearance(true)
 	present()
 
 	// ~60 Hz damage-gated repaint; also lets an async feed load appear.

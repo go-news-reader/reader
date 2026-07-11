@@ -11,10 +11,34 @@
 // that drive it are unit-tested.
 package window
 
-import "errors"
+import (
+	"errors"
+	"image/color"
+)
 
 // ErrUnsupported is returned by [Run] on a platform without a native back-end.
 var ErrUnsupported = errors.New("window: no native window back-end on this platform")
+
+// SystemAppearance carries look-and-feel harvested from the host UI so the
+// renderer can match the live system look rather than a fixed palette.
+type SystemAppearance struct {
+	// Dark is the effective dark/light mode (macOS effectiveAppearance).
+	Dark bool
+	// Accent is the user's accent colour (macOS controlAccentColor); only
+	// meaningful when HasAccent is set.
+	Accent    color.RGBA
+	HasAccent bool
+	// FontTTF is the raw system font (e.g. macOS SFNS.ttf). Empty on a poll that
+	// only refreshes colours, so the already-installed font is kept.
+	FontTTF []byte
+}
+
+// AppearanceSink is an optional [Handler] capability. A back-end that can read
+// the host appearance (currently the macOS Cocoa back-end) pushes it so the UI
+// adopts the native dark/light mode, accent colour, and system font.
+type AppearanceSink interface {
+	SystemAppearance(SystemAppearance)
+}
 
 // Handler is the presenter's data source and input sink. The window calls Frame
 // each tick (and after each event) and blits the returned buffer only when it
