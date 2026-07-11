@@ -1,0 +1,38 @@
+version: '3'
+
+env:
+  CGO_ENABLED: '0'
+  GOWORK: 'off'
+
+tasks:
+  run:
+    desc: Launch the native aggregator window (macOS / Windows / Linux)
+    cmds:
+      - go run ./cmd/newsreader -window -sub reddit:golang -sub hackernews: {{.CLI_ARGS}}
+
+  serve:
+    desc: Serve a read-only PNG view over HTTP (default :8080)
+    cmds:
+      - go run ./cmd/newsreader -serve {{.ADDR | default ":8080"}} -sub reddit:golang {{.CLI_ARGS}}
+
+  png:
+    desc: Render the merged feed to feed.png
+    cmds:
+      - go run ./cmd/newsreader -o feed.png -sub reddit:golang {{.CLI_ARGS}}
+
+  json:
+    desc: Print the merged feed as JSON
+    cmds:
+      - go run ./cmd/newsreader -json -sub reddit:golang {{.CLI_ARGS}}
+
+  build:
+    desc: Build the newsreader binary into ./bin
+    cmds:
+      - go build -o bin/newsreader ./cmd/newsreader
+
+  test:
+    desc: Run tests (100% gate on every package except the native-window boundary)
+    cmds:
+      - go test ./internal/window/...
+      - go test -covermode=set -coverprofile=cover.out $(go list ./... | grep -v /internal/window)
+      - go tool cover -func=cover.out | awk '/^total:/{print "coverage:",$3}'
