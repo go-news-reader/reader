@@ -56,7 +56,7 @@ var (
 	selLengthOfBytes             = objc.RegisterName("lengthOfBytesUsingEncoding:")
 	selGetCString                = objc.RegisterName("getCString:maxLength:encoding:")
 	selInitBitmapRep             = objc.RegisterName("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:hasAlpha:isPlanar:colorSpaceName:bytesPerRow:bitsPerPixel:")
-	selDrawInRect                = objc.RegisterName("drawInRect:")
+	selDrawInRectFull            = objc.RegisterName("drawInRect:fromRect:operation:fraction:respectFlipped:hints:")
 	selScheduledTimer            = objc.RegisterName("scheduledTimerWithTimeInterval:target:selector:userInfo:repeats:")
 )
 
@@ -194,8 +194,14 @@ func viewDrawRect(self objc.ID, _ objc.SEL) {
 		return
 	}
 	bounds := objc.Send[nsRect](self, selBounds)
-	rep.Send(selDrawInRect, bounds)
-	// buf must stay alive until drawInRect: has read it.
+	// drawInRect: alone ignores the view flip, so a top-row-first buffer would
+	// draw bottom-up in our isFlipped view. The full form with respectFlipped:YES
+	// honours the flip → the buffer's row 0 lands at the top of the window.
+	// fromRect zero = whole image; operation 1 = NSCompositingOperationCopy;
+	// fraction 1.0 (opaque); hints nil.
+	const nsCompositingCopy = 1
+	rep.Send(selDrawInRectFull, bounds, nsRect{}, uint(nsCompositingCopy), 1.0, true, objc.ID(0))
+	// buf must stay alive until the draw has read it.
 	runtime.KeepAlive(buf)
 }
 
