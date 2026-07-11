@@ -1,4 +1,4 @@
-//go:build !darwin
+//go:build !darwin && !windows && !linux
 
 package window
 
@@ -11,10 +11,10 @@ import (
 type stubHandler struct{}
 
 func (stubHandler) Frame() ([]byte, int, int, bool) { return nil, 0, 0, false }
-func (stubHandler) Resize(int, int, float64)         {}
-func (stubHandler) MouseDown(int, int)               {}
-func (stubHandler) Scroll(int)                        {}
-func (stubHandler) Key(string, rune)                  {}
+func (stubHandler) Resize(int, int, float64)        {}
+func (stubHandler) MouseDown(int, int)              {}
+func (stubHandler) Scroll(int)                      {}
+func (stubHandler) Key(string, rune)                {}
 
 func TestRunUnsupported(t *testing.T) {
 	err := Run(Config{Title: "x", Width: 100, Height: 80}, stubHandler{})
