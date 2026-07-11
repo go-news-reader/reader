@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/go-news-reader/reader/app"
+	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
 
@@ -62,8 +63,8 @@ func (h *Handler) Resize(w, height int, scale float64) {
 	s.Resize(w, height)
 }
 
-// MouseDown routes a click: open an item's permalink, select a sidebar filter,
-// focus the search field, or blur it.
+// MouseDown routes a click across the feed, detail and settings views: open an
+// item, follow a link, switch a filter or profile, or drive the settings editor.
 func (h *Handler) MouseDown(x, y int) {
 	s := h.a.Scene()
 	switch hit := s.HitTest(x, y); hit.Kind {
@@ -83,6 +84,40 @@ func (h *Handler) MouseDown(x, y int) {
 		s.FocusSearch(false)
 	case ui.HitSearch:
 		s.FocusSearch(true)
+	case ui.HitProfile:
+		s.SetActiveProfile(hit.Profile)
+		h.a.ApplySceneSettings() // persist + re-aggregate the new profile
+	case ui.HitSettings:
+		s.OpenSettings()
+	case ui.HitCloseSettings:
+		s.CommitRename()
+		s.CommitCache()
+		s.CloseSettings()
+		h.a.ApplySceneSettings()
+	case ui.HitSelectProfile:
+		s.SelectEditProfile(hit.Profile)
+	case ui.HitNewProfile:
+		s.NewProfile()
+	case ui.HitDeleteProfile:
+		s.DeleteProfile(hit.Profile)
+		h.a.ApplySceneSettings()
+	case ui.HitRenameProfile:
+		s.FocusRename()
+	case ui.HitSelectKind:
+		s.SelectKind(source.Kind(hit.Value))
+	case ui.HitAddSub:
+		s.AddInputSub()
+		h.a.ApplySceneSettings()
+	case ui.HitRemoveSub:
+		s.RemoveSub(hit.Profile, hit.Sub)
+		h.a.ApplySceneSettings()
+	case ui.HitFocusChannel:
+		s.FocusChannel()
+	case ui.HitFocusCache:
+		s.FocusCache()
+	case ui.HitTheme:
+		s.SetThemeName(hit.Value)
+		h.a.ApplySceneSettings()
 	default:
 		s.FocusSearch(false)
 	}
@@ -91,23 +126,51 @@ func (h *Handler) MouseDown(x, y int) {
 // Scroll scrolls the feed by a device-pixel wheel delta.
 func (h *Handler) Scroll(dy int) { h.a.Scene().Scroll(dy) }
 
-// Key handles editing keys and printable runes when the search field is focused.
+// Key handles editing keys and printable runes for whichever view/field is
+// focused (topbar search in the feed, or the settings text fields).
 func (h *Handler) Key(name string, r rune) {
 	s := h.a.Scene()
 	switch name {
 	case "Backspace":
 		s.Backspace()
 	case "Escape":
-		if s.Mode() == ui.ModeDetail {
+		switch s.Mode() {
+		case ui.ModeDetail:
 			s.CloseDetail() // Esc returns from the reading view to the feed
-		} else {
+		case ui.ModeSettings:
+			s.CommitRename()
+			s.CommitCache()
+			s.CloseSettings()
+			h.a.ApplySceneSettings()
+		default:
 			s.FocusSearch(false)
 		}
 	case "Enter":
+		if s.Mode() == ui.ModeSettings {
+			h.commitSettingsField()
+			return
+		}
 		s.FocusSearch(false)
 	default:
 		if r != 0 {
 			s.TypeRune(r)
 		}
+	}
+}
+
+// commitSettingsField applies the settings text field that currently has focus
+// (Enter), persisting the change and re-aggregating when it affects the feed.
+func (h *Handler) commitSettingsField() {
+	s := h.a.Scene()
+	switch s.Focus() {
+	case ui.FocusChannel:
+		s.AddInputSub()
+		h.a.ApplySceneSettings()
+	case ui.FocusRename:
+		s.CommitRename()
+		h.a.ApplySceneSettings()
+	case ui.FocusCache:
+		s.CommitCache()
+		h.a.ApplySceneSettings()
 	}
 }

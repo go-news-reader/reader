@@ -1,7 +1,7 @@
-// Package app wires the aggregator together: it aggregates a set of
+// Package app wires the aggregator together: it aggregates the active profile's
 // subscriptions across the provider registry and renders the unified feed into
 // the go-widgets UI scene. It is windowing-agnostic — the same App is driven by
-// the CLI (render to PNG / serve) and, later, by a native or webview front-end.
+// the CLI (render to PNG / serve) and by the native window front-end.
 package app
 
 import (
@@ -10,16 +10,27 @@ import (
 	"image"
 	"image/png"
 
+	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
 
-// App holds the runtime state: the provider registry, the user's subscriptions,
-// and the UI scene they render into.
+// App holds the runtime state: the provider registry, the user's persisted
+// settings (profiles/theme/cache), the active profile's subscriptions, and the
+// UI scene they render into.
 type App struct {
 	reg   *source.Registry
-	subs  []source.Subscription
+	store *settings.Store // optional; nil disables persistence (CLI PNG/JSON/serve)
+	set   *settings.Settings
+	subs  []source.Subscription // == the active profile's subscriptions
 	scene *ui.Scene
+
+	osName string
+	dark   bool
+
+	// refresh triggers an asynchronous re-aggregate after a settings change.
+	// A field so front-ends/tests can substitute a synchronous variant.
+	refresh func()
 
 	// Double-buffered present state (see Frame): two framebuffers plus the
 	// last-presented damage sequence, so a window/canvas front-end only redraws
@@ -31,14 +42,20 @@ type App struct {
 
 // Config configures a new App.
 type Config struct {
-	Registry      *source.Registry
+	Registry *source.Registry
+	// Settings supplies the profiles/theme/cache. When nil, a single "Home"
+	// profile is synthesized from Subscriptions (the CLI PNG/JSON/serve paths).
+	Settings *settings.Settings
+	// Store persists settings edits/profile switches. Optional (nil = no disk).
+	Store *settings.Store
+	// Subscriptions seeds the synthesized profile when Settings is nil.
 	Subscriptions []source.Subscription
 	Width, Height int
 	OS            string // ui.OSMac | ui.OSLinux | ui.OSWindows
 	Dark          bool
 }
 
-// New builds an App with an empty scene themed for the given OS.
+// New builds an App with a scene themed and populated from the settings.
 func New(cfg Config) *App {
 	w, h := cfg.Width, cfg.Height
 	if w == 0 {
@@ -47,17 +64,51 @@ func New(cfg Config) *App {
 	if h == 0 {
 		h = 700
 	}
-	scene := ui.New(w, h, ui.ThemeFor(cfg.OS, cfg.Dark))
-	scene.SetSubs(toUISubs(cfg.Subscriptions))
-	return &App{reg: cfg.Registry, subs: cfg.Subscriptions, scene: scene, lastRev: -1}
+	set := cfg.Settings
+	if set == nil {
+		set = &settings.Settings{
+			Profiles: []settings.Profile{{Name: "Home", Subs: cfg.Subscriptions}},
+			Active:   0,
+			Theme:    settings.ThemeSystem,
+		}
+	}
+	set.Normalize()
+
+	scene := ui.New(w, h, ui.ResolveTheme(set.Theme, cfg.OS, cfg.Dark))
+	scene.SetThemeName(set.Theme)
+	scene.SetCachePath(set.CachePath)
+	scene.SetProfiles(set.Profiles, set.Active)
+
+	a := &App{
+		reg: cfg.Registry, store: cfg.Store, set: set,
+		subs: set.ActiveProfile().Subs, scene: scene,
+		osName: cfg.OS, dark: cfg.Dark, lastRev: -1,
+	}
+	a.refresh = func() { go a.Refresh(context.Background()) }
+	return a
+}
+
+// SetRefreshHook overrides the asynchronous re-aggregate trigger (tests use a
+// synchronous variant for determinism).
+func (a *App) SetRefreshHook(f func()) { a.refresh = f }
+
+// ApplySceneSettings snapshots the scene's edited settings, persists them (when
+// a store is configured), reselects the active profile's subscriptions and
+// theme, and triggers a re-aggregate. Front-ends call it after any profile
+// switch or settings-view edit.
+func (a *App) ApplySceneSettings() {
+	set := a.scene.Settings()
+	a.set = set
+	if a.store != nil {
+		_ = a.store.Save(set)
+	}
+	a.subs = set.ActiveProfile().Subs
+	a.scene.SetTheme(ui.ResolveTheme(set.Theme, a.osName, a.dark))
+	a.refresh()
 }
 
 // Frame returns the current framebuffer, redrawing into the back buffer only
-// when the scene's damage sequence has advanced since the last call (the
-// Wayland commit-seq / Evas dirty model). changed reports whether a new frame
-// was produced; a window/canvas front-end uploads the buffer only when changed.
-// The buffer is s.W*s.H*4 RGBA bytes and is reused across frames (double
-// buffered), so callers must not retain it past the next Frame.
+// when the scene's damage sequence has advanced since the last call.
 func (a *App) Frame() (buf []byte, changed bool) {
 	s := a.scene
 	size := s.W * s.H * 4
@@ -79,9 +130,8 @@ func (a *App) Frame() (buf []byte, changed bool) {
 // Scene exposes the scene so front-ends can dispatch input to it.
 func (a *App) Scene() *ui.Scene { return a.scene }
 
-// Refresh aggregates every subscription (concurrently, newest-first) and loads
-// the merged items into the scene. Per-subscription failures are returned but
-// do not prevent the surviving items from being shown.
+// Refresh aggregates the active profile's subscriptions (concurrently,
+// newest-first) and loads the merged items into the scene.
 func (a *App) Refresh(ctx context.Context) []error {
 	items, errs := a.reg.Aggregate(ctx, a.subs)
 	a.scene.SetItems(items)
@@ -115,14 +165,6 @@ var encodePNG = png.Encode
 
 // SetTheme reselects the palette (e.g. on a system light/dark change).
 func (a *App) SetTheme(osName string, dark bool) {
-	a.scene.SetTheme(ui.ThemeFor(osName, dark))
-}
-
-// toUISubs maps source subscriptions to sidebar entries.
-func toUISubs(subs []source.Subscription) []ui.Subscription {
-	out := make([]ui.Subscription, 0, len(subs))
-	for _, s := range subs {
-		out = append(out, ui.Subscription{Source: s.Source, Channel: s.Channel})
-	}
-	return out
+	a.osName, a.dark = osName, dark
+	a.scene.SetTheme(ui.ResolveTheme(a.scene.ThemeName(), osName, dark))
 }

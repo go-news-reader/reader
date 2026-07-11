@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/go-news-reader/reader/app"
+	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
 )
@@ -170,29 +172,88 @@ func TestFeedHandler(t *testing.T) {
 	}
 }
 
+// stubStore points settingsStore at a fresh tempdir file so the window path
+// never touches the real home directory.
+func stubStore(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "settings.json")
+	orig := settingsStore
+	settingsStore = func() (*settings.Store, error) { return settings.NewStore(p), nil }
+	t.Cleanup(func() { settingsStore = orig })
+	return p
+}
+
 func TestRunWindow(t *testing.T) {
 	stubApp(t, fakeProv{})
+	path := stubStore(t)
 	orig := openWindow
 	var gotTitle string
+	var gotHandler window.Handler
 	openWindow = func(c window.Config, h window.Handler) error {
-		gotTitle = c.Title
-		if h == nil {
-			t.Fatal("nil handler")
-		}
+		gotTitle, gotHandler = c.Title, h
 		return nil
 	}
 	t.Cleanup(func() { openWindow = orig })
 	var out, errb bytes.Buffer
+	// First run (no file): -sub seeds the default profile's subs, then persists.
 	if code := run([]string{"-window", "-sub", "reddit:golang"}, &out, &errb); code != 0 {
 		t.Fatalf("code=%d err=%s", code, errb.String())
 	}
-	if gotTitle != "News Reader" {
-		t.Fatalf("title = %q", gotTitle)
+	if gotTitle != "News Reader" || gotHandler == nil {
+		t.Fatalf("title=%q handler=%v", gotTitle, gotHandler)
+	}
+	// A second run loads the persisted settings (not first-run seeding).
+	if _, err := os.Stat(path); err == nil {
+		if code := run([]string{"-window"}, &out, &errb); code != 0 {
+			t.Fatalf("second run code=%d", code)
+		}
+	}
+}
+
+func TestRunWindowStoreError(t *testing.T) {
+	stubApp(t, fakeProv{})
+	orig := settingsStore
+	settingsStore = func() (*settings.Store, error) { return nil, errors.New("no config dir") }
+	t.Cleanup(func() { settingsStore = orig })
+	var out, errb bytes.Buffer
+	if code := run([]string{"-window"}, &out, &errb); code != 1 {
+		t.Fatalf("code=%d", code)
+	}
+}
+
+func TestRunWindowLoadError(t *testing.T) {
+	stubApp(t, fakeProv{})
+	// Point the store at a directory so Load errors (present but unreadable).
+	dir := t.TempDir()
+	orig := settingsStore
+	settingsStore = func() (*settings.Store, error) { return settings.NewStore(dir), nil }
+	t.Cleanup(func() { settingsStore = orig })
+	var out, errb bytes.Buffer
+	if code := run([]string{"-window"}, &out, &errb); code != 1 {
+		t.Fatalf("code=%d", code)
+	}
+}
+
+func TestDefaultSettingsStore(t *testing.T) {
+	st, err := defaultSettingsStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st == nil || st.Path == "" {
+		t.Fatalf("store = %+v", st)
+	}
+	// Error branch: clear the vars os.UserConfigDir consults.
+	for _, k := range []string{"HOME", "XDG_CONFIG_HOME", "AppData"} {
+		t.Setenv(k, "")
+	}
+	if _, err := defaultSettingsStore(); err == nil {
+		t.Skip("UserConfigDir still resolved on this platform")
 	}
 }
 
 func TestRunWindowUnsupported(t *testing.T) {
 	stubApp(t, fakeProv{})
+	stubStore(t)
 	orig := openWindow
 	openWindow = func(window.Config, window.Handler) error { return errors.New("unsupported") }
 	t.Cleanup(func() { openWindow = orig })
