@@ -18,7 +18,8 @@ go install github.com/go-news-reader/reader/cmd/newsreader@latest
 
 newsreader -sub reddit:golang -sub hackernews: -o feed.png   # render the feed
 newsreader -sub reddit:golang -json                          # dump merged feed
-newsreader -sub reddit:golang -serve :8080                   # live view in a browser
+newsreader -sub reddit:golang -window                       # native window (macOS/Windows/Linux)
+newsreader -sub reddit:golang -serve :8080                   # read-only PNG view over HTTP
 ```
 
 Subscriptions are `kind:channel` (repeatable): `reddit:golang`,
