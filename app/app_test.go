@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"image"
+	"image/color"
 	"image/png"
 	"io"
 	"path/filepath"
@@ -14,6 +15,16 @@ import (
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
+
+// hasRGB reports whether an RGBA buffer contains any pixel of the given colour.
+func hasRGB(buf []byte, r, g, b uint8) bool {
+	for i := 0; i+3 < len(buf); i += 4 {
+		if buf[i] == r && buf[i+1] == g && buf[i+2] == b {
+			return true
+		}
+	}
+	return false
+}
 
 type fakeProv struct {
 	kind  source.Kind
@@ -210,6 +221,26 @@ func TestApplySceneSettingsPersistsAndRebuilds(t *testing.T) {
 	}
 	if len(a.Items()) != 1 {
 		t.Fatalf("re-aggregate did not load items: %d", len(a.Items()))
+	}
+}
+
+func TestSetSystemAppearance(t *testing.T) {
+	a := New(Config{Registry: newReg(), OS: ui.OSMac, Width: 400, Height: 300})
+	accent := color.RGBA{R: 17, G: 99, B: 213, A: 0xFF}
+	// A non-empty (here deliberately unparseable) font exercises the font branch;
+	// the accent + dark mode must reach the rendered topbar.
+	a.SetSystemAppearance(true, accent, true, []byte("not-a-real-font"))
+	s := a.Scene()
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	if !hasRGB(buf, accent.R, accent.G, accent.B) {
+		t.Fatal("harvested accent not present in the rendered feed")
+	}
+	// A colour-only push with hasAccent=false and no font clears the override.
+	a.SetSystemAppearance(false, color.RGBA{}, false, nil)
+	s.Draw(buf)
+	if hasRGB(buf, accent.R, accent.G, accent.B) {
+		t.Fatal("accent should be dropped when hasAccent is false")
 	}
 }
 

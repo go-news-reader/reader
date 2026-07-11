@@ -1,10 +1,12 @@
 package windowapp
 
 import (
+	"image/color"
 	"testing"
 
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/internal/settings"
+	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
@@ -54,6 +56,22 @@ func newApp(t *testing.T) *app.App {
 	a := app.New(app.Config{Registry: source.NewRegistry(), Width: 1000, Height: 700})
 	a.Scene().SetScale(1)
 	return a
+}
+
+func TestSystemAppearance(t *testing.T) {
+	a := newApp(t)
+	h := New(a)
+	accent := color.RGBA{R: 17, G: 99, B: 213, A: 0xFF}
+	h.SystemAppearance(window.SystemAppearance{Dark: true, Accent: accent, HasAccent: true})
+	s := a.Scene()
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	for i := 0; i+3 < len(buf); i += 4 {
+		if buf[i] == accent.R && buf[i+1] == accent.G && buf[i+2] == accent.B {
+			return // accent forwarded to the app and rendered
+		}
+	}
+	t.Fatal("SystemAppearance did not forward the harvested accent to the app")
 }
 
 func TestFrame(t *testing.T) {

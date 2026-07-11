@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/go-news-reader/reader/app"
+	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
@@ -125,6 +126,16 @@ func (h *Handler) MouseDown(x, y int) {
 
 // Scroll scrolls the feed by a device-pixel wheel delta.
 func (h *Handler) Scroll(dy int) { h.a.Scene().Scroll(dy) }
+
+// SystemAppearance applies host look-and-feel harvested by the native back-end
+// (dark/light, accent, system font) to the app. This satisfies the optional
+// window.AppearanceSink capability; the compile-time assertion below keeps the
+// signature in step with the contract.
+func (h *Handler) SystemAppearance(a window.SystemAppearance) {
+	h.a.SetSystemAppearance(a.Dark, a.Accent, a.HasAccent, a.FontTTF)
+}
+
+var _ window.AppearanceSink = (*Handler)(nil)
 
 // Key handles editing keys and printable runes for whichever view/field is
 // focused (topbar search in the feed, or the settings text fields).
