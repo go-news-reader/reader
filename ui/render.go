@@ -107,7 +107,7 @@ func (s *Scene) Draw(buf []byte) {
 		if y+m.rowH < feedTop || y >= s.H {
 			continue
 		}
-		s.drawCard(p, img, r.item, feedX, y, feedW, onAccent, muteS)
+		blitAt(img, s.cardSprite(r.item, feedW, onAccent, muteS), feedX, y)
 	}
 	if len(s.rows) == 0 {
 		msg := "No items."
@@ -205,6 +205,70 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 		s.drawThumb(p, img, it, r, muteS)
 	}
 	_ = onAccent
+}
+
+// cardKey identifies a cached card sprite. A card only re-renders when its
+// content, width, scale, theme or thumbnail changes.
+type cardKey struct {
+	id    string
+	w     int
+	scale float64
+	theme *toolkit.Theme
+	thumb *image.RGBA
+}
+
+// cardSprite returns a cached bitmap of the card for it at width w, rendering it
+// once on a cache miss. Scrolling then reuses the sprite via a memcpy blit
+// instead of re-rasterising every glyph each frame.
+func (s *Scene) cardSprite(it source.Item, w int, onAccent, muteS toolkit.RGBA) *image.RGBA {
+	var thumb *image.RGBA
+	if s.Thumbs != nil {
+		thumb = s.Thumbs[it.ID]
+	}
+	k := cardKey{id: it.ID, w: w, scale: s.Scale, theme: s.theme, thumb: thumb}
+	if s.cardCache == nil {
+		s.cardCache = map[cardKey]*image.RGBA{}
+	}
+	if sp, ok := s.cardCache[k]; ok {
+		return sp
+	}
+	h := s.m.rowH
+	buf := make([]byte, w*h*4)
+	p := painter.NewPixelPainter(buf, w, h)
+	img := &image.RGBA{Pix: buf, Stride: w * 4, Rect: image.Rect(0, 0, w, h)}
+	// Fill with the feed background so the card's rounded corners composite
+	// correctly when the opaque sprite is blitted onto the scene.
+	p.FillRect(painter.Rect{X: 0, Y: 0, W: w, H: h}, s.theme.Background)
+	s.drawCard(p, img, it, 0, 0, w, onAccent, muteS)
+	s.cardCache[k] = img
+	return img
+}
+
+// blitAt copies src into dst at (x, y) with a per-row memcpy, clamped to dst's
+// bounds. Used for the fast scroll path.
+func blitAt(dst, src *image.RGBA, x, y int) {
+	sb := src.Bounds()
+	for sy := 0; sy < sb.Dy(); sy++ {
+		dy := y + sy
+		if dy < dst.Rect.Min.Y || dy >= dst.Rect.Max.Y {
+			continue
+		}
+		dx0, sx0 := x, 0
+		if dx0 < dst.Rect.Min.X {
+			sx0 = dst.Rect.Min.X - dx0
+			dx0 = dst.Rect.Min.X
+		}
+		wpix := sb.Dx() - sx0
+		if dx0+wpix > dst.Rect.Max.X {
+			wpix = dst.Rect.Max.X - dx0
+		}
+		if wpix <= 0 {
+			continue
+		}
+		di := dst.PixOffset(dx0, dy)
+		si := src.PixOffset(sb.Min.X+sx0, sb.Min.Y+sy)
+		copy(dst.Pix[di:di+wpix*4], src.Pix[si:si+wpix*4])
+	}
 }
 
 func (s *Scene) drawThumb(p *painter.PixelPainter, img *image.RGBA, it source.Item, r toolkit.Rect, muteS toolkit.RGBA) {

@@ -88,7 +88,15 @@ type Scene struct {
 	searchR toolkit.Rect
 	rows    []rowLayout
 	contentH int
+
+	// cardCache holds rendered card sprites so scrolling is a memcpy-blit
+	// rather than a re-rasterisation of every glyph. Invalidated whenever the
+	// content, width, scale or theme changes.
+	cardCache map[cardKey]*image.RGBA
 }
+
+// invalidateCards drops the sprite cache after an appearance/content change.
+func (s *Scene) invalidateCards() { s.cardCache = nil }
 
 // New returns a Scene of the given size with the given theme (system default if nil).
 func New(w, h int, theme *toolkit.Theme) *Scene {
@@ -104,17 +112,28 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 func (s *Scene) SetTheme(t *toolkit.Theme) {
 	if t != nil {
 		s.theme = t
+		s.invalidateCards()
 	}
 }
 
 // SetItems replaces the feed (caller merges/sorts newest-first).
-func (s *Scene) SetItems(items []source.Item) { s.Items = items; s.ScrollY = 0 }
+func (s *Scene) SetItems(items []source.Item) { s.Items = items; s.ScrollY = 0; s.invalidateCards() }
 
 // SetSubs replaces the sidebar subscriptions.
 func (s *Scene) SetSubs(subs []Subscription) { s.Subs = subs }
 
+// SetThumb attaches a decoded thumbnail for an item and invalidates its sprite
+// so the next Draw picks it up.
+func (s *Scene) SetThumb(id string, img *image.RGBA) {
+	if s.Thumbs == nil {
+		s.Thumbs = map[string]*image.RGBA{}
+	}
+	s.Thumbs[id] = img
+	s.invalidateCards()
+}
+
 // Resize updates the surface size, clamped to the minimum.
-func (s *Scene) Resize(w, h int) { s.W, s.H = w, h; s.clampSize() }
+func (s *Scene) Resize(w, h int) { s.W, s.H = w, h; s.clampSize(); s.invalidateCards() }
 
 // SetScale sets the display scale, clamped to [MinZoom, MaxZoom].
 func (s *Scene) SetScale(f float64) {
@@ -123,6 +142,9 @@ func (s *Scene) SetScale(f float64) {
 	}
 	if f > MaxZoom {
 		f = MaxZoom
+	}
+	if f != s.Scale {
+		s.invalidateCards()
 	}
 	s.Scale = f
 }

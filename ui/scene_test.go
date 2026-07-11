@@ -294,6 +294,93 @@ func TestHitTest(t *testing.T) {
 	}
 }
 
+func TestSetThumb(t *testing.T) {
+	s := newScene()
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf) // warm the cache
+	th := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	s.SetThumb("1", th) // invalidates + attaches
+	if s.Thumbs["1"] != th {
+		t.Fatal("thumb not stored")
+	}
+	if s.cardCache != nil {
+		t.Fatal("cache not invalidated by SetThumb")
+	}
+	// SetThumb on a fresh scene allocates the map.
+	s2 := New(400, 300, nil)
+	s2.SetThumb("x", th)
+	if s2.Thumbs["x"] != th {
+		t.Fatal("thumb map not allocated")
+	}
+}
+
+func TestCardCacheReuse(t *testing.T) {
+	s := newScene()
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	n := len(s.cardCache)
+	s.Scroll(3)
+	s.Draw(buf) // same items -> cache hit, no new sprites
+	if len(s.cardCache) != n {
+		t.Fatalf("cache grew on scroll: %d -> %d", n, len(s.cardCache))
+	}
+}
+
+func TestBlitAt(t *testing.T) {
+	dst := image.NewRGBA(image.Rect(0, 0, 20, 20))
+	src := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	for i := range src.Pix {
+		src.Pix[i] = 0xFF
+	}
+	blitAt(dst, src, 5, 5) // fully inside
+	if dst.RGBAAt(5, 5).R != 0xFF {
+		t.Fatal("inside blit")
+	}
+	// Top/bottom clip and left/right clip: place partly off each edge.
+	blitAt(dst, src, -3, -3) // top-left off-screen
+	if dst.RGBAAt(0, 0).R != 0xFF {
+		t.Fatal("top-left clip visible portion")
+	}
+	blitAt(dst, src, 16, 16) // bottom-right off-screen (right + bottom clip)
+	if dst.RGBAAt(18, 18).R != 0xFF {
+		t.Fatal("bottom-right clip visible portion")
+	}
+	blitAt(dst, src, 100, 100) // wholly off-screen -> no-op, no panic
+	blitAt(dst, src, 20, 5)    // x at right edge: in-bounds row but wpix<=0
+}
+
+func BenchmarkScrollCached(b *testing.B) {
+	s := New(1000, 700, ThemeFor(OSMac, false))
+	items := make([]source.Item, 60)
+	for i := range items {
+		items[i] = source.Item{ID: string(rune('a' + i%26)), Source: source.Reddit, Channel: "golang", Title: "A reasonably long headline number", Author: "user", Score: i, Comments: i}
+	}
+	s.SetItems(items)
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf) // warm cache
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.ScrollY = i % 400
+		s.Draw(buf)
+	}
+}
+
+func BenchmarkScrollUncached(b *testing.B) {
+	s := New(1000, 700, ThemeFor(OSMac, false))
+	items := make([]source.Item, 60)
+	for i := range items {
+		items[i] = source.Item{ID: string(rune('a' + i%26)), Source: source.Reddit, Channel: "golang", Title: "A reasonably long headline number", Author: "user", Score: i, Comments: i}
+	}
+	s.SetItems(items)
+	buf := make([]byte, s.W*s.H*4)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.invalidateCards() // force full re-rasterisation every frame
+		s.ScrollY = i % 400
+		s.Draw(buf)
+	}
+}
+
 func TestMetaLine(t *testing.T) {
 	if metaLine(source.Item{Author: "a", Score: 5, Comments: 2}) != "a · 5 pts · 2 comments" {
 		t.Fatal("full")
