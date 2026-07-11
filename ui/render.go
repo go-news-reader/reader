@@ -115,32 +115,9 @@ func (s *Scene) Draw(buf []byte) {
 		m.title.draw(img, cx, s.H/2, msg, muteS)
 	}
 
-	// --- sidebar ---
-	p.FillRect(painter.Rect{X: 0, Y: m.topbarH, W: m.sidebarW, H: s.H - m.topbarH}, th.SurfaceAlt)
-	for _, e := range s.subs {
-		label := "All Sources"
-		if e.index >= 0 {
-			label = s.Subs[e.index].name()
-		}
-		col := th.OnSurface
-		if e.index == s.Active {
-			p.FillRect(painter.Rect{X: e.rect.X, Y: e.rect.Y, W: e.rect.W, H: e.rect.H}, th.Surface)
-			p.FillRect(painter.Rect{X: 0, Y: e.rect.Y, W: rpxOf(s, 3), H: e.rect.H}, th.Accent)
-			col = th.Accent
-		}
-		ty := e.rect.Y + (m.sideItemH-m.side.height)/2
-		if e.index >= 0 {
-			s.drawDot(p, m.pad, e.rect.Y+m.sideItemH/2, sourceColor(s.Subs[e.index].Source))
-			m.side.draw(img, m.pad+rpxOf(s, 14), ty, label, col)
-		} else {
-			m.side.draw(img, m.pad, ty, label, col)
-		}
-	}
-
-	// --- topbar ---
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
-	m.title.draw(img, m.pad, (m.topbarH-m.title.height)/2, "News", onAccent)
-	s.drawSearch(p, img, onAccent)
+	// --- chrome (cached sprites; static across scroll like Evas smart objects) ---
+	blitAt(img, s.sidebarSprite(), 0, m.topbarH)
+	blitAt(img, s.topbarSprite(onAccent), 0, 0)
 
 	// --- status footer text (optional) ---
 	if s.Status != "" {
@@ -148,9 +125,74 @@ func (s *Scene) Draw(buf []byte) {
 	}
 }
 
-func (s *Scene) drawSearch(p *painter.PixelPainter, img *image.RGBA, onAccent toolkit.RGBA) {
+// sidebarKey / topbarKey identify the single-slot chrome sprite caches. The
+// chrome only re-rasterises when one of its inputs changes — never on scroll.
+type sidebarKey struct {
+	h, sub  int
+	scale   float64
+	theme   *toolkit.Theme
+	active  int
+	subsRev int
+}
+type topbarKey struct {
+	w       int
+	scale   float64
+	theme   *toolkit.Theme
+	search  string
+	focused bool
+}
+
+// sidebarSprite renders (or reuses) the sidebar column at local origin.
+func (s *Scene) sidebarSprite() *image.RGBA {
 	m := s.m
 	th := s.theme
+	h := s.H - m.topbarH
+	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, subsRev: s.subsRev}
+	if s.sidebarSpr != nil && s.sidebarKey == k {
+		return s.sidebarSpr
+	}
+	buf := make([]byte, m.sidebarW*h*4)
+	p := painter.NewPixelPainter(buf, m.sidebarW, h)
+	img := &image.RGBA{Pix: buf, Stride: m.sidebarW * 4, Rect: image.Rect(0, 0, m.sidebarW, h)}
+	p.FillRect(painter.Rect{X: 0, Y: 0, W: m.sidebarW, H: h}, th.SurfaceAlt)
+	for _, e := range s.subs {
+		ly := e.rect.Y - m.topbarH // sidebar-local Y
+		label := "All Sources"
+		if e.index >= 0 {
+			label = s.Subs[e.index].name()
+		}
+		col := th.OnSurface
+		if e.index == s.Active {
+			p.FillRect(painter.Rect{X: 0, Y: ly, W: m.sidebarW, H: m.sideItemH}, th.Surface)
+			p.FillRect(painter.Rect{X: 0, Y: ly, W: rpxOf(s, 3), H: m.sideItemH}, th.Accent)
+			col = th.Accent
+		}
+		ty := ly + (m.sideItemH-m.side.height)/2
+		if e.index >= 0 {
+			s.drawDot(p, m.pad, ly+m.sideItemH/2, sourceColor(s.Subs[e.index].Source))
+			m.side.draw(img, m.pad+rpxOf(s, 14), ty, label, col)
+		} else {
+			m.side.draw(img, m.pad, ty, label, col)
+		}
+	}
+	s.sidebarKey, s.sidebarSpr = k, img
+	return img
+}
+
+// topbarSprite renders (or reuses) the topbar (accent fill + title + search).
+func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
+	m := s.m
+	th := s.theme
+	k := topbarKey{w: s.W, scale: s.Scale, theme: th, search: s.search, focused: s.searchFocused}
+	if s.topbarSpr != nil && s.topbarKey == k {
+		return s.topbarSpr
+	}
+	buf := make([]byte, s.W*m.topbarH*4)
+	p := painter.NewPixelPainter(buf, s.W, m.topbarH)
+	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, m.topbarH)}
+	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
+	m.title.draw(img, m.pad, (m.topbarH-m.title.height)/2, "News", onAccent)
+	// Search box (topbar is full-width at y=0, so local == absolute coords).
 	p.FillRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Surface)
 	if s.searchFocused {
 		p.StrokeRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Accent, rpxOf(s, 2))
@@ -166,7 +208,8 @@ func (s *Scene) drawSearch(p *painter.PixelPainter, img *image.RGBA, onAccent to
 		}
 		m.search.draw(img, tx, ty, s.search+caret, th.OnSurface)
 	}
-	_ = onAccent
+	s.topbarKey, s.topbarSpr = k, img
+	return img
 }
 
 func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Item, x, y, w int, onAccent, muteS toolkit.RGBA) {

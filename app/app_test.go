@@ -112,6 +112,37 @@ func TestRenderPNGEncodeError(t *testing.T) {
 	}
 }
 
+func TestFrameDoubleBuffer(t *testing.T) {
+	a := New(Config{Registry: newReg(), Width: 360, Height: 240})
+	b1, changed := a.Frame()
+	if !changed || len(b1) != 360*240*4 {
+		t.Fatalf("first frame changed=%v len=%d", changed, len(b1))
+	}
+	// No state change -> no redraw, same buffer returned.
+	b2, changed := a.Frame()
+	if changed {
+		t.Fatal("unchanged scene produced a new frame")
+	}
+	if &b2[0] != &b1[0] {
+		t.Fatal("front buffer changed without damage")
+	}
+	// Mutate -> redraw into the back buffer (the other one).
+	a.Scene().Scroll(1)
+	b3, changed := a.Frame()
+	if !changed {
+		t.Fatal("damage did not produce a frame")
+	}
+	if &b3[0] == &b1[0] {
+		t.Fatal("expected double-buffer swap")
+	}
+	// Resize -> reallocate and force redraw.
+	a.Scene().Resize(400, 300)
+	b4, changed := a.Frame()
+	if !changed || len(b4) != 400*300*4 {
+		t.Fatalf("resize frame changed=%v len=%d", changed, len(b4))
+	}
+}
+
 func TestSetTheme(t *testing.T) {
 	a := New(Config{Registry: newReg(), OS: ui.OSLinux})
 	light := a.Scene()

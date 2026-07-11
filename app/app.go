@@ -20,6 +20,13 @@ type App struct {
 	reg   *source.Registry
 	subs  []source.Subscription
 	scene *ui.Scene
+
+	// Double-buffered present state (see Frame): two framebuffers plus the
+	// last-presented damage sequence, so a window/canvas front-end only redraws
+	// and uploads when the scene actually changed.
+	bufs    [2][]byte
+	cur     int
+	lastRev int
 }
 
 // Config configures a new App.
@@ -42,7 +49,31 @@ func New(cfg Config) *App {
 	}
 	scene := ui.New(w, h, ui.ThemeFor(cfg.OS, cfg.Dark))
 	scene.SetSubs(toUISubs(cfg.Subscriptions))
-	return &App{reg: cfg.Registry, subs: cfg.Subscriptions, scene: scene}
+	return &App{reg: cfg.Registry, subs: cfg.Subscriptions, scene: scene, lastRev: -1}
+}
+
+// Frame returns the current framebuffer, redrawing into the back buffer only
+// when the scene's damage sequence has advanced since the last call (the
+// Wayland commit-seq / Evas dirty model). changed reports whether a new frame
+// was produced; a window/canvas front-end uploads the buffer only when changed.
+// The buffer is s.W*s.H*4 RGBA bytes and is reused across frames (double
+// buffered), so callers must not retain it past the next Frame.
+func (a *App) Frame() (buf []byte, changed bool) {
+	s := a.scene
+	size := s.W * s.H * 4
+	if len(a.bufs[0]) != size {
+		a.bufs[0] = make([]byte, size)
+		a.bufs[1] = make([]byte, size)
+		a.lastRev = -1 // force a redraw after a resize
+	}
+	if s.Rev() == a.lastRev {
+		return a.bufs[a.cur], false
+	}
+	back := 1 - a.cur
+	s.Draw(a.bufs[back])
+	a.cur = back
+	a.lastRev = s.Rev()
+	return a.bufs[a.cur], true
 }
 
 // Scene exposes the scene so front-ends can dispatch input to it.

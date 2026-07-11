@@ -91,12 +91,32 @@ type Scene struct {
 
 	// cardCache holds rendered card sprites so scrolling is a memcpy-blit
 	// rather than a re-rasterisation of every glyph. Invalidated whenever the
-	// content, width, scale or theme changes.
-	cardCache map[cardKey]*image.RGBA
+	// content, width, scale or theme changes. The chrome (sidebar/topbar) is
+	// cached the same way in single slots — like Evas smart-object surfaces —
+	// so scrolling never re-rasterises any text.
+	cardCache  map[cardKey]*image.RGBA
+	sidebarSpr *image.RGBA
+	sidebarKey sidebarKey
+	topbarSpr  *image.RGBA
+	topbarKey  topbarKey
+	subsRev    int
+
+	// rev is a monotonically increasing damage/commit sequence bumped on every
+	// state change (the Wayland commit-seq / Evas dirty model). A present layer
+	// double-buffers and only re-draws/uploads when rev advances.
+	rev int
 }
 
 // invalidateCards drops the sprite cache after an appearance/content change.
 func (s *Scene) invalidateCards() { s.cardCache = nil }
+
+// Rev returns the current damage/commit sequence. It advances whenever any
+// state that affects the rendered frame changes, so a double-buffered present
+// loop can skip redundant redraws/uploads.
+func (s *Scene) Rev() int { return s.rev }
+
+// touch bumps the damage sequence.
+func (s *Scene) touch() { s.rev++ }
 
 // New returns a Scene of the given size with the given theme (system default if nil).
 func New(w, h int, theme *toolkit.Theme) *Scene {
@@ -113,14 +133,23 @@ func (s *Scene) SetTheme(t *toolkit.Theme) {
 	if t != nil {
 		s.theme = t
 		s.invalidateCards()
+		s.touch()
 	}
 }
 
 // SetItems replaces the feed (caller merges/sorts newest-first).
-func (s *Scene) SetItems(items []source.Item) { s.Items = items; s.ScrollY = 0; s.invalidateCards() }
+func (s *Scene) SetItems(items []source.Item) {
+	s.Items = items
+	s.ScrollY = 0
+	s.invalidateCards()
+	s.touch()
+}
 
 // SetSubs replaces the sidebar subscriptions.
-func (s *Scene) SetSubs(subs []Subscription) { s.Subs = subs }
+func (s *Scene) SetSubs(subs []Subscription) { s.Subs = subs; s.subsRev++; s.touch() }
+
+// SetActive selects the sidebar filter (a subscription index, or AllFilter).
+func (s *Scene) SetActive(i int) { s.Active = i; s.touch() }
 
 // SetThumb attaches a decoded thumbnail for an item and invalidates its sprite
 // so the next Draw picks it up.
@@ -130,10 +159,11 @@ func (s *Scene) SetThumb(id string, img *image.RGBA) {
 	}
 	s.Thumbs[id] = img
 	s.invalidateCards()
+	s.touch()
 }
 
 // Resize updates the surface size, clamped to the minimum.
-func (s *Scene) Resize(w, h int) { s.W, s.H = w, h; s.clampSize(); s.invalidateCards() }
+func (s *Scene) Resize(w, h int) { s.W, s.H = w, h; s.clampSize(); s.invalidateCards(); s.touch() }
 
 // SetScale sets the display scale, clamped to [MinZoom, MaxZoom].
 func (s *Scene) SetScale(f float64) {
@@ -145,6 +175,7 @@ func (s *Scene) SetScale(f float64) {
 	}
 	if f != s.Scale {
 		s.invalidateCards()
+		s.touch()
 	}
 	s.Scale = f
 }
@@ -165,18 +196,19 @@ func (s *Scene) clampSize() {
 func (s *Scene) Search() string { return s.search }
 
 // SetSearch replaces the filter text.
-func (s *Scene) SetSearch(v string) { s.search = v }
+func (s *Scene) SetSearch(v string) { s.search = v; s.touch() }
 
 // SearchFocused reports whether the search field has keyboard focus.
 func (s *Scene) SearchFocused() bool { return s.searchFocused }
 
 // FocusSearch gives (or removes) keyboard focus to the search field.
-func (s *Scene) FocusSearch(v bool) { s.searchFocused = v }
+func (s *Scene) FocusSearch(v bool) { s.searchFocused = v; s.touch() }
 
 // TypeRune appends r to the search text when it is focused.
 func (s *Scene) TypeRune(r rune) {
 	if s.searchFocused {
 		s.search += string(r)
+		s.touch()
 	}
 }
 
@@ -185,6 +217,7 @@ func (s *Scene) Backspace() {
 	if s.searchFocused && s.search != "" {
 		r := []rune(s.search)
 		s.search = string(r[:len(r)-1])
+		s.touch()
 	}
 }
 
@@ -202,6 +235,7 @@ func (s *Scene) Scroll(dy int) {
 	if s.ScrollY < 0 {
 		s.ScrollY = 0
 	}
+	s.touch()
 }
 
 // filtered returns the items matching the active subscription filter and the

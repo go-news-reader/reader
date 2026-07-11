@@ -294,6 +294,55 @@ func TestHitTest(t *testing.T) {
 	}
 }
 
+func TestRevAndActive(t *testing.T) {
+	s := newScene()
+	r0 := s.Rev()
+	s.Scroll(1)
+	s.SetSearch("q")
+	s.FocusSearch(true)
+	s.SetActive(1)
+	if s.Active != 1 {
+		t.Fatal("SetActive did not set")
+	}
+	if s.Rev() <= r0 {
+		t.Fatalf("rev did not advance: %d -> %d", r0, s.Rev())
+	}
+	// A no-op scale (same value) must not advance rev.
+	before := s.Rev()
+	s.SetScale(s.Scale)
+	if s.Rev() != before {
+		t.Fatal("no-op SetScale advanced rev")
+	}
+}
+
+func TestChromeCacheReuse(t *testing.T) {
+	s := newScene()
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	sb, tb := s.sidebarSpr, s.topbarSpr
+	s.Scroll(3)
+	s.Draw(buf) // scroll must not re-render chrome
+	if s.sidebarSpr != sb || s.topbarSpr != tb {
+		t.Fatal("chrome sprites re-rendered on scroll")
+	}
+	// Changing the active filter re-renders the sidebar but not the topbar.
+	s.SetActive(0)
+	s.Draw(buf)
+	if s.sidebarSpr == sb {
+		t.Fatal("sidebar not re-rendered after SetActive")
+	}
+	if s.topbarSpr != tb {
+		t.Fatal("topbar needlessly re-rendered")
+	}
+	// Typing re-renders the topbar.
+	s.FocusSearch(true)
+	s.TypeRune('x')
+	s.Draw(buf)
+	if s.topbarSpr == tb {
+		t.Fatal("topbar not re-rendered after typing")
+	}
+}
+
 func TestSetThumb(t *testing.T) {
 	s := newScene()
 	buf := make([]byte, s.W*s.H*4)
