@@ -29,7 +29,7 @@ jobs:
       - name: Test internal/window (seam helpers; boundary excluded from gate)
         run: go test ./internal/window/...
       - name: Test with coverage (all packages except the window boundary)
-        run: go test -covermode=set -coverprofile=cover.out $(go list ./... | grep -v '/internal/window')
+        run: go test -covermode=set -coverprofile=cover.out $(go list ./... | grep -vE '/internal/window($|/)')
       - name: Enforce 100% coverage
         run: |
           pct=$(go tool cover -func=cover.out | awk '/^total:/ {print $3}' | tr -d '%')
