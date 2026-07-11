@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/go-news-reader/brand/main/social/go-news-reader.png" alt="go-news-reader/reader" width="720"></p>
+
 # go-news-reader / reader
 
 [![CI](https://github.com/go-news-reader/reader/actions/workflows/ci.yml/badge.svg)](https://github.com/go-news-reader/reader/actions/workflows/ci.yml)
