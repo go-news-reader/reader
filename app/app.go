@@ -7,13 +7,19 @@ package app
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"os"
+	"path/filepath"
+
+	"github.com/go-newsgroups/par2"
 
 	"github.com/go-news-reader/reader/feeds"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
+	"github.com/go-news-reader/reader/provider/usenet"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
@@ -49,6 +55,11 @@ type App struct {
 	// refresh triggers an asynchronous re-aggregate after a settings change.
 	// A field so front-ends/tests can substitute a synchronous variant.
 	refresh func()
+
+	// reconstruct triggers an asynchronous Usenet post reconstruction (download
+	// the group's parts, reassemble, PAR2 verify/repair, save). A field so
+	// front-ends/tests can substitute a synchronous variant.
+	reconstruct func(base string)
 
 	// Double-buffered present state (see Frame): two framebuffers plus the
 	// last-presented damage sequence, so a window/canvas front-end only redraws
@@ -127,12 +138,17 @@ func New(cfg Config) *App {
 		osName: cfg.OS, dark: cfg.Dark, lastRev: -1,
 	}
 	a.refresh = func() { go a.Refresh(context.Background()) }
+	a.reconstruct = func(base string) { go a.doReconstruct(context.Background(), base) }
 	return a
 }
 
 // SetRefreshHook overrides the asynchronous re-aggregate trigger (tests use a
 // synchronous variant for determinism).
 func (a *App) SetRefreshHook(f func()) { a.refresh = f }
+
+// SetReconstructHook overrides the asynchronous reconstruction trigger (tests
+// use a synchronous variant for determinism).
+func (a *App) SetReconstructHook(f func(base string)) { a.reconstruct = f }
 
 // SetRegistryBuilder overrides how ApplyAccounts rebuilds the provider registry
 // (a seam so tests inject a fake registry instead of real providers).
@@ -382,4 +398,99 @@ var encodePNG = png.Encode
 func (a *App) SetTheme(osName string, dark bool) {
 	a.osName, a.dark = osName, dark
 	a.applyTheme()
+}
+
+// reconstructor is the Usenet provider capability the reconstruction action
+// needs; the registered provider satisfies it structurally.
+type reconstructor interface {
+	Reconstruct(ctx context.Context, req usenet.ReconstructRequest) (map[string][]byte, *par2.VerifyResult, error)
+}
+
+// writeFile saves a reconstructed file; a package var so tests exercise the
+// success and error branches without touching the real filesystem.
+var writeFile = os.WriteFile
+
+// ReconstructGroup triggers reconstruction of the Usenet post group with the
+// given release base. It is non-blocking: the default hook runs on a goroutine
+// so the UI keeps presenting the loading indicator; tests substitute a
+// synchronous hook.
+func (a *App) ReconstructGroup(base string) { a.reconstruct(base) }
+
+// doReconstruct performs the reconstruction synchronously: it collects the
+// group's member articles from the scene, asks the Usenet provider to download
+// and reassemble them (PAR2 verify/repair), drives the existing loading
+// indicator with a "k/n parts" status, and on success writes the data files to
+// the cache directory. Any failure is surfaced in the status line.
+func (a *App) doReconstruct(ctx context.Context, base string) {
+	parts, ok := a.scene.GroupParts(base)
+	if !ok {
+		a.scene.Status = "Nothing to reconstruct for " + base
+		return
+	}
+	prov, ok := a.reg.Get(source.Usenet)
+	if !ok {
+		a.scene.Status = "Usenet provider not configured"
+		return
+	}
+	rc, ok := prov.(reconstructor)
+	if !ok {
+		a.scene.Status = "Usenet provider cannot reconstruct"
+		return
+	}
+
+	total := len(parts)
+	a.scene.SetLoading(true, 0, total)
+	a.scene.Status = fmt.Sprintf("Reconstructing %s… (0/%d parts)", base, total)
+
+	req := usenet.ReconstructRequest{
+		Parts: toReconstructParts(parts),
+		OnProgress: func(done, tot int) {
+			a.scene.SetLoading(true, done, tot)
+			a.scene.Status = fmt.Sprintf("Reconstructing %s… (%d/%d parts)", base, done, tot)
+		},
+	}
+	files, vr, err := rc.Reconstruct(ctx, req)
+	a.scene.SetLoading(false, total, total)
+	if err != nil {
+		a.scene.Status = fmt.Sprintf("Reconstruct %s failed: %v", base, err)
+		return
+	}
+	if err := a.saveFiles(files); err != nil {
+		a.scene.Status = fmt.Sprintf("Reconstruct %s: save failed: %v", base, err)
+		return
+	}
+	a.scene.Status = fmt.Sprintf("Saved %s (%d files, %s)", base, len(files), verifyWord(vr))
+}
+
+// toReconstructParts converts the ui-level part list to the provider request.
+func toReconstructParts(parts []ui.ReconstructPart) []usenet.ReconstructPart {
+	out := make([]usenet.ReconstructPart, len(parts))
+	for i, p := range parts {
+		out[i] = usenet.ReconstructPart{MessageID: p.MessageID, Filename: p.Filename}
+	}
+	return out
+}
+
+// saveFiles writes each reconstructed data file into the cache directory (the
+// current working directory when no cache path is set).
+func (a *App) saveFiles(files map[string][]byte) error {
+	dir := a.scene.CachePath()
+	for name, data := range files {
+		if err := writeFile(filepath.Join(dir, filepath.Base(name)), data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// verifyWord describes the PAR2 outcome for the saved status line.
+func verifyWord(vr *par2.VerifyResult) string {
+	switch {
+	case vr == nil:
+		return "no PAR2"
+	case vr.Complete:
+		return "verified"
+	default:
+		return "incomplete"
+	}
 }

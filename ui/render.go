@@ -21,6 +21,7 @@ type metrics struct {
 	profileTabH, tabPad, btnH int
 	bannerH, navIcon          int
 	loadStripH                int
+	groupHeadH, memberH       int
 	title, meta, badge, side  textFace
 	search, tab               textFace
 }
@@ -51,6 +52,8 @@ func (s *Scene) computeMetrics() metrics {
 	m.bannerH = m.side.height + rpx(16)
 	m.navIcon = m.side.height + rpx(4)
 	m.loadStripH = m.side.height + rpx(4) + rpx(5) + rpx(6)
+	m.groupHeadH = m.badgeH + m.title.height + m.meta.height + rpx(24)
+	m.memberH = m.meta.height + rpx(16)
 	return m
 }
 
@@ -66,10 +69,15 @@ type profTabHit struct {
 	rect  toolkit.Rect
 }
 
-// rowLayout positions one feed card by its top offset within the content.
-type rowLayout struct {
-	item source.Item
-	top  int
+// feedRow positions one feed row within the scrollable content: a standalone
+// item card (group nil) or a collapsed/expanded Usenet group card. height is the
+// row's laid-out height (a group's grows when expanded), so scroll math and the
+// offscreen-skip work with variable row heights.
+type feedRow struct {
+	top    int
+	height int
+	item   source.Item // valid when group == nil
+	group  *itemGroup  // non-nil for a Usenet post group
 }
 
 // authRowLayout positions one "needs sign-in" banner row by its top offset
@@ -149,11 +157,15 @@ func (s *Scene) layout() {
 		top += m.bannerH + m.cardGap
 	}
 
-	// Feed rows.
+	// Feed rows: consecutive Usenet parts of one post collapse into a single
+	// group card; everything else is a standalone card. A group's height grows
+	// when expanded so scrolling accounts for the listed members.
 	s.rows = s.rows[:0]
-	for _, it := range fil {
-		s.rows = append(s.rows, rowLayout{item: it, top: top})
-		top += m.rowH + m.cardGap
+	for _, e := range groupItems(fil) {
+		r := feedRow{top: top, item: e.item, group: e.group}
+		r.height = s.rowHeight(e)
+		s.rows = append(s.rows, r)
+		top += r.height + m.cardGap
 	}
 	s.contentH = top
 }
@@ -209,7 +221,11 @@ func (s *Scene) Draw(buf []byte) {
 	}
 	for _, r := range s.rows {
 		y := feedTop + r.top - s.ScrollY
-		if y+m.rowH < feedTop || y >= s.H {
+		if y+r.height < feedTop || y >= s.H {
+			continue
+		}
+		if r.group != nil {
+			s.drawGroup(p, img, r.group, feedX, y, feedW, onAccent, muteS)
 			continue
 		}
 		blitAt(img, s.cardSprite(r.item, feedW, onAccent, muteS), feedX, y)
@@ -565,6 +581,8 @@ func (s *Scene) HitTest(x, y int) Hit {
 		return Hit{Kind: HitNone}
 	}
 	// Feed.
+	feedX := m.sidebarW + m.pad
+	feedW := s.W - m.sidebarW - 2*m.pad
 	contentY := y - m.topbarH + s.ScrollY
 	for _, a := range s.authRows {
 		if contentY >= a.top && contentY < a.top+m.bannerH {
@@ -572,8 +590,33 @@ func (s *Scene) HitTest(x, y int) Hit {
 		}
 	}
 	for _, r := range s.rows {
-		if contentY >= r.top && contentY < r.top+m.rowH {
+		if contentY < r.top || contentY >= r.top+r.height {
+			continue
+		}
+		if r.group == nil {
 			return Hit{Kind: HitItem, Item: r.item}
+		}
+		return s.hitGroup(r, feedX, feedW, x, contentY)
+	}
+	return Hit{Kind: HitNone}
+}
+
+// hitGroup resolves a click landing inside a group row (feed content coords):
+// the Reconstruct affordance, the header (toggle expand/collapse), or — when
+// expanded — one of the listed member parts (open its detail, like a card).
+func (s *Scene) hitGroup(r feedRow, feedX, feedW, x, contentY int) Hit {
+	g := r.group
+	if inRect(s.reconstructRect(feedX, r.top, feedW), x, contentY) {
+		return Hit{Kind: HitReconstruct, Value: g.Base}
+	}
+	if contentY < r.top+s.m.groupHeadH {
+		return Hit{Kind: HitToggleGroup, Value: g.Base}
+	}
+	if s.GroupExpanded(g.Base) {
+		for i, mem := range g.Members {
+			if inRect(s.memberRect(feedX, r.top, feedW, i), x, contentY) {
+				return Hit{Kind: HitItem, Item: mem.Item}
+			}
 		}
 	}
 	return Hit{Kind: HitNone}

@@ -73,6 +73,8 @@ const (
 	HitBurger                 // the topbar burger button (collapse/expand the sidebar)
 	HitSidebarDivider         // the draggable divider at the sidebar's right edge
 	HitFixAuth                // an in-feed "needs sign-in" banner row — Value = source kind
+	HitToggleGroup            // a Usenet group card's header/chevron — Value = release base
+	HitReconstruct            // a Usenet group card's "Reconstruct" affordance — Value = release base
 
 	// Settings-view actions (Mode == ModeSettings):
 	HitSelectProfile // Profile = index being edited
@@ -209,6 +211,11 @@ type Scene struct {
 	sidebarUserW     int // device px; 0 => default width
 	draggingSidebar  bool
 
+	// groupExpanded records which Usenet post groups (keyed by release base) are
+	// expanded in the feed; it survives re-renders and scrolling. Absent/false =
+	// collapsed (the default).
+	groupExpanded map[string]bool
+
 	m         metrics
 	subs      []subHit
 	profTabs  []profTabHit
@@ -217,7 +224,7 @@ type Scene struct {
 	accountsR toolkit.Rect // sidebar Accounts entry
 	burgerR   toolkit.Rect // topbar burger button (feed view)
 	searchR   toolkit.Rect
-	rows      []rowLayout
+	rows      []feedRow
 	authRows  []authRowLayout // in-feed sign-in banner rows (above the cards)
 	contentH  int
 
@@ -570,6 +577,20 @@ func (s *Scene) CloseDetail() {
 	s.mode = ModeFeed
 	s.touch()
 }
+
+// ToggleGroup expands or collapses the Usenet post group with the given release
+// base. The expanded set is keyed by base so the state survives re-layout and
+// scrolling; expanding grows the card to list its member parts.
+func (s *Scene) ToggleGroup(base string) {
+	if s.groupExpanded == nil {
+		s.groupExpanded = map[string]bool{}
+	}
+	s.groupExpanded[base] = !s.groupExpanded[base]
+	s.touch()
+}
+
+// GroupExpanded reports whether the group with the given base is expanded.
+func (s *Scene) GroupExpanded(base string) bool { return s.groupExpanded[base] }
 
 // Scroll adjusts the vertical scroll of whichever view is showing, clamped to
 // its content height.

@@ -103,6 +103,10 @@ func (h *Handler) MouseDown(x, y int) {
 		// pre-focused on the provider that needs fixing.
 		s.OpenAccounts()
 		s.SelectAccount(source.Kind(hit.Value))
+	case ui.HitToggleGroup:
+		s.ToggleGroup(hit.Value) // expand/collapse a Usenet post group
+	case ui.HitReconstruct:
+		h.a.ReconstructGroup(hit.Value) // download parts + reassemble + PAR2 verify/repair
 	case ui.HitCloseSettings:
 		s.CommitRename()
 		s.CommitCache()
