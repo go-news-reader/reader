@@ -39,7 +39,7 @@ normalized [`source.Item`](source/source.go).
 | Reddit | [`go-reddit/reddit`](https://github.com/go-reddit/reddit) | `provider/reddit` | uTLS browser fingerprint |
 | RSS / Atom / JSONFeed | [`go-syndication/feed`](https://github.com/go-syndication/feed) | `provider/syndication` | open |
 | Hacker News | [`go-hackernews/hackernews`](https://github.com/go-hackernews/hackernews) | `provider/hackernews` | open |
-| Usenet / newsgroups | [`go-newsgroups/nntp`](https://github.com/go-newsgroups/nntp) | `provider/usenet` | open (NNTP) + Newznab search |
+| Usenet / newsgroups | [`go-newsgroups/nntp`](https://github.com/go-newsgroups/nntp) | `provider/usenet` | legacy NNRP or modern TLS+AUTHINFO + Newznab search |
 | Mastodon | [`go-mastodon/mastodon`](https://github.com/go-mastodon/mastodon) | `provider/mastodon` | open |
 | Lemmy | [`go-lemmy/lemmy`](https://github.com/go-lemmy/lemmy) | `provider/lemmy` | open |
 | Bluesky | [`go-atproto/atproto`](https://github.com/go-atproto/atproto) | `provider/bluesky` | open (AT Protocol) |
@@ -54,6 +54,52 @@ The Usenet provider composes a full binary stack: **Newznab search**
 NNTP with yEnc reassembly (`go-newsgroups/nzb` + `go-newsgroups/yenc`) →
 **AutoPAR** verify/repair (`go-newsgroups/par2` over the `go-erasure/reedsolomon`
 GF(2¹⁶) field) → **thumbnails** (`go-images`).
+
+### Legacy vs modern servers, and authentication
+
+Built on `go-newsgroups/nntp` **v0.2.0**, the provider transparently bridges two
+kinds of server (the library negotiates `CAPABILITIES` lazily; the reader just
+benefits from the OVER→XOVER fallback):
+
+- **Legacy** NNRP servers that predate RFC 3977, reject `CAPABILITIES`, and
+  carry binaries anonymously. Example: **Free** (`news.free.fr:119`, plain, no
+  auth, `alt.binaries.*`). `Legacy()` reports `true`.
+- **Modern** servers (INN and the like) that advertise `OVER`/`READER`/
+  `COMPRESS` and gate reading behind `MODE READER` + `AUTHINFO`. Text example:
+  **Eternal-September** (`news.eternal-september.org:563`, TLS, free account).
+  Binary example: **XSUsenet** free tier (TLS + AUTHINFO, carries binaries).
+
+Configure a Usenet account in the **Accounts** window with `Server host:port`,
+the `Implicit TLS` toggle, and `Username` / `Password` (masked). When a username
+is set, the provider issues `MODE READER` (safe everywhere) and then
+`AUTHINFO USER/PASS` before selecting a group; an `AUTHINFO` rejection surfaces
+as an in-feed "sign-in required" prompt. Leaving username empty connects
+anonymously (the legacy Free path). The optional `Newznab indexer URL` / `API
+key` enable `usenet:search:<query>` feeds.
+
+The `news.free.fr` example is ISP-specific and is **not** a shipped default —
+it is documented here and used as the Taskfile default only.
+
+### Network integration tests (manual, tag-gated)
+
+Real-server tests live behind the `nntpnet` build tag in
+[`provider/usenet/integration_nntpnet_test.go`](provider/usenet/integration_nntpnet_test.go).
+They are excluded from the default build and the 100% coverage gate and never
+run in CI; run them on demand:
+
+```sh
+task usenet-free     # legacy binary  (news.free.fr:119, no auth) — run from a Free network
+task usenet-modern   # modern text    — NNTP_MODERN_USER / NNTP_MODERN_PASS
+task usenet-binary   # modern binary  — NNTP_BIN_ADDR / NNTP_BIN_USER / NNTP_BIN_PASS (+NNTP_BIN_TLS)
+```
+
+| Target | Env vars | What it proves |
+|--------|----------|----------------|
+| Legacy binary (Free) | `NNTP_LEGACY_ADDR`, `NNTP_LEGACY_GROUP` | anonymous connect, OVER scan, fetch + yEnc-decode (CRC verified) a single-part `.par2`, assert PAR2 magic |
+| Modern text (Eternal-September) | `NNTP_MODERN_USER`, `NNTP_MODERN_PASS`, `NNTP_MODERN_ADDR`, `NNTP_MODERN_GROUP` | TLS + AUTHINFO, `Legacy()==false`, `READER` capability, group select + article fetch |
+| Modern binary (XSUsenet / any) | `NNTP_BIN_ADDR`, `NNTP_BIN_USER`, `NNTP_BIN_PASS`, `NNTP_BIN_TLS`, `NNTP_BIN_GROUP` | TLS + AUTHINFO, multipart download + reassembly, real-PAR2 verify, then corrupt-and-repair proof |
+
+Each target `t.Skip`s cleanly when its required env vars are unset.
 
 ## Architecture
 

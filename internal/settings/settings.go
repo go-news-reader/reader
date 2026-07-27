@@ -112,6 +112,8 @@ func CredentialSchema() []ProviderCreds {
 		{Kind: source.Usenet, Label: "Usenet", Fields: []CredField{
 			{Key: "addr", Label: "Server host:port"},
 			{Key: "tls", Label: "Implicit TLS", Bool: true},
+			{Key: "username", Label: "Username"},
+			{Key: "password", Label: "Password", Secret: true},
 			{Key: "indexer_url", Label: "Newznab indexer URL"},
 			{Key: "indexer_key", Label: "Newznab API key", Secret: true},
 		}},
