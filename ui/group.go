@@ -32,16 +32,17 @@ var (
 	reTrailSz  = regexp.MustCompile(`(\d+)\s*$`)
 )
 
-// Release-base derivation: strip the recovery/type suffixes so every file and
-// part of one post reduces to the same base. reNumbered strips a trailing
-// .par2 / .volNN+MM / .partN / .parN token (repeatedly, so a stacked
-// .tar.zst.volNN+MM.par2 unwinds); reTarComp strips a compound tar extension;
-// reSingle strips one remaining short extension (.zst, .nfo, .mkv, …).
-var (
-	reNumbered = regexp.MustCompile(`(?i)\.(par2|vol\d+\+\d+|part\d+|par\d+)$`)
-	reTarComp  = regexp.MustCompile(`(?i)\.tar\.(zst|gz|bz2|xz)$`)
-	reSingle   = regexp.MustCompile(`\.[A-Za-z0-9]{1,4}$`)
-)
+// Release-base derivation: strip the recovery/type/volume suffixes so every
+// file and part of one post reduces to the same base, covering both the
+// .tar.zst + .par2/.vol style AND classic Usenet split archives
+// (.partNN.rar, .rNN/.sNN rar volumes, .NNN numeric splits, plain archive and
+// sidecar extensions). reMultiTok matches ONE trailing token; releaseBase
+// applies it in a loop so stacked suffixes (e.g. release.part03.rar,
+// release.tar.zst.vol00+01.par2) unwind to the shared base. Only known
+// multipart/archive/sidecar tokens are stripped — arbitrary extensions and
+// release qualifiers (.1080p, .2024) are preserved so distinct releases stay
+// distinct.
+var reMultiTok = regexp.MustCompile(`(?i)\.(par2|vol\d+\+\d+|part\d+|par\d+|r\d{2}|s\d{2}|\d{3}|rar|zip|7z|tar|gz|bz2|xz|zst|nfo|sfv|nzb|srr|srs)$`)
 
 // subjectInfo is the parsed form of a Usenet binary subject.
 type subjectInfo struct {
@@ -86,16 +87,13 @@ func parseSubject(subject string) (subjectInfo, bool) {
 func releaseBase(filename string) string {
 	b := strings.TrimSpace(filename)
 	for {
-		nb := reNumbered.ReplaceAllString(b, "")
+		nb := reMultiTok.ReplaceAllString(b, "")
 		if nb == b {
 			break
 		}
 		b = nb
 	}
-	if nb := reTarComp.ReplaceAllString(b, ""); nb != b {
-		return nb
-	}
-	return reSingle.ReplaceAllString(b, "")
+	return b
 }
 
 // usenetBase returns the release base of a Usenet item, false when the item is
