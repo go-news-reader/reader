@@ -70,12 +70,12 @@ func (s *Scene) drawGroup(p *painter.PixelPainter, img *image.RGBA, g *itemGroup
 	chev := s.chevronRect(x, y)
 	drawChevron(p, chev, th.OnSurface, expanded)
 
-	// Source badge, then the base name, on the top line.
+	// Source badge (toolkit.Badge, Usenet colour), then the base name.
 	nameX := chev.X + chev.W + m.pad/2
 	label := sourceLabel(source.Usenet)
 	bw := m.badge.width(label) + m.pad
 	badgeY := y + m.pad
-	p.FillRoundRect(painter.Rect{X: nameX, Y: badgeY, W: bw, H: m.badgeH}, m.badgeH/2, sourceColor(source.Usenet))
+	s.drawSourceBadge(p, toolkit.Rect{X: nameX, Y: badgeY, W: bw, H: m.badgeH}, source.Usenet)
 	m.badge.draw(img, nameX+m.pad/2, badgeY+(m.badgeH-m.badge.height)/2, label, rgb(0xFFFFFF))
 
 	// Reconstruct pill (right-aligned).

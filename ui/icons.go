@@ -32,7 +32,7 @@ func iconInset(r toolkit.Rect, frac int) toolkit.Rect {
 
 // drawMenuIcon paints the burger/menu glyph: three evenly-spaced thin rounded
 // horizontal bars (Iconoir "Menu").
-func drawMenuIcon(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
+func drawMenuIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
 	b := iconInset(r, 80)
 	bar := func(y int) {
 		p.FillRoundRect(toolkit.Rect{X: b.X, Y: y, W: b.W, H: lineW}, lineW/2, col)
@@ -44,7 +44,7 @@ func drawMenuIcon(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, lin
 
 // drawLockIcon paints a padlock: an outlined body (lower ~60%) with a narrower
 // outlined shackle loop above whose bottom edge meets the body's top edge.
-func drawLockIcon(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
+func drawLockIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
 	b := iconInset(r, 78)
 	bodyY := b.Y + 2*b.H/5
 	body := toolkit.Rect{X: b.X, Y: bodyY, W: b.W, H: b.Y + b.H - bodyY}
@@ -56,7 +56,7 @@ func drawLockIcon(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, lin
 
 // drawUserIcon paints an account/person glyph: an outlined circular head above a
 // wide top-rounded outlined shoulders shape (Iconoir "User").
-func drawUserIcon(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
+func drawUserIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
 	b := iconInset(r, 78)
 	headD := b.W * 2 / 5
 	head := toolkit.Rect{X: b.X + (b.W-headD)/2, Y: b.Y, W: headD, H: headD}
@@ -69,7 +69,7 @@ func drawUserIcon(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, lin
 
 // drawSlidersIcon paints a settings/sliders glyph: three thin horizontal rules,
 // each with a small outlined knob square at a staggered x (Iconoir "Settings").
-func drawSlidersIcon(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
+func drawSlidersIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
 	b := iconInset(r, 80)
 	knob := max(lineW*3, b.H/5)
 	const rows = 3
@@ -83,7 +83,7 @@ func drawSlidersIcon(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, 
 
 // drawListIcon paints a network-log/list glyph: three stacked thin rules, each
 // preceded by a small bullet dot (Iconoir "List").
-func drawListIcon(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
+func drawListIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
 	b := iconInset(r, 80)
 	dot := lineW * 2
 	gap := dot + lineW*2
