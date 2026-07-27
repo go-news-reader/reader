@@ -76,7 +76,6 @@ func (s *Scene) drawGroup(p *painter.PixelPainter, img *image.RGBA, g *itemGroup
 	bw := m.badge.width(label) + m.pad
 	badgeY := y + m.pad
 	s.drawSourceBadge(p, toolkit.Rect{X: nameX, Y: badgeY, W: bw, H: m.badgeH}, source.Usenet)
-	m.badge.draw(img, nameX+m.pad/2, badgeY+(m.badgeH-m.badge.height)/2, label, rgb(0xFFFFFF))
 
 	// Reconstruct pill (right-aligned).
 	rr := s.reconstructRect(x, y, w)

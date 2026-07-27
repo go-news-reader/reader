@@ -71,6 +71,36 @@ type textFace struct {
 	synthBold bool
 }
 
+// ttFonts caches go-widgets TrueType fonts (keyed by size+weight) so toolkit
+// widgets can render their OWN anti-aliased text at the reader's sizes via the
+// per-widget Base.Font, instead of the toolkit's built-in 5×7 bitmap font.
+var (
+	ttMu    sync.Mutex
+	ttCache = map[faceKey]toolkit.Font{}
+)
+
+// ttFont returns a cached toolkit TrueType font at px pixels, regular or bold,
+// backed by the same embedded Go fonts as getFace. Assigned to a widget's
+// Base.Font so the widget draws crisp AA text itself (no more "text on top").
+func ttFont(bold bool, px int) toolkit.Font {
+	if px < 1 {
+		px = 1
+	}
+	ttMu.Lock()
+	defer ttMu.Unlock()
+	k := faceKey{px, bold}
+	if f, ok := ttCache[k]; ok {
+		return f
+	}
+	src := goregular.TTF
+	if bold {
+		src = gobold.TTF
+	}
+	f, _ := toolkit.NewTrueTypeFont(src, px)
+	ttCache[k] = f
+	return f
+}
+
 // getFace returns a cached face at px pixels (DPI 72 ⇒ 1pt = 1px), regular or
 // bold. Faces are not safe for concurrent use; the scene renders on one
 // goroutine.
