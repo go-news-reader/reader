@@ -13,19 +13,28 @@ import (
 // views become toolkit widgets bound with mvvm's pointer binders; for now the
 // scene keeps its own rendering and simply receives its data through these
 // subscriptions to the existing setters.
-func bindScene(s *ui.Scene, vm *viewmodel.ViewModel) {
-	vm.Items.SubscribeChanged(func() { s.SetItems(vm.Items.Slice()) })
-	vm.Load.Subscribe(func(ls viewmodel.LoadState) { s.SetLoading(ls.Active, ls.Done, ls.Total) })
-	vm.Pending.SubscribeChanged(func() { s.SetPendingSources(vm.Pending.Slice()) })
-	vm.Status.Subscribe(func(v string) { s.SetStatus(v) })
-	vm.AuthPrompts.SubscribeChanged(func() { s.SetAuthPrompts(vm.AuthPrompts.Slice()) })
-	vm.Search.Subscribe(func(v string) { s.SetSearch(v) })
-	vm.Mode.Subscribe(func(m ui.Mode) { applyMode(s, m, vm.Detail.Get()) })
+//
+// mvvm's Observable/ObservableList are single-goroutine by contract, and the
+// scene is read by the render thread, so each subscription runs on the goroutine
+// that fired the observable (the aggregation goroutine, for a streaming
+// refresh): there it snapshots the observable's value — safe, same goroutine as
+// the write — and hands the resulting scene write to a.post. a.post applies it
+// inline (single-threaded CLI/tests) or marshals it to the render thread
+// (the window front-end), so the scene is never mutated concurrently with Draw.
+func bindScene(a *App) {
+	s, vm := a.scene, a.vm
+	vm.Items.SubscribeChanged(func() { items := vm.Items.Slice(); a.post(func() { s.SetItems(items) }) })
+	vm.Load.Subscribe(func(ls viewmodel.LoadState) { a.post(func() { s.SetLoading(ls.Active, ls.Done, ls.Total) }) })
+	vm.Pending.SubscribeChanged(func() { subs := vm.Pending.Slice(); a.post(func() { s.SetPendingSources(subs) }) })
+	vm.Status.Subscribe(func(v string) { a.post(func() { s.SetStatus(v) }) })
+	vm.AuthPrompts.SubscribeChanged(func() { p := vm.AuthPrompts.Slice(); a.post(func() { s.SetAuthPrompts(p) }) })
+	vm.Search.Subscribe(func(v string) { a.post(func() { s.SetSearch(v) }) })
+	vm.Mode.Subscribe(func(m ui.Mode) { d := vm.Detail.Get(); a.post(func() { applyMode(s, m, d) }) })
 	vm.Detail.Subscribe(func(it source.Item) {
 		// Re-open the reading view when the target item changes while already in
 		// detail mode (a bare Mode.Set(ModeDetail) would be a no-op there).
 		if vm.Mode.Get() == ui.ModeDetail {
-			s.OpenDetail(it)
+			a.post(func() { s.OpenDetail(it) })
 		}
 	})
 }

@@ -230,6 +230,11 @@ func runWindow(cfg config, stdout, stderr io.Writer) int {
 // feed concurrently so the window appears immediately and fills in once loaded.
 // Off macOS (or if the window can't open) it falls back to a printed notice.
 func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
+	// Marshal background scene writes onto the render thread: the present loop and
+	// input handlers run on the main thread, while refreshFeed aggregates on a
+	// background goroutine. Enable it before that goroutine starts so the scene is
+	// only ever mutated from Frame (see app.App.DeferSceneWrites).
+	a.DeferSceneWrites()
 	go refreshFeed(a, stderr)
 	runtime.LockOSThread()
 	err := openWindow(window.Config{
