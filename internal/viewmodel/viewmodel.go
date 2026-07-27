@@ -55,12 +55,25 @@ type ViewModel struct {
 	Load *mvvm.Observable[LoadState]
 	// Pending is the set of subscriptions whose fetch is still outstanding.
 	Pending *mvvm.ObservableList[source.Subscription]
-	// Search is the topbar filter text.
+	// Search is the topbar filter text. It is two-way bound to the scene's
+	// [toolkit.SearchEntry] widget (see the app's search binder), so typing in the
+	// widget flows here and a programmatic Set flows back to the widget.
 	Search *mvvm.Observable[string]
+	// SearchFocus is whether the topbar search field holds keyboard focus. Input
+	// drives it; the binder reflects it onto the scene's focus state.
+	SearchFocus *mvvm.Observable[bool]
 	// Mode selects which view the scene renders.
 	Mode *mvvm.Observable[ui.Mode]
 	// Detail is the item opened in the reading view (valid while Mode==ModeDetail).
 	Detail *mvvm.Observable[source.Item]
+	// Account is the provider the accounts editor operates on. Input sets it
+	// (selecting a provider, or fixing a failed sign-in); the binder reflects it
+	// onto the scene's accounts editor.
+	Account *mvvm.Observable[source.Kind]
+	// Profile is the active profile index. Input switches it through the app,
+	// which keeps this observable in step so a bound profile-tab widget (a later
+	// migration) reflects the selection.
+	Profile *mvvm.Observable[int]
 	// Status is the status-line message (non-auth failures).
 	Status *mvvm.Observable[string]
 	// AuthPrompts are the in-feed "needs sign-in" banners.
@@ -88,8 +101,11 @@ func New(act Actions) *ViewModel {
 		Load:        mvvm.NewObservable(LoadState{}),
 		Pending:     mvvm.NewObservableList[source.Subscription](),
 		Search:      mvvm.NewObservable(""),
+		SearchFocus: mvvm.NewObservable(false),
 		Mode:        mvvm.NewObservable(ui.ModeFeed),
 		Detail:      mvvm.NewObservableEq(source.Item{}, sameItem),
+		Account:     mvvm.NewObservable(source.Kind("")),
+		Profile:     mvvm.NewObservable(0),
 		Status:      mvvm.NewObservable(""),
 		AuthPrompts: mvvm.NewObservableList[ui.AuthPrompt](),
 	}
@@ -150,3 +166,21 @@ func (vm *ViewModel) OpenDetail(it source.Item) {
 	vm.Detail.Set(it)
 	vm.Mode.Set(ui.ModeDetail)
 }
+
+// FocusSearch gives (or removes) keyboard focus to the topbar search field.
+func (vm *ViewModel) FocusSearch(v bool) { vm.SearchFocus.Set(v) }
+
+// SelectAccount picks which provider the accounts editor operates on.
+func (vm *ViewModel) SelectAccount(k source.Kind) { vm.Account.Set(k) }
+
+// FixAuth opens the accounts editor pre-selected on the provider that needs
+// signing in (the click target of an in-feed "needs sign-in" banner): it records
+// the provider, then switches Mode to the accounts editor.
+func (vm *ViewModel) FixAuth(k source.Kind) {
+	vm.Account.Set(k)
+	vm.Mode.Set(ui.ModeAccounts)
+}
+
+// SelectProfile records the active profile index. The app calls it while
+// switching profiles so the observable tracks the live selection.
+func (vm *ViewModel) SelectProfile(i int) { vm.Profile.Set(i) }

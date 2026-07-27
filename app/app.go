@@ -170,6 +170,7 @@ func New(cfg Config) *App {
 		Refresh:       func() { a.refresh() },
 		ToggleSidebar: func() { a.scene.ToggleSidebar() },
 	})
+	a.vm.Profile.Set(set.Active) // seed the active-profile observable
 	bindScene(a)
 	return a
 }
@@ -292,6 +293,26 @@ func setIf(dst *string, v string) {
 	if v != "" {
 		*dst = v
 	}
+}
+
+// SelectProfile switches the active profile: it updates the scene (which
+// re-derives the sidebar subscriptions), keeps the view-model's Profile
+// observable in step, and re-aggregates the newly-active profile's feed. The
+// window/CLI front-ends route a profile-tab click here instead of poking the
+// scene, so the active profile flows through the app rather than the view.
+func (a *App) SelectProfile(i int) {
+	a.scene.SetActiveProfile(i)
+	a.vm.SelectProfile(i)
+	a.ApplySceneSettings()
+}
+
+// DeleteProfile removes the profile at i from the settings editor, re-syncs the
+// active-profile observable with the scene's re-clamped selection, and persists +
+// re-aggregates. Front-ends route the settings editor's delete affordance here.
+func (a *App) DeleteProfile(i int) {
+	a.scene.DeleteProfile(i)
+	a.vm.SelectProfile(a.scene.ActiveProfileIndex())
+	a.ApplySceneSettings()
 }
 
 // ApplySceneSettings snapshots the scene's edited settings, persists them (when

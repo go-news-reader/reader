@@ -127,6 +127,42 @@ func TestSearchEditing(t *testing.T) {
 	}
 }
 
+// TestSearchEntryWidget proves the topbar search is a real toolkit.SearchEntry:
+// keystrokes route through the widget (its OnChange fires with the text) and the
+// binder-facing accessors expose it. The scene keeps rendering from the widget's
+// Text and InvalidateSearch bumps the damage sequence after a direct field write.
+func TestSearchEntryWidget(t *testing.T) {
+	s := newScene()
+	entry := s.SearchEntry()
+	if entry == nil {
+		t.Fatal("SearchEntry() is nil")
+	}
+	var last string
+	entry.OnChange = func(v string) { last = v } // stand-in for the mvvm binder
+
+	s.FocusSearch(true)
+	s.TypeRune('h')
+	s.TypeRune('i')
+	if entry.Text != "hi" || last != "hi" {
+		t.Fatalf("widget text=%q OnChange=%q", entry.Text, last)
+	}
+	s.Backspace()
+	if entry.Text != "h" || last != "h" {
+		t.Fatalf("after bs: text=%q OnChange=%q", entry.Text, last)
+	}
+	// A direct field write (what mvvm.BindField does on a vm.Search change) plus
+	// InvalidateSearch repaints without going through SetSearch.
+	entry.Text = "zzz"
+	before := s.Rev()
+	s.InvalidateSearch()
+	if s.Rev() <= before {
+		t.Fatal("InvalidateSearch did not advance the damage sequence")
+	}
+	if s.Search() != "zzz" {
+		t.Fatalf("Search() = %q, want the widget text", s.Search())
+	}
+}
+
 func TestScrollClamp(t *testing.T) {
 	s := newScene()
 	// Short content: max < 0, scroll pinned to 0.

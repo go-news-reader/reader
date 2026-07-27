@@ -375,6 +375,39 @@ func TestNewWithSettings(t *testing.T) {
 	}
 }
 
+func TestSelectAndDeleteProfile(t *testing.T) {
+	set := &settings.Settings{
+		Profiles: []settings.Profile{
+			{Name: "A", Subs: []source.Subscription{{Source: source.Reddit, Channel: "a"}}},
+			{Name: "B", Subs: []source.Subscription{{Source: source.Reddit, Channel: "b"}}},
+			{Name: "C", Subs: []source.Subscription{{Source: source.Reddit, Channel: "c"}}},
+		},
+		Active: 0, Theme: settings.ThemeSystem,
+	}
+	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit}), Settings: set, Width: 400, Height: 300})
+	var refreshed int
+	a.SetRefreshHook(func() { refreshed++ })
+
+	// SelectProfile switches the scene, keeps vm.Profile in step, and re-aggregates.
+	a.SelectProfile(2)
+	if a.VM().Profile.Get() != 2 || a.Scene().ActiveProfileIndex() != 2 {
+		t.Fatalf("select: vm=%d scene=%d", a.VM().Profile.Get(), a.Scene().ActiveProfileIndex())
+	}
+	if len(a.subs) != 1 || a.subs[0].Channel != "c" {
+		t.Fatalf("subs not rebuilt on select: %+v", a.subs)
+	}
+
+	// DeleteProfile removes the active profile; the active index re-clamps and
+	// vm.Profile stays synced with the scene's re-clamped selection.
+	a.DeleteProfile(2)
+	if a.VM().Profile.Get() != a.Scene().ActiveProfileIndex() {
+		t.Fatalf("delete desync: vm=%d scene=%d", a.VM().Profile.Get(), a.Scene().ActiveProfileIndex())
+	}
+	if refreshed != 2 {
+		t.Fatalf("refresh hook calls = %d, want 2", refreshed)
+	}
+}
+
 func TestApplySceneSettingsPersistsAndRebuilds(t *testing.T) {
 	set := &settings.Settings{
 		Profiles: []settings.Profile{

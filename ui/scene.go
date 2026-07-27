@@ -184,8 +184,12 @@ type Scene struct {
 	// Optional decoded thumbnails keyed by Item.ID (blitted when present).
 	Thumbs map[string]*image.RGBA
 
-	// Topbar search/filter.
-	search        string
+	// Topbar search/filter. The text is owned by a toolkit.SearchEntry widget so
+	// the topbar demonstrates a real mvvm-bound widget (the app binds vm.Search to
+	// searchEntry.Text/OnChange); the scene renders the widget and routes topbar
+	// keystrokes into it. searchFocused is the scene-side focus flag the binder
+	// reflects vm.SearchFocus onto (SearchEntry is itself focus-agnostic).
+	searchEntry   *toolkit.SearchEntry
 	searchFocused bool
 
 	// Detail (reading) view: ModeDetail shows a single opened item in-app.
@@ -264,7 +268,8 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 		theme = toolkit.DefaultLight()
 	}
 	s := &Scene{W: w, H: h, theme: theme, Active: AllFilter, Scale: 1,
-		themeName: settings.ThemeSystem, newKind: source.Reddit}
+		themeName: settings.ThemeSystem, newKind: source.Reddit,
+		searchEntry: toolkit.NewSearchEntry("")}
 	s.clampSize()
 	return s
 }
@@ -486,11 +491,21 @@ func (s *Scene) clampSize() {
 	}
 }
 
-// Search returns the current filter text.
-func (s *Scene) Search() string { return s.search }
+// Search returns the current filter text (the search widget's text).
+func (s *Scene) Search() string { return s.searchEntry.Text }
 
-// SetSearch replaces the filter text.
-func (s *Scene) SetSearch(v string) { s.search = v; s.touch() }
+// SetSearch replaces the filter text on the search widget.
+func (s *Scene) SetSearch(v string) { s.searchEntry.Text = v; s.touch() }
+
+// SearchEntry exposes the topbar's search widget so the app can two-way bind
+// vm.Search to it (mvvm.BindField(&entry.Text, &entry.OnChange)).
+func (s *Scene) SearchEntry() *toolkit.SearchEntry { return s.searchEntry }
+
+// InvalidateSearch bumps the damage sequence after the search binder writes
+// SearchEntry.Text directly (bypassing SetSearch). The app's search binder passes
+// it as mvvm.BindField's invalidate hook so a ViewModel-originated search change
+// repaints the topbar (whose sprite cache keys on the widget text).
+func (s *Scene) InvalidateSearch() { s.touch() }
 
 // SearchFocused reports whether the search field has keyboard focus.
 func (s *Scene) SearchFocused() bool { return s.searchFocused }
@@ -516,7 +531,10 @@ func (s *Scene) TypeRune(r rune) {
 		return
 	}
 	if s.searchFocused {
-		s.search += string(r)
+		// Feed the printable rune through the SearchEntry widget itself, so the
+		// widget's OnChange (bound to vm.Search) fires exactly as a real widget
+		// keypress would.
+		s.searchEntry.OnEvent(toolkit.Event{Kind: toolkit.EventChar, Code: string(r)})
 		s.touch()
 	}
 }
@@ -537,8 +555,8 @@ func (s *Scene) Backspace() {
 		}
 		return
 	}
-	if s.searchFocused && s.search != "" {
-		s.search = trimLastRune(s.search)
+	if s.searchFocused && s.searchEntry.Text != "" {
+		s.searchEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
 		s.touch()
 	}
 }
@@ -651,7 +669,7 @@ func clampScroll(v, max int) int {
 // filtered returns the items matching the active subscription filter and the
 // search text (case-insensitive substring of the title).
 func (s *Scene) filtered() []source.Item {
-	q := strings.ToLower(strings.TrimSpace(s.search))
+	q := strings.ToLower(strings.TrimSpace(s.searchEntry.Text))
 	var sub *Subscription
 	if s.Active >= 0 && s.Active < len(s.Subs) {
 		sub = &s.Subs[s.Active]

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"github.com/go-widgets/mvvm"
+
 	"github.com/go-news-reader/reader/internal/viewmodel"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
@@ -28,7 +30,18 @@ func bindScene(a *App) {
 	vm.Pending.SubscribeChanged(func() { subs := vm.Pending.Slice(); a.post(func() { s.SetPendingSources(subs) }) })
 	vm.Status.Subscribe(func(v string) { a.post(func() { s.SetStatus(v) }) })
 	vm.AuthPrompts.SubscribeChanged(func() { p := vm.AuthPrompts.Slice(); a.post(func() { s.SetAuthPrompts(p) }) })
-	vm.Search.Subscribe(func(v string) { a.post(func() { s.SetSearch(v) }) })
+	// Search is a real two-way widget binding: mvvm.BindField seeds the scene's
+	// toolkit.SearchEntry from vm.Search, composes vm.Search.Set into the widget's
+	// OnChange (so a keystroke routed through the widget flows to the VM), and
+	// pushes vm.Search → SearchEntry.Text on change. Unlike the other reflections
+	// this writes the widget field directly rather than through a.post: vm.Search
+	// is only ever Set from the input/render thread (a topbar keystroke or a
+	// programmatic Set on that thread), never from the background aggregation
+	// goroutines, so the write cannot race Draw. InvalidateSearch requests the
+	// repaint (the topbar sprite cache keys on the widget text).
+	mvvm.BindField(vm.Search, &s.SearchEntry().Text, &s.SearchEntry().OnChange, s.InvalidateSearch)
+	vm.SearchFocus.Subscribe(func(v bool) { a.post(func() { s.FocusSearch(v) }) })
+	vm.Account.Subscribe(func(k source.Kind) { a.post(func() { s.SelectAccount(k) }) })
 	vm.Mode.Subscribe(func(m ui.Mode) { d := vm.Detail.Get(); a.post(func() { applyMode(s, m, d) }) })
 	vm.Detail.Subscribe(func(it source.Item) {
 		// Re-open the reading view when the target item changes while already in
