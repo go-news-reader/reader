@@ -8,6 +8,8 @@ github.com/go-birdsite/twitter v0.1.0 h1:s6xFl2oG6b8/o+nkth3Nr992bq+wSVsz/HYqeTB
 github.com/go-birdsite/twitter v0.1.0/go.mod h1:K81gyFwTIuec82tIz/Ffo4mOqT/obIqjHhyUnbbmcOc=
 github.com/go-browserhttp/browserhttp v0.1.0 h1:nyzTAv8vF3tkn4z0JUoX/y1hy/ihTV5DYTns+QM1ogE=
 github.com/go-browserhttp/browserhttp v0.1.0/go.mod h1:zAN6vOC7f+MLC+P1J/C4dpdgj8D3+BhSpZRQlgSyZu8=
+github.com/go-datetime/dates v0.1.0 h1:Uj8TaTZ09DXdq75EGQ/teFdrXpfVAC3ZDHAPQvPTnaA=
+github.com/go-datetime/dates v0.1.0/go.mod h1:KeZ1wUeMScJD6HOvj3hINwbsB+GCSFjJLWcJhrBlwIo=
 github.com/go-erasure/reedsolomon v0.1.0 h1:Am/4oo3A67ZXnoP7UuPGY4XFAfFzVpu8jv/3/24vXmE=
 github.com/go-erasure/reedsolomon v0.1.0/go.mod h1:qlHa49M0PJMk0JGBGYLyr2Gf8XVmbK+L/iThyhRJbp0=
 github.com/go-hackernews/hackernews v0.1.0 h1:4d9f4KmqfEnd8WTRyx2ee5jnA4JJz7QHZqA7q3nuGCY=
@@ -22,8 +24,8 @@ github.com/go-mastodon/mastodon v0.1.0 h1:rf4NLOxrr97ZpzwfAKOVLJ9d/xRsP+pA/teEgK
 github.com/go-mastodon/mastodon v0.1.0/go.mod h1:BUNMTzBrelZtGi6qLuQ7s6mffxsETf1htxiquA3yuDU=
 github.com/go-newsgroups/newznab v0.1.0 h1:KJNaCoaE2coPaU8wvQzYF7aJ2UXmUp4qlnXfaVl+5hs=
 github.com/go-newsgroups/newznab v0.1.0/go.mod h1:ANfywyup2RC/t8NpHnpWm17SyDkCBskURUuoBtcyJ+c=
-github.com/go-newsgroups/nntp v0.2.1 h1:1/S4QToZGrGfrqu0cPfCjudzhBxYY2QlRYSF+7vWy3g=
-github.com/go-newsgroups/nntp v0.2.1/go.mod h1:r2IY7RsxNL5U2Bh6gFKYRFK6tLml5+i2Poprlh05RkI=
+github.com/go-newsgroups/nntp v0.2.2 h1:P8+JpS8uqxXDgR2tY3yrRR4BmQtn7Tbc6+sV8FLv2n0=
+github.com/go-newsgroups/nntp v0.2.2/go.mod h1:Syx4HRiOStcpoWHzDWi1hxQd2iBVRu3yYkpcBZn+DAI=
 github.com/go-newsgroups/nzb v0.1.0 h1:o2djveyfMa6OECFU/Cr9bkJuNGilknjVa2oF4sttLDc=
 github.com/go-newsgroups/nzb v0.1.0/go.mod h1:RFhQAYFx/TfHy1ijqmj+y38NdMQi0uGrq5MwY3LwrFQ=
 github.com/go-newsgroups/par2 v0.1.0 h1:XQq/7uoRyj/P7gIvxX4w924ZU3E7yRGidH6j3POd1+Q=
@@ -32,8 +34,8 @@ github.com/go-newsgroups/yenc v0.1.0 h1:oS4d9BJBuQfznqgyHrsr5ZNFZ+s7/SkfUl7ALVo5
 github.com/go-newsgroups/yenc v0.1.0/go.mod h1:+BWqb2iT8+aVnLKzayWJex6adUNI276vH7iWizcR3P4=
 github.com/go-reddit/reddit v0.1.0 h1:/b6+4BKEBSnSIVAuWEYaLU4d01tjfcsu+LQea3OFSw4=
 github.com/go-reddit/reddit v0.1.0/go.mod h1:/zGZliQ8lN+iGyVAiGzeGGkY+rQBZNlF4JwAnRaYEGI=
-github.com/go-syndication/feed v0.1.0 h1:WweAGLKdknKoBVL0FdnMx5WYqbO1tXTJzsWZq7l++l8=
-github.com/go-syndication/feed v0.1.0/go.mod h1:eicPpL2JZ4NscGnpsmMUjPcw+5NzeNRZxBEYfiNzSUM=
+github.com/go-syndication/feed v0.1.1 h1:nB//8Cp9K3HQvZBqN1jsir8jVqmnxU5SPk14MYwmlvw=
+github.com/go-syndication/feed v0.1.1/go.mod h1:PR2mpm60ZMdEt3QEAEgoiC28gNi6fhCgBb/99JGwxR0=
 github.com/go-tiktok/tiktok v0.1.0 h1:I/duF5SLq+BdlbIqVmSso6O0PayYYm+u4+g4JRjbMHc=
 github.com/go-tiktok/tiktok v0.1.0/go.mod h1:YfwNRpTyk5QNWauCm4nxhdVvjmEvLd0HpxzLtivHJew=
 github.com/go-widgets/mvvm v0.2.0 h1:AYt7jRQ1DHM3om9c8YFyO91wZK97Bl1BsiqJTbtXybs=
