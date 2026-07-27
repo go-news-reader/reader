@@ -85,7 +85,7 @@ func TestMenuIconThreeBars(t *testing.T) {
 
 func TestDrawIconsPaint(t *testing.T) {
 	box := toolkit.Rect{X: 2, Y: 2, W: 40, H: 40}
-	for name, fn := range map[string]func(*painter.PixelPainter, toolkit.Rect, toolkit.RGBA, int){
+	for name, fn := range map[string]func(painter.Painter, toolkit.Rect, toolkit.RGBA, int){
 		"lock":    drawLockIcon,
 		"user":    drawUserIcon,
 		"sliders": drawSlidersIcon,

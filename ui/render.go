@@ -267,6 +267,7 @@ type sidebarKey struct {
 	subsRev int
 	profRev int
 	pendRev int
+	anim    int // animation frame, but only while a source is pending
 }
 type topbarKey struct {
 	w        int
@@ -282,7 +283,15 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	m := s.m
 	th := s.theme
 	h := s.H - m.topbarH
-	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev}
+	// The pending spinner animates: fold the animation frame into the cache key
+	// while any source is pending, so the sprite re-rasterises each tick and the
+	// spinner rotates. With nothing pending the frame is pinned to 0, so an idle
+	// sidebar keeps its cached sprite.
+	anim := 0
+	if s.PendingCount() > 0 {
+		anim = s.animFrame
+	}
+	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim}
 	if s.sidebarSpr != nil && s.sidebarKey == k {
 		return s.sidebarSpr
 	}
@@ -323,12 +332,14 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		if e.index >= 0 {
 			s.drawDot(p, m.pad, ly+m.sideItemH/2, sourceColor(s.Subs[e.index].Source))
 			m.side.draw(img, m.pad+rpxOf(s, 14), ty, label, col)
-			// A source that has not returned yet shows a small hollow "pending"
-			// ring at the row's right edge; it clears once its items or error land.
+			// A source that has not returned yet shows a small toolkit.Spinner at
+			// the row's right edge; it clears once its items or error land. The
+			// sprite cache keys on the animation frame while any source is pending
+			// (see sidebarSprite), so the spinner actually rotates.
 			if s.IsPendingSub(s.Subs[e.index].Source, s.Subs[e.index].Channel) {
-				d := rpxOf(s, 9)
+				d := rpxOf(s, 14)
 				rr := toolkit.Rect{X: m.sidebarW - m.pad - d, Y: ly + (m.sideItemH-d)/2, W: d, H: d}
-				p.StrokeRoundRect(rr, d/2, mute(th.OnSurface, th.SurfaceAlt), s.iconStroke())
+				s.spinnerAt(rr).Draw(p, th)
 			}
 		} else {
 			m.side.draw(img, m.pad, ty, label, col)
@@ -339,7 +350,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	// drawn (not a font glyph) so nothing renders as a tofu box.
 	navCol := mute(th.OnSurface, th.SurfaceAlt)
 	navTextX := m.pad + m.navIcon + rpxOf(s, 6)
-	drawNavRow := func(localY int, icon func(*painter.PixelPainter, toolkit.Rect, toolkit.RGBA, int), text string) {
+	drawNavRow := func(localY int, icon func(painter.Painter, toolkit.Rect, toolkit.RGBA, int), text string) {
 		p.FillRect(painter.Rect{X: 0, Y: localY - 1, W: m.sidebarW, H: 1}, th.Border)
 		ir := toolkit.Rect{X: m.pad, Y: localY + (m.sideItemH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
 		icon(p, ir, navCol, s.iconStroke())
@@ -404,10 +415,11 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 		textW -= m.thumbW + pad
 	}
 
-	// Source badge pill.
+	// Source badge pill (a toolkit.Badge coloured per source; the label is
+	// drawn on top in the reader's TrueType face for crisp small text).
 	label := sourceLabel(it.Source)
 	bw := m.badge.width(label) + pad
-	p.FillRoundRect(painter.Rect{X: x + pad, Y: y + pad, W: bw, H: m.badgeH}, m.badgeH/2, sourceColor(it.Source))
+	s.drawSourceBadge(p, toolkit.Rect{X: x + pad, Y: y + pad, W: bw, H: m.badgeH}, it.Source)
 	m.badge.draw(img, x+pad+pad/2, y+pad+(m.badgeH-m.badge.height)/2, label, rgb(0xFFFFFF))
 	// Channel next to the badge.
 	if it.Channel != "" {
@@ -429,18 +441,29 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 	_ = onAccent
 }
 
-// drawAuthBanner paints one clickable "needs sign-in" row: an accent pill with a
-// drawn padlock and "<Provider> needs sign-in — Open Accounts". onAccent is the
-// readable ink on the accent fill (theme Extra["OnAccent"] when present).
+// drawAuthBanner paints one clickable "needs sign-in" row with toolkit.Banner:
+// the widget fills the accent strip and draws the leading padlock through its
+// Icon slot; the "<Provider> needs sign-in — Open Accounts" message is drawn on
+// top in the reader's TrueType face. The whole row hit-tests as HitFixAuth (see
+// HitTest), so the visible "Open Accounts" text is the click target. onAccent is
+// the readable ink on the accent fill (theme Extra["OnAccent"] when present,
+// which is exactly what Banner's accentInk resolves to).
 func (s *Scene) drawAuthBanner(p *painter.PixelPainter, img *image.RGBA, ap AuthPrompt, x, y, w int, onAccent toolkit.RGBA) {
 	m := s.m
-	th := s.theme
-	p.FillRoundRect(painter.Rect{X: x, Y: y, W: w, H: m.bannerH}, rpxOf(s, 6), th.Accent)
-	iconR := toolkit.Rect{X: x + m.pad, Y: y + (m.bannerH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
-	drawLockIcon(p, iconR, onAccent, s.iconStroke())
-	lbl := sourceLabel(ap.Kind) + " needs sign-in — Open Accounts"
-	tx := iconR.X + iconR.W + m.pad/2
+	bn := &toolkit.Banner{
+		Revealed: true,
+		Icon: func(ip painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
+			drawLockIcon(ip, r, ink, s.iconStroke())
+		},
+	}
+	bn.SetBounds(toolkit.Rect{X: x, Y: y, W: w, H: m.bannerH})
+	bn.Draw(p, s.theme)
+
+	// Mirror the Banner's leading-icon geometry to place the label after it.
+	iconD := m.bannerH - 2*toolkit.BannerPadY
+	tx := x + toolkit.BannerPadX + iconD + toolkit.BannerPadX/2
 	ty := y + (m.bannerH-m.side.height)/2
+	lbl := sourceLabel(ap.Kind) + " needs sign-in — Open Accounts"
 	m.side.draw(img, tx, ty, truncate(m.side, lbl, x+w-tx-m.pad), onAccent)
 }
 
@@ -525,6 +548,16 @@ func (s *Scene) drawThumb(p *painter.PixelPainter, img *image.RGBA, it source.It
 func (s *Scene) drawDot(p *painter.PixelPainter, x, cy int, col toolkit.RGBA) {
 	d := rpxOf(s, 8)
 	p.FillRoundRect(painter.Rect{X: x, Y: cy - d/2, W: d, H: d}, d/2, col)
+}
+
+// drawSourceBadge paints a source-coloured pill at r via toolkit.Badge (using
+// its per-source Fill colour). Text is left empty so the widget renders the
+// rounded pill only; the caller draws the label on top in the reader's
+// TrueType face. Shared by the item card and the Usenet group header.
+func (s *Scene) drawSourceBadge(p *painter.PixelPainter, r toolkit.Rect, k source.Kind) {
+	b := &toolkit.Badge{Fill: sourceColor(k)}
+	b.SetBounds(r)
+	b.Draw(p, s.theme)
 }
 
 // HitTest maps a click at (x, y) to an action.

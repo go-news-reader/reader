@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/go-widgets/painter"
-	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/source"
 )
@@ -86,48 +85,45 @@ func TestAdvanceAnim(t *testing.T) {
 	}
 }
 
-func TestTriWave(t *testing.T) {
-	if got := triWave(0); got != 0 {
-		t.Fatalf("triWave(0) = %v, want 0", got)
+// TestSpinnerPhaseWraps proves the animation-frame -> [0,1) phase mapping
+// wraps a full period back to 0 and folds negative counters into range.
+func TestSpinnerPhaseWraps(t *testing.T) {
+	s := newScene()
+	s.animFrame = 0
+	if got := s.spinnerPhase(); got != 0 {
+		t.Fatalf("phase@0 = %v, want 0", got)
 	}
-	if got := triWave(sweepPeriod / 2); got != 1 {
-		t.Fatalf("triWave(half) = %v, want 1", got)
+	s.animFrame = spinnerPeriod / 2
+	if got := s.spinnerPhase(); got != 0.5 {
+		t.Fatalf("phase@half = %v, want 0.5", got)
 	}
-	if got := triWave(sweepPeriod); got != 0 {
-		t.Fatalf("triWave(period) = %v, want 0", got)
+	s.animFrame = spinnerPeriod // full revolution wraps back to 0
+	if got := s.spinnerPhase(); got != 0 {
+		t.Fatalf("phase@period = %v, want 0", got)
 	}
-	// Negative frame counters wrap into range (defensive branch).
-	if got := triWave(-sweepPeriod / 2); got != 1 {
-		t.Fatalf("triWave(-half) = %v, want 1", got)
-	}
-	// Past the half period the wave descends (the return-leg branch).
-	if got := triWave(sweepPeriod * 3 / 4); got <= 0 || got >= 1 {
-		t.Fatalf("triWave(3/4) = %v, want a descending mid value", got)
+	// A negative counter folds into [0,1) (the defensive p<0 branch).
+	s.animFrame = -spinnerPeriod / 2
+	if got := s.spinnerPhase(); got != 0.5 {
+		t.Fatalf("phase@-half = %v, want 0.5", got)
 	}
 }
 
-// TestLoadingDrawClamps exercises the narrow-width clamp branches in the
-// indicator drawing helpers by calling them directly with tiny widths, so a
-// short window never divides by zero or paints a segment wider than its track.
-func TestLoadingDrawClamps(t *testing.T) {
+// TestLoadingDrawDirect exercises the indicator helpers directly, including the
+// drawLoadStrip loadTotal==0 branch (which the guarded layout path never
+// reaches), so a degenerate total never divides by zero.
+func TestLoadingDrawDirect(t *testing.T) {
 	s := New(700, 460, ThemeFor(OSLinux, false))
 	s.layout()
-	base := toolkit.RGBA{A: 0xFF}
 
-	// drawSweep with a track narrower than 2*rad forces both segW clamps.
-	p, _ := sceneCanvas(s)
-	s.drawSweep(p, toolkit.Rect{X: 0, Y: 0, W: 4, H: 20}, base, s.theme.Accent)
+	// drawLoadingPlaceholder with a tiny feed width still centres its spinner.
+	p, img := sceneCanvas(s)
+	s.drawLoadingPlaceholder(p, img, 0, 60, mute(s.theme.OnSurface, s.theme.Surface))
 
-	// drawLoadingPlaceholder with a tiny feed width hits the min-track clamp and
-	// then the "wider than the feed" clamp.
+	// drawLoadStrip with loadTotal==0 skips the determinate fraction (the false
+	// branch of the `loadTotal > 0` guard) and must not divide by zero.
+	s.SetLoading(true, 0, 0)
 	p2, img2 := sceneCanvas(s)
-	s.drawLoadingPlaceholder(p2, img2, 0, 60, mute(s.theme.OnSurface, s.theme.Surface))
-
-	// drawLoadStrip with done=0 (no determinate fill) and a narrow width (segW
-	// clamp) covers the remaining strip branches.
-	s.SetLoading(true, 0, 3)
-	p3, img3 := sceneCanvas(s)
-	s.drawLoadStrip(p3, img3, 0, 0, 8, mute(s.theme.OnSurface, s.theme.Surface))
+	s.drawLoadStrip(p2, img2, 0, 0, 40, mute(s.theme.OnSurface, s.theme.Surface))
 }
 
 // TestLoadingPlaceholderAnimates renders the empty-feed loading placeholder at
@@ -140,10 +136,10 @@ func TestLoadingPlaceholderAnimates(t *testing.T) {
 	s.SetItems(nil) // empty feed
 	s.SetLoading(true, 0, 3)
 
-	// Frame A (animFrame 0).
+	// Frame A (animFrame 0: the spinner hand points +x).
 	a := renderPNG(t, s, "loading-empty-frame0")
-	// Advance to the opposite end of the sweep.
-	for i := 0; i < sweepPeriod/2; i++ {
+	// Advance half a revolution so the hand points the opposite way.
+	for i := 0; i < spinnerPeriod/2; i++ {
 		s.AdvanceAnim()
 	}
 	b := renderPNG(t, s, "loading-empty-frame1")
@@ -151,29 +147,33 @@ func TestLoadingPlaceholderAnimates(t *testing.T) {
 	if len(a) != len(b) {
 		t.Fatal("frame size mismatch")
 	}
-	// The indicator moved: the two frames must differ in a meaningful number of
-	// pixels (the accent segment shifted across the track).
-	if d := bufDiff(a, b); d < 100 {
-		t.Fatalf("animation frames barely differ (%d bytes) — indicator not moving", d)
+	// The indicator moved: the spinner hand swept to the opposite side, so the
+	// two frames differ across several pixels.
+	if d := bufDiff(a, b); d < 16 {
+		t.Fatalf("animation frames barely differ (%d bytes) — spinner not moving", d)
 	}
 
-	// The placeholder track region (just below the centre label) carries accent
-	// pixels while loading — i.e. the indicator actually renders.
+	// The spinner region (a square centred below the "Loading…" label) carries
+	// accent pixels while loading — i.e. the indicator actually renders.
 	s.layout()
 	m := s.m
 	accent := s.theme.Accent
-	rowY := s.H/2 - m.title.height + m.title.height + m.pad + rpxOf(s, 3)
 	feedX := m.sidebarW + m.pad
 	feedW := s.W - m.sidebarW - 2*m.pad
+	spD := rpxOf(s, 52)
+	spX := feedX + (feedW-spD)/2
+	spY := s.H/2 - m.title.height + m.title.height + m.pad
 	foundAccent := false
-	for x := feedX; x < feedX+feedW; x++ {
-		if p := px(a, s.W, x, rowY); p.R == accent.R && p.G == accent.G && p.B == accent.B {
-			foundAccent = true
-			break
+	for y := spY; y < spY+spD && !foundAccent; y++ {
+		for x := spX; x < spX+spD; x++ {
+			if p := px(a, s.W, x, y); p.R == accent.R && p.G == accent.G && p.B == accent.B {
+				foundAccent = true
+				break
+			}
 		}
 	}
 	if !foundAccent {
-		t.Fatalf("no accent pixel on the loading track at y=%d", rowY)
+		t.Fatal("no accent pixel in the loading spinner region")
 	}
 
 	// Loading off: the indicator disappears; two renders are pixel-identical and
@@ -224,20 +224,42 @@ func TestLoadStripAndPendingSidebar(t *testing.T) {
 		t.Fatal("no accent pixel in the progress strip band")
 	}
 
-	// The strip animates: advancing frames shifts the highlight.
+	// The strip carries a subtle spinner cue: advancing frames shifts the small
+	// trailing toolkit.Spinner. The determinate ProgressBar is the primary
+	// feedback, so the motion is intentionally light (a thin hand).
+	countAccent := func(buf []byte) int {
+		n := 0
+		for y := bandY0; y < bandY0+m.loadStripH; y++ {
+			for x := m.sidebarW + m.pad; x < s.W-m.pad; x++ {
+				if p := px(buf, s.W, x, y); p.R == accent.R && p.G == accent.G && p.B == accent.B {
+					n++
+				}
+			}
+		}
+		return n
+	}
 	before := make([]byte, len(strip))
 	copy(before, strip)
-	for i := 0; i < sweepPeriod/2; i++ {
+	for i := 0; i < spinnerPeriod/2; i++ {
 		s.AdvanceAnim()
 	}
 	after := make([]byte, s.W*s.H*4)
 	s.Draw(after)
-	if bufDiff(before, after) < 20 {
-		t.Fatal("progress strip did not animate between frames")
+	if bufDiff(before, after) < 8 {
+		t.Fatal("progress strip spinner did not animate between frames")
+	}
+
+	// The determinate ProgressBar fill grows with completed sources: a full 2/2
+	// paints more accent across the strip band than a half 1/2.
+	half := countAccent(strip)
+	s.SetLoading(true, 2, 2)
+	full := renderPNG(t, s, "loading-partial-full")
+	if fullN := countAccent(full); fullN <= half {
+		t.Fatalf("full ProgressBar (%d accent px) not wider than half (%d)", fullN, half)
 	}
 
 	// Pending sidebar marker: a scene with a pending source renders a different
-	// sidebar than one with none (the hollow ring is drawn).
+	// sidebar than one with none (the spinner is drawn).
 	sp1 := s.sidebarSprite()
 	s.SetLoading(false, 2, 2) // clears pending -> no ring, new sprite
 	s.layout()
