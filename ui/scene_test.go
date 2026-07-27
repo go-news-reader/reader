@@ -87,6 +87,11 @@ func TestSetters(t *testing.T) {
 	if s.W != 1000 || s.H != 700 {
 		t.Fatalf("resize = %dx%d", s.W, s.H)
 	}
+	rev := s.Rev()
+	s.SetStatus("aggregating…")
+	if s.Status != "aggregating…" || s.Rev() <= rev {
+		t.Fatalf("SetStatus = %q rev advanced=%v", s.Status, s.Rev() > rev)
+	}
 }
 
 func TestSearchEditing(t *testing.T) {

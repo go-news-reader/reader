@@ -294,6 +294,12 @@ func (s *Scene) SetAuthPrompts(p []AuthPrompt) { s.authPrompts = p; s.touch() }
 // AuthPrompts returns the current in-feed sign-in prompts.
 func (s *Scene) AuthPrompts() []AuthPrompt { return s.authPrompts }
 
+// SetStatus sets the status-line message and marks the scene dirty. The Status
+// field stays exported (the renderer reads it directly); this setter is the
+// write path the view-model binds to, so a status change triggers a redraw on
+// its own rather than relying on an adjacent SetItems/SetLoading to touch.
+func (s *Scene) SetStatus(v string) { s.Status = v; s.touch() }
+
 // SetLoading sets the live-loading feedback. active marks a refresh as in
 // progress (which drives the in-feed indicator and the per-frame animation);
 // done/total report how many sources have returned. Turning loading off clears
@@ -334,10 +340,13 @@ func subPendKey(k source.Kind, ch string) string { return string(k) + "\x00" + c
 // SetPendingSources marks every given subscription as still-loading, so the
 // sidebar rows for those sources show a pending marker until they return.
 func (s *Scene) SetPendingSources(subs []source.Subscription) {
-	s.pending = make(map[string]bool, len(subs))
+	// Build the new set fully before swapping it in, so a present/read on another
+	// goroutine sees either the old or the new set — never a half-populated map.
+	m := make(map[string]bool, len(subs))
 	for _, su := range subs {
-		s.pending[subPendKey(su.Source, su.Channel)] = true
+		m[subPendKey(su.Source, su.Channel)] = true
 	}
+	s.pending = m
 	s.pendRev++
 	s.touch()
 }
