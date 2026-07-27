@@ -420,7 +420,6 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 	label := sourceLabel(it.Source)
 	bw := m.badge.width(label) + pad
 	s.drawSourceBadge(p, toolkit.Rect{X: x + pad, Y: y + pad, W: bw, H: m.badgeH}, it.Source)
-	m.badge.draw(img, x+pad+pad/2, y+pad+(m.badgeH-m.badge.height)/2, label, rgb(0xFFFFFF))
 	// Channel next to the badge.
 	if it.Channel != "" {
 		m.meta.draw(img, x+pad+bw+pad/2, y+pad+(m.badgeH-m.meta.height)/2, it.Channel, muteS)
@@ -555,7 +554,8 @@ func (s *Scene) drawDot(p *painter.PixelPainter, x, cy int, col toolkit.RGBA) {
 // rounded pill only; the caller draws the label on top in the reader's
 // TrueType face. Shared by the item card and the Usenet group header.
 func (s *Scene) drawSourceBadge(p *painter.PixelPainter, r toolkit.Rect, k source.Kind) {
-	b := &toolkit.Badge{Fill: sourceColor(k)}
+	b := &toolkit.Badge{Text: sourceLabel(k), Fill: sourceColor(k), Ink: rgb(0xFFFFFF)}
+	b.Font = ttFont(true, rpxOf(s, 10)) // render its own AA label (no text-on-top)
 	b.SetBounds(r)
 	b.Draw(p, s.theme)
 }
