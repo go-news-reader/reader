@@ -8,6 +8,7 @@ require (
 	github.com/go-birdsite/twitter v0.1.0
 	github.com/go-browserhttp/browserhttp v0.1.0
 	github.com/go-hackernews/hackernews v0.1.0
+	github.com/go-iconoir/iconoir v0.1.0
 	github.com/go-images/images v0.0.0-20260702213524-ea366b42f216
 	github.com/go-instagram/instagram v0.1.0
 	github.com/go-lemmy/lemmy v0.1.0
@@ -22,7 +23,7 @@ require (
 	github.com/go-tiktok/tiktok v0.1.0
 	github.com/go-widgets/mvvm v0.2.0
 	github.com/go-widgets/painter v0.1.3
-	github.com/go-widgets/toolkit v0.34.0
+	github.com/go-widgets/toolkit v0.41.0
 	github.com/jezek/xgb v1.3.0
 	golang.org/x/image v0.44.0
 	golang.org/x/sys v0.46.0
@@ -32,6 +33,7 @@ require (
 	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.1.0 // indirect
+	github.com/go-opentype/opentype v0.1.0 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	golang.org/x/crypto v0.36.0 // indirect

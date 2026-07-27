@@ -270,6 +270,9 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	s := &Scene{W: w, H: h, theme: theme, Active: AllFilter, Scale: 1,
 		themeName: settings.ThemeSystem, newKind: source.Reddit,
 		searchEntry: toolkit.NewSearchEntry("")}
+	// The topbar SearchEntry paints its left prefix with a real Iconoir
+	// magnifier instead of the toolkit's "?" bitmap-font stand-in.
+	s.searchEntry.Icon = drawSearchIcon
 	s.clampSize()
 	return s
 }
