@@ -1,26 +1,29 @@
 package ui
 
-// Vector nav icons drawn straight with the painter instead of font glyphs.
+// Nav/chrome icons rendered from the real Iconoir set (github.com/go-iconoir/iconoir)
+// through its painter adapter, instead of hand-drawn painter primitives.
 //
 // The embedded Go fonts (goregular/gobold) carry none of the UI symbol glyphs
-// (☰ ⚙ 👤 📡 🔒 …), so drawing them as text produced empty "tofu" boxes. These
-// helpers redraw the chrome icons as thin line-drawings in the Iconoir style: a
-// 24-grid outline aesthetic, a uniform ~1.5px stroke scaled by the scene scale,
-// rounded corners/caps. The painter offers only rectangles and rounded
-// rectangles (no circle/line/arc), so every shape is built from bars and
-// rounded rects — a StrokeRoundRect with radius ≈ min(w,h)/2 reads as a circular
-// / pill outline.
+// (☰ ⚙ 👤 📡 🔒 …), so drawing them as text produced empty "tofu" boxes. Rather
+// than approximate the Iconoir aesthetic with bars and rounded rects, we now
+// blit the actual Iconoir 24-grid outline masks: iconoir.DrawIcon rasterizes the
+// mask at the target rect's size and composites the anti-aliased coverage via the
+// painter, so the icons are crisp and scale with the scene.
 //
 // Each helper fills the supplied box r; the caller centres r where the glyph
-// should sit and passes the stroke width from [Scene.iconStroke].
+// should sit. The stroke-width argument (lineW) is retained so the drawNavRow /
+// Banner.Icon callback signatures stay unchanged — the Iconoir masks carry their
+// own outline weight, so it is not otherwise needed.
 
 import (
+	"github.com/go-iconoir/iconoir"
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
 )
 
 // iconStroke returns the Iconoir ~1.5px outline stroke width for the current
-// scene scale (never below one device pixel).
+// scene scale (never below one device pixel). Kept for callers that thread a
+// stroke width through the icon-callback signature.
 func (s *Scene) iconStroke() int { return max(1, int(1.5*s.Scale+0.5)) }
 
 // iconInset centres a square glyph box of side frac/100 of min(r.W, r.H) inside
@@ -30,67 +33,51 @@ func iconInset(r toolkit.Rect, frac int) toolkit.Rect {
 	return toolkit.Rect{X: r.X + (r.W-d)/2, Y: r.Y + (r.H-d)/2, W: d, H: d}
 }
 
-// drawMenuIcon paints the burger/menu glyph: three evenly-spaced thin rounded
-// horizontal bars (Iconoir "Menu").
+// Cached Iconoir icon lookups. Get is cheap, but caching avoids a registry
+// lookup per frame. Names verified present in iconoir v0.1.0.
+var (
+	iconMenu     = iconoir.MustGet("menu")     // burger / open-sidebar
+	iconLock     = iconoir.MustGet("lock")     // auth-banner padlock
+	iconUser     = iconoir.MustGet("user")     // sidebar Accounts
+	iconList     = iconoir.MustGet("list")     // sidebar Network log
+	iconSettings = iconoir.MustGet("settings") // sidebar Settings (gear)
+	iconSearch   = iconoir.MustGet("search")   // topbar SearchEntry magnifier
+)
+
+// drawIcon blits a cached Iconoir mask into r, inset slightly so the glyph keeps
+// a little breathing room within its cell (matching the previous ~80% weight).
+func drawIcon(p painter.Painter, r toolkit.Rect, ic *iconoir.Icon, col toolkit.RGBA) {
+	iconoir.DrawIcon(p, iconInset(r, 88), ic, col)
+}
+
+// drawMenuIcon paints the Iconoir "menu" (burger) glyph: three horizontal bars.
 func drawMenuIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
-	b := iconInset(r, 80)
-	bar := func(y int) {
-		p.FillRoundRect(toolkit.Rect{X: b.X, Y: y, W: b.W, H: lineW}, lineW/2, col)
-	}
-	bar(b.Y)                 // top
-	bar(b.Y + (b.H-lineW)/2) // middle
-	bar(b.Y + b.H - lineW)   // bottom
+	drawIcon(p, r, iconMenu, col)
 }
 
-// drawLockIcon paints a padlock: an outlined body (lower ~60%) with a narrower
-// outlined shackle loop above whose bottom edge meets the body's top edge.
+// drawLockIcon paints the Iconoir "lock" (padlock) glyph.
 func drawLockIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
-	b := iconInset(r, 78)
-	bodyY := b.Y + 2*b.H/5
-	body := toolkit.Rect{X: b.X, Y: bodyY, W: b.W, H: b.Y + b.H - bodyY}
-	p.StrokeRoundRect(body, min(body.W, body.H)/4, col, lineW)
-	shW := b.W * 3 / 5
-	sh := toolkit.Rect{X: b.X + (b.W-shW)/2, Y: b.Y, W: shW, H: bodyY - b.Y + lineW}
-	p.StrokeRoundRect(sh, shW/2, col, lineW)
+	drawIcon(p, r, iconLock, col)
 }
 
-// drawUserIcon paints an account/person glyph: an outlined circular head above a
-// wide top-rounded outlined shoulders shape (Iconoir "User").
+// drawUserIcon paints the Iconoir "user" (account/person) glyph.
 func drawUserIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
-	b := iconInset(r, 78)
-	headD := b.W * 2 / 5
-	head := toolkit.Rect{X: b.X + (b.W-headD)/2, Y: b.Y, W: headD, H: headD}
-	p.StrokeRoundRect(head, headD/2, col, lineW)
-	shW := b.W * 4 / 5
-	shY := head.Y + headD + lineW
-	sh := toolkit.Rect{X: b.X + (b.W-shW)/2, Y: shY, W: shW, H: b.Y + b.H - shY}
-	p.StrokeRoundRect(sh, min(sh.W, sh.H)/2, col, lineW)
+	drawIcon(p, r, iconUser, col)
 }
 
-// drawSlidersIcon paints a settings/sliders glyph: three thin horizontal rules,
-// each with a small outlined knob square at a staggered x (Iconoir "Settings").
+// drawSlidersIcon paints the Iconoir "settings" (gear) glyph.
 func drawSlidersIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
-	b := iconInset(r, 80)
-	knob := max(lineW*3, b.H/5)
-	const rows = 3
-	for i := 0; i < rows; i++ {
-		y := b.Y + i*(b.H-lineW)/(rows-1)
-		p.FillRoundRect(toolkit.Rect{X: b.X, Y: y, W: b.W, H: lineW}, lineW/2, col)
-		kx := b.X + (b.W-knob)*(i+1)/(rows+1)
-		p.StrokeRoundRect(toolkit.Rect{X: kx, Y: y + lineW/2 - knob/2, W: knob, H: knob}, knob/2, col, lineW)
-	}
+	drawIcon(p, r, iconSettings, col)
 }
 
-// drawListIcon paints a network-log/list glyph: three stacked thin rules, each
-// preceded by a small bullet dot (Iconoir "List").
+// drawListIcon paints the Iconoir "list" (network-log) glyph.
 func drawListIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
-	b := iconInset(r, 80)
-	dot := lineW * 2
-	gap := dot + lineW*2
-	const rows = 3
-	for i := 0; i < rows; i++ {
-		y := b.Y + i*(b.H-lineW)/(rows-1)
-		p.FillRoundRect(toolkit.Rect{X: b.X, Y: y + lineW/2 - dot/2, W: dot, H: dot}, dot/2, col)
-		p.FillRoundRect(toolkit.Rect{X: b.X + gap, Y: y, W: b.W - gap, H: lineW}, lineW/2, col)
-	}
+	drawIcon(p, r, iconList, col)
+}
+
+// drawSearchIcon paints the Iconoir "search" (magnifier) glyph. Wired into the
+// topbar toolkit.SearchEntry's Icon slot so its left prefix is a real magnifier
+// rather than the "?" bitmap-font stand-in.
+func drawSearchIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
+	drawIcon(p, r, iconSearch, ink)
 }

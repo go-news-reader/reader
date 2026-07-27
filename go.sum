@@ -14,6 +14,8 @@ github.com/go-erasure/reedsolomon v0.1.0 h1:Am/4oo3A67ZXnoP7UuPGY4XFAfFzVpu8jv/3
 github.com/go-erasure/reedsolomon v0.1.0/go.mod h1:qlHa49M0PJMk0JGBGYLyr2Gf8XVmbK+L/iThyhRJbp0=
 github.com/go-hackernews/hackernews v0.1.0 h1:4d9f4KmqfEnd8WTRyx2ee5jnA4JJz7QHZqA7q3nuGCY=
 github.com/go-hackernews/hackernews v0.1.0/go.mod h1:qqjIppBfii2cO163KCgdBX1RjlcEfp4MROYs4SZjay0=
+github.com/go-iconoir/iconoir v0.1.0 h1:Xw9XAVZmAUxGexpsNGCB6SeoUaUDh5FQQerMEbv7qgU=
+github.com/go-iconoir/iconoir v0.1.0/go.mod h1:Ta5R8lWToo/vW/l87Gt988eoiWF08Jdr2yakdzYWKEs=
 github.com/go-images/images v0.0.0-20260702213524-ea366b42f216 h1:JZc6nR7Zd9lidDSwVgt8NuzFt7M8lxdHsUIh1QYDJdA=
 github.com/go-images/images v0.0.0-20260702213524-ea366b42f216/go.mod h1:nWwQCf77xG1GhaSD3rvlp7FNjjDhz47vrztyeBvIerk=
 github.com/go-instagram/instagram v0.1.0 h1:asUP8y7YgAMYAq0m2dQ4VIFNpPnfpXk+p2Qjqj7jRbQ=
@@ -32,6 +34,8 @@ github.com/go-newsgroups/par2 v0.1.0 h1:XQq/7uoRyj/P7gIvxX4w924ZU3E7yRGidH6j3POd
 github.com/go-newsgroups/par2 v0.1.0/go.mod h1:mn7efd724iWYCx/s9jql+Z8m6cov4vn0s8luEFxOj18=
 github.com/go-newsgroups/yenc v0.1.0 h1:oS4d9BJBuQfznqgyHrsr5ZNFZ+s7/SkfUl7ALVo5ZIM=
 github.com/go-newsgroups/yenc v0.1.0/go.mod h1:+BWqb2iT8+aVnLKzayWJex6adUNI276vH7iWizcR3P4=
+github.com/go-opentype/opentype v0.1.0 h1:ok3QZb2t1xjIOhDaqtvOhZ/rCvY62ng927ckygfrbQg=
+github.com/go-opentype/opentype v0.1.0/go.mod h1:AOixevJf7XQaH7+WG+OMIOZEbYPXfMqklVk26Y6YTUU=
 github.com/go-reddit/reddit v0.1.0 h1:/b6+4BKEBSnSIVAuWEYaLU4d01tjfcsu+LQea3OFSw4=
 github.com/go-reddit/reddit v0.1.0/go.mod h1:/zGZliQ8lN+iGyVAiGzeGGkY+rQBZNlF4JwAnRaYEGI=
 github.com/go-syndication/feed v0.1.1 h1:nB//8Cp9K3HQvZBqN1jsir8jVqmnxU5SPk14MYwmlvw=
@@ -42,8 +46,8 @@ github.com/go-widgets/mvvm v0.2.0 h1:AYt7jRQ1DHM3om9c8YFyO91wZK97Bl1BsiqJTbtXybs
 github.com/go-widgets/mvvm v0.2.0/go.mod h1:Bw5fydhyHD28moQy08F5h8Tetn2SdG0XvlZsmt02FSk=
 github.com/go-widgets/painter v0.1.3 h1:50oeDH76vMUlxQ8117wMFf5MGuAJlq5n2JeVS+QlpnM=
 github.com/go-widgets/painter v0.1.3/go.mod h1:ccmlkH2UmcXQh6rt9Fu2eDt2RI0B5V0POaGmUKeW0EQ=
-github.com/go-widgets/toolkit v0.34.0 h1:evcsqLx/+ocSdpzlavDEIIpedcg9UvTlDdoIqE2DAnQ=
-github.com/go-widgets/toolkit v0.34.0/go.mod h1:oTxAtvoIEUAl6No63jtFiTJhIkN/t13/U2VnCP4zKJw=
+github.com/go-widgets/toolkit v0.41.0 h1:TgLgPoHVYZTeqdqEHixDFiggw6TDY7caPoZ55lJKKlE=
+github.com/go-widgets/toolkit v0.41.0/go.mod h1:a1AJKQhbhBswu7L5mnTRE4OfCu2Tf5OKkoKCeFrteO0=
 github.com/jezek/xgb v1.3.0 h1:Wa1pn4GVtcmNVAVB6/pnQVJ7xPFZVZ/W1Tc27msDhgI=
 github.com/jezek/xgb v1.3.0/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
 github.com/klauspost/compress v1.17.4 h1:Ej5ixsIri7BrIjBkRZLTo6ghwrEtHFk7ijlczPW4fZ4=
