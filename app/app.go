@@ -19,6 +19,7 @@ import (
 	"github.com/go-news-reader/reader/feeds"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
+	"github.com/go-news-reader/reader/internal/viewmodel"
 	"github.com/go-news-reader/reader/provider/usenet"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
@@ -33,6 +34,12 @@ type App struct {
 	set   *settings.Settings
 	subs  []source.Subscription // == the active profile's subscriptions
 	scene *ui.Scene
+
+	// vm is the MVVM view-model: the single source of truth for the core state
+	// flow (feed items, loading/pending, search, view mode, status, auth prompts).
+	// The app drives it; bindScene subscribes the scene to it, so data flows
+	// app logic → view-model → subscription → scene.
+	vm *viewmodel.ViewModel
 
 	// Live-rebuild inputs (window path). recorder is the shared HTTP recorder the
 	// registry logs into; baseOpts is the flag-derived feeds config; newRegistry
@@ -139,8 +146,22 @@ func New(cfg Config) *App {
 	}
 	a.refresh = func() { go a.Refresh(context.Background()) }
 	a.reconstruct = func(base string) { go a.doReconstruct(context.Background(), base) }
+
+	// The view-model is the single source of truth for the core state flow; the
+	// commands' actions late-bind through a's fields (so a test's SetRefreshHook
+	// still applies). bindScene routes every observable change into the scene.
+	a.vm = viewmodel.New(viewmodel.Actions{
+		Refresh:       func() { a.refresh() },
+		ToggleSidebar: func() { a.scene.ToggleSidebar() },
+	})
+	bindScene(a.scene, a.vm)
 	return a
 }
+
+// VM exposes the view-model so front-ends can execute its commands and read its
+// observables. The core state flow (items, loading, search, mode, status, auth
+// prompts) is driven through it and reflected onto the scene by bindScene.
+func (a *App) VM() *viewmodel.ViewModel { return a.vm }
 
 // SetRefreshHook overrides the asynchronous re-aggregate trigger (tests use a
 // synchronous variant for determinism).
@@ -298,9 +319,9 @@ func (a *App) Scene() *ui.Scene { return a.scene }
 // non-auth failure is shown in the status line.
 func (a *App) Refresh(ctx context.Context) []error {
 	items, errs := a.reg.Aggregate(ctx, a.subs)
-	a.scene.SetItems(items)
-	a.scene.SetAuthPrompts(authPrompts(errs))
-	a.scene.Status = firstNonAuthError(errs)
+	a.vm.SetItems(items)
+	a.vm.SetAuthPrompts(authPrompts(errs))
+	a.vm.SetStatus(firstNonAuthError(errs))
 	return errs
 }
 
@@ -315,22 +336,22 @@ func (a *App) Refresh(ctx context.Context) []error {
 // [Refresh]. It returns the collected failures (subscription order).
 func (a *App) RefreshStreaming(ctx context.Context) []error {
 	subs := a.subs
-	a.scene.SetPendingSources(subs)
-	a.scene.SetLoading(true, 0, len(subs))
+	a.vm.SetPending(subs)
+	a.vm.SetLoad(true, 0, len(subs))
 
 	byIndex := make([]error, len(subs))
 	a.reg.AggregateStream(ctx, subs, func(u source.StreamUpdate) {
-		a.scene.SetItems(u.Items)
+		a.vm.SetItems(u.Items)
 		if u.Err != nil && u.Index >= 0 {
 			byIndex[u.Index] = u.Err
 		}
 		if u.Index >= 0 {
-			a.scene.ClearPendingSource(u.Sub.Source, u.Sub.Channel)
+			a.vm.ClearPending(u.Sub.Source, u.Sub.Channel)
 		}
 		errs := compactErrs(byIndex)
-		a.scene.SetAuthPrompts(authPrompts(errs))
-		a.scene.Status = firstNonAuthError(errs)
-		a.scene.SetLoading(u.Done < u.Total, u.Done, u.Total)
+		a.vm.SetAuthPrompts(authPrompts(errs))
+		a.vm.SetStatus(firstNonAuthError(errs))
+		a.vm.SetLoad(u.Done < u.Total, u.Done, u.Total)
 	})
 	return compactErrs(byIndex)
 }
@@ -424,42 +445,42 @@ func (a *App) ReconstructGroup(base string) { a.reconstruct(base) }
 func (a *App) doReconstruct(ctx context.Context, base string) {
 	parts, ok := a.scene.GroupParts(base)
 	if !ok {
-		a.scene.Status = "Nothing to reconstruct for " + base
+		a.vm.SetStatus("Nothing to reconstruct for " + base)
 		return
 	}
 	prov, ok := a.reg.Get(source.Usenet)
 	if !ok {
-		a.scene.Status = "Usenet provider not configured"
+		a.vm.SetStatus("Usenet provider not configured")
 		return
 	}
 	rc, ok := prov.(reconstructor)
 	if !ok {
-		a.scene.Status = "Usenet provider cannot reconstruct"
+		a.vm.SetStatus("Usenet provider cannot reconstruct")
 		return
 	}
 
 	total := len(parts)
-	a.scene.SetLoading(true, 0, total)
-	a.scene.Status = fmt.Sprintf("Reconstructing %s… (0/%d parts)", base, total)
+	a.vm.SetLoad(true, 0, total)
+	a.vm.SetStatus(fmt.Sprintf("Reconstructing %s… (0/%d parts)", base, total))
 
 	req := usenet.ReconstructRequest{
 		Parts: toReconstructParts(parts),
 		OnProgress: func(done, tot int) {
-			a.scene.SetLoading(true, done, tot)
-			a.scene.Status = fmt.Sprintf("Reconstructing %s… (%d/%d parts)", base, done, tot)
+			a.vm.SetLoad(true, done, tot)
+			a.vm.SetStatus(fmt.Sprintf("Reconstructing %s… (%d/%d parts)", base, done, tot))
 		},
 	}
 	files, vr, err := rc.Reconstruct(ctx, req)
-	a.scene.SetLoading(false, total, total)
+	a.vm.SetLoad(false, total, total)
 	if err != nil {
-		a.scene.Status = fmt.Sprintf("Reconstruct %s failed: %v", base, err)
+		a.vm.SetStatus(fmt.Sprintf("Reconstruct %s failed: %v", base, err))
 		return
 	}
 	if err := a.saveFiles(files); err != nil {
-		a.scene.Status = fmt.Sprintf("Reconstruct %s: save failed: %v", base, err)
+		a.vm.SetStatus(fmt.Sprintf("Reconstruct %s: save failed: %v", base, err))
 		return
 	}
-	a.scene.Status = fmt.Sprintf("Saved %s (%d files, %s)", base, len(files), verifyWord(vr))
+	a.vm.SetStatus(fmt.Sprintf("Saved %s (%d files, %s)", base, len(files), verifyWord(vr)))
 }
 
 // toReconstructParts converts the ui-level part list to the provider request.
