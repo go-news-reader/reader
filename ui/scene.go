@@ -130,6 +130,20 @@ type Scene struct {
 	ScrollY     int
 	Scale       float64 // display scale (zoom × devicePixelRatio); 0 => 1
 
+	// Live-loading feedback (streaming aggregation). loading is set while a
+	// refresh is in progress; loadDone/loadTotal track how many sources have
+	// returned. pending holds the sources whose fetch is still outstanding, keyed
+	// by source+channel, so the sidebar can mark those rows. animFrame advances
+	// once per presented frame WHILE loading so the indeterminate indicator moves;
+	// it is otherwise frozen, so an idle scene never re-damages (see Animating).
+	loading             bool
+	loadDone, loadTotal int
+	pending             map[string]bool
+	pendRev             int
+	animFrame           int
+	loadStripTop        int  // feed-content Y of the progress strip (loading + items)
+	showStrip           bool // whether the top-of-feed progress strip is laid out
+
 	// Profiles are the named sidebar tabs; the active one supplies Subs.
 	Profiles   []settings.Profile
 	activeProf int    // active profile index (drives the sidebar + feed)
@@ -272,6 +286,71 @@ func (s *Scene) SetAuthPrompts(p []AuthPrompt) { s.authPrompts = p; s.touch() }
 
 // AuthPrompts returns the current in-feed sign-in prompts.
 func (s *Scene) AuthPrompts() []AuthPrompt { return s.authPrompts }
+
+// SetLoading sets the live-loading feedback. active marks a refresh as in
+// progress (which drives the in-feed indicator and the per-frame animation);
+// done/total report how many sources have returned. Turning loading off clears
+// the pending-source markers so nothing is left dimmed.
+func (s *Scene) SetLoading(active bool, done, total int) {
+	s.loading = active
+	s.loadDone, s.loadTotal = done, total
+	if !active && s.pending != nil {
+		s.pending = nil
+		s.pendRev++
+	}
+	s.touch()
+}
+
+// Loading reports whether a refresh is in progress.
+func (s *Scene) Loading() bool { return s.loading }
+
+// LoadingProgress returns how many sources have returned and the total.
+func (s *Scene) LoadingProgress() (done, total int) { return s.loadDone, s.loadTotal }
+
+// Animating reports whether the scene wants a fresh frame every tick (the
+// loading indicator is moving). When false the scene is idle and a
+// damage-gated present loop never re-draws — so animation costs nothing when
+// nothing is loading.
+func (s *Scene) Animating() bool { return s.loading }
+
+// AdvanceAnim advances the animation clock by one frame and marks the scene
+// dirty. A present loop calls it once per tick while [Animating] is true; the
+// indeterminate indicator derives its position from the frame counter.
+func (s *Scene) AdvanceAnim() { s.animFrame++; s.touch() }
+
+// AnimFrame returns the current animation frame counter (for tests).
+func (s *Scene) AnimFrame() int { return s.animFrame }
+
+// subPendKey keys the pending set by source kind + channel.
+func subPendKey(k source.Kind, ch string) string { return string(k) + "\x00" + ch }
+
+// SetPendingSources marks every given subscription as still-loading, so the
+// sidebar rows for those sources show a pending marker until they return.
+func (s *Scene) SetPendingSources(subs []source.Subscription) {
+	s.pending = make(map[string]bool, len(subs))
+	for _, su := range subs {
+		s.pending[subPendKey(su.Source, su.Channel)] = true
+	}
+	s.pendRev++
+	s.touch()
+}
+
+// ClearPendingSource clears the pending marker for one source+channel once it
+// has returned (with items or an error).
+func (s *Scene) ClearPendingSource(k source.Kind, ch string) {
+	key := subPendKey(k, ch)
+	if s.pending != nil && s.pending[key] {
+		delete(s.pending, key)
+		s.pendRev++
+		s.touch()
+	}
+}
+
+// IsPendingSub reports whether the given source+channel is still loading.
+func (s *Scene) IsPendingSub(k source.Kind, ch string) bool { return s.pending[subPendKey(k, ch)] }
+
+// PendingCount returns how many sources are still loading.
+func (s *Scene) PendingCount() int { return len(s.pending) }
 
 // SetSubs replaces the sidebar subscriptions.
 func (s *Scene) SetSubs(subs []Subscription) { s.Subs = subs; s.subsRev++; s.touch() }

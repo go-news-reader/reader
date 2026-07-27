@@ -245,10 +245,12 @@ func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// refreshFeed aggregates the subscriptions into a and reports per-source
-// failures. Run in a goroutine by emitWindow so the window appears immediately.
+// refreshFeed aggregates the subscriptions into a incrementally and reports
+// per-source failures. Run in a goroutine by emitWindow so the window appears
+// immediately, shows a live loading indicator, and fills in progressively as
+// each source returns.
 func refreshFeed(a *app.App, stderr io.Writer) {
-	for _, e := range a.Refresh(context.Background()) {
+	for _, e := range a.RefreshStreaming(context.Background()) {
 		fmt.Fprintln(stderr, "warning:", e)
 	}
 }

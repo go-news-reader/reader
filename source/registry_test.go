@@ -151,3 +151,129 @@ func TestAggregateEmpty(t *testing.T) {
 		t.Fatalf("Aggregate(nil) = %v, %v", items, errs)
 	}
 }
+
+// gateProvider blocks in Feed until its release channel is closed, so a test can
+// deterministically control the order in which subscriptions complete.
+type gateProvider struct {
+	kind    Kind
+	items   []Item
+	err     error
+	release chan struct{}
+}
+
+func (g *gateProvider) Kind() Kind { return g.kind }
+func (g *gateProvider) Feed(_ context.Context, _ Query) (Result, error) {
+	<-g.release
+	if g.err != nil {
+		return Result{}, g.err
+	}
+	return Result{Items: g.items}, nil
+}
+
+func TestAggregateStreamIncremental(t *testing.T) {
+	r := NewRegistry()
+	relR := make(chan struct{})
+	relM := make(chan struct{})
+	r.Register(&gateProvider{kind: Reddit, items: []Item{{ID: "r", Source: Reddit, Created: 100}}, release: relR})
+	r.Register(&gateProvider{kind: Mastodon, items: []Item{{ID: "m", Source: Mastodon, Created: 300}}, release: relM})
+
+	subs := []Subscription{{Source: Reddit}, {Source: Mastodon}}
+
+	type snap struct {
+		items       []string
+		done, total int
+		index       int
+		src         Kind
+		err         bool
+	}
+	updates := make(chan snap, 4)
+	done := make(chan struct{})
+	go func() {
+		r.AggregateStream(context.Background(), subs, func(u StreamUpdate) {
+			ids := make([]string, len(u.Items))
+			for i, it := range u.Items {
+				ids[i] = it.ID
+			}
+			updates <- snap{ids, u.Done, u.Total, u.Index, u.Sub.Source, u.Err != nil}
+		})
+		close(done)
+	}()
+
+	// Release Reddit first: the first update carries only Reddit's item.
+	close(relR)
+	u1 := <-updates
+	if u1.done != 1 || u1.total != 2 || u1.index != 0 || u1.src != Reddit || u1.err {
+		t.Fatalf("update 1 = %+v", u1)
+	}
+	if len(u1.items) != 1 || u1.items[0] != "r" {
+		t.Fatalf("update 1 items = %v, want [r]", u1.items)
+	}
+	// Then Mastodon: the second update carries the full merged+sorted feed
+	// (Mastodon@300 newest, then Reddit@100).
+	close(relM)
+	u2 := <-updates
+	if u2.done != 2 || u2.total != 2 || u2.index != 1 || u2.src != Mastodon {
+		t.Fatalf("update 2 = %+v", u2)
+	}
+	if len(u2.items) != 2 || u2.items[0] != "m" || u2.items[1] != "r" {
+		t.Fatalf("update 2 items = %v, want [m r]", u2.items)
+	}
+	<-done
+}
+
+func TestAggregateStreamErrorSub(t *testing.T) {
+	r := NewRegistry()
+	boom := errors.New("boom")
+	r.Register(&fakeProvider{kind: Reddit, items: []Item{{ID: "ok", Created: 1}}})
+	r.Register(&fakeProvider{kind: Instagram, err: boom})
+
+	subs := []Subscription{{Source: Reddit}, {Source: Instagram}}
+	var lastItems []Item
+	var sawErr error
+	sawErrIdx := -1
+	final := 0
+	r.AggregateStream(context.Background(), subs, func(u StreamUpdate) {
+		if u.Err != nil {
+			sawErr = u.Err
+			sawErrIdx = u.Index
+		}
+		if u.Done >= u.Total {
+			lastItems = u.Items
+			final++
+		}
+	})
+	if final != 1 {
+		t.Fatalf("terminal updates = %d, want 1", final)
+	}
+	// The erroring sub contributes no items; only the good one survives.
+	if len(lastItems) != 1 || lastItems[0].ID != "ok" {
+		t.Fatalf("final items = %+v", lastItems)
+	}
+	// The error is a *SubscriptionError wrapping boom, tagged with its sub index.
+	var se *SubscriptionError
+	if !errors.As(sawErr, &se) || !errors.Is(sawErr, boom) {
+		t.Fatalf("err = %v, want wrapped boom", sawErr)
+	}
+	if sawErrIdx != 1 {
+		t.Fatalf("err index = %d, want 1 (Instagram)", sawErrIdx)
+	}
+}
+
+func TestAggregateStreamEmptyTerminal(t *testing.T) {
+	r := NewRegistry()
+	got := 0
+	var u StreamUpdate
+	r.AggregateStream(context.Background(), nil, func(up StreamUpdate) {
+		got++
+		u = up
+	})
+	if got != 1 {
+		t.Fatalf("updates = %d, want exactly 1 terminal update", got)
+	}
+	if u.Done != 0 || u.Total != 0 || u.Index != -1 {
+		t.Fatalf("terminal update = %+v, want done/total 0 and index -1", u)
+	}
+	if u.Items == nil || len(u.Items) != 0 {
+		t.Fatalf("terminal items = %v, want non-nil empty", u.Items)
+	}
+}
