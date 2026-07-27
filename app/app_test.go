@@ -121,6 +121,125 @@ func TestRefreshError(t *testing.T) {
 	}
 }
 
+// snapProv records the scene's loading state at the moment its Feed is called,
+// which (because RefreshStreaming sets loading/pending before launching the
+// fetch goroutines) proves the indicator is live while the network is in flight.
+type snapProv struct {
+	kind       source.Kind
+	items      []source.Item
+	scene      *ui.Scene
+	gotLoading bool
+	gotPending int
+}
+
+func (p *snapProv) Kind() source.Kind { return p.kind }
+func (p *snapProv) Feed(context.Context, source.Query) (source.Result, error) {
+	p.gotLoading = p.scene.Loading()
+	p.gotPending = p.scene.PendingCount()
+	return source.Result{Items: p.items}, nil
+}
+
+func TestRefreshStreaming(t *testing.T) {
+	a := New(Config{
+		Subscriptions: []source.Subscription{
+			{Source: source.Reddit, Channel: "golang"},
+			{Source: source.Mastodon},
+		},
+		Width: 400, Height: 300,
+	})
+	spy := &snapProv{kind: source.Reddit, items: []source.Item{{ID: "r", Source: source.Reddit, Created: 5}}, scene: a.Scene()}
+	reg := newReg(spy, fakeProv{kind: source.Mastodon, err: source.NeedsAuth(source.Mastodon, "token required")})
+	a.reg = reg
+
+	errs := a.RefreshStreaming(context.Background())
+
+	// During the fetch the scene reported loading with sources still pending. (The
+	// exact count is timing-dependent — a concurrent source may already have
+	// cleared its own marker — so we only require the indicator was live.)
+	if !spy.gotLoading || spy.gotPending < 1 {
+		t.Fatalf("mid-stream loading=%v pending=%d, want loading with pending>=1", spy.gotLoading, spy.gotPending)
+	}
+	// After the last source the indicator is cleared.
+	if a.Scene().Loading() || a.Scene().PendingCount() != 0 {
+		t.Fatalf("post-stream loading=%v pending=%d, want false/0", a.Scene().Loading(), a.Scene().PendingCount())
+	}
+	if d, tot := a.Scene().LoadingProgress(); d != 2 || tot != 2 {
+		t.Fatalf("final progress = %d/%d, want 2/2", d, tot)
+	}
+	// The good source's item is loaded; the auth failure becomes a prompt.
+	if len(a.Items()) != 1 || a.Items()[0].ID != "r" {
+		t.Fatalf("items = %+v", a.Items())
+	}
+	if p := a.Scene().AuthPrompts(); len(p) != 1 || p[0].Kind != source.Mastodon {
+		t.Fatalf("prompts = %+v", p)
+	}
+	if a.Scene().Status != "" {
+		t.Fatalf("status = %q, want empty (only auth failures)", a.Scene().Status)
+	}
+	// The auth failure rides back in the returned errors (compactErrs path).
+	if len(errs) != 1 {
+		t.Fatalf("errs = %v, want 1", errs)
+	}
+}
+
+func TestRefreshStreamingNonAuthErrorInStatus(t *testing.T) {
+	a := New(Config{Subscriptions: []source.Subscription{{Source: source.Reddit}}, Width: 400, Height: 300})
+	a.reg = newReg(fakeProv{kind: source.Reddit, err: errors.New("upstream 500")})
+	errs := a.RefreshStreaming(context.Background())
+	if len(errs) != 1 {
+		t.Fatalf("errs = %v, want 1", errs)
+	}
+	if a.Scene().Status == "" {
+		t.Fatal("non-auth failure should land in the status line")
+	}
+	if a.Scene().Loading() {
+		t.Fatal("loading not cleared after completion")
+	}
+}
+
+func TestRefreshStreamingNoSubs(t *testing.T) {
+	// No subscriptions: the terminal (index -1) update still clears loading and
+	// leaves no pending markers, with no errors.
+	a := New(Config{Registry: newReg(), Width: 400, Height: 300})
+	errs := a.RefreshStreaming(context.Background())
+	if len(errs) != 0 {
+		t.Fatalf("errs = %v, want none", errs)
+	}
+	if a.Scene().Loading() || a.Scene().PendingCount() != 0 {
+		t.Fatalf("loading=%v pending=%d, want false/0", a.Scene().Loading(), a.Scene().PendingCount())
+	}
+	if len(a.Items()) != 0 {
+		t.Fatalf("items = %+v, want none", a.Items())
+	}
+}
+
+func TestFrameAnimatesWhileLoading(t *testing.T) {
+	a := New(Config{Registry: newReg(), Width: 360, Height: 240})
+	// Idle: a second Frame with no state change does not redraw.
+	a.Frame()
+	if _, changed := a.Frame(); changed {
+		t.Fatal("idle scene redrew without damage")
+	}
+	// Loading: every Frame advances the animation clock and yields a fresh frame.
+	a.Scene().SetLoading(true, 0, 2)
+	f0 := a.Scene().AnimFrame()
+	if _, changed := a.Frame(); !changed {
+		t.Fatal("loading scene did not produce an animated frame")
+	}
+	if _, changed := a.Frame(); !changed {
+		t.Fatal("loading scene stopped animating on the second frame")
+	}
+	if a.Scene().AnimFrame() <= f0 {
+		t.Fatalf("anim frame did not advance: %d -> %d", f0, a.Scene().AnimFrame())
+	}
+	// Loading off: animation stops, idle gate restored.
+	a.Scene().SetLoading(false, 2, 2)
+	a.Frame() // consume the damage from SetLoading
+	if _, changed := a.Frame(); changed {
+		t.Fatal("scene kept animating after loading cleared")
+	}
+}
+
 func TestRenderPNG(t *testing.T) {
 	a := New(Config{Registry: newReg(), Width: 360, Height: 240})
 	data, err := a.RenderPNG()

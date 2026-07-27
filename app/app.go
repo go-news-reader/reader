@@ -247,9 +247,15 @@ func (a *App) SetSystemAppearance(dark bool, accent color.RGBA, hasAccent bool, 
 }
 
 // Frame returns the current framebuffer, redrawing into the back buffer only
-// when the scene's damage sequence has advanced since the last call.
+// when the scene's damage sequence has advanced since the last call. While the
+// scene is animating (a refresh is streaming in), it advances the animation
+// clock first so every present tick yields a fresh frame; when nothing is
+// loading the scene is idle and the damage gate skips the redraw entirely.
 func (a *App) Frame() (buf []byte, changed bool) {
 	s := a.scene
+	if s.Animating() {
+		s.AdvanceAnim()
+	}
 	size := s.W * s.H * 4
 	if len(a.bufs[0]) != size {
 		a.bufs[0] = make([]byte, size)
@@ -280,6 +286,49 @@ func (a *App) Refresh(ctx context.Context) []error {
 	a.scene.SetAuthPrompts(authPrompts(errs))
 	a.scene.Status = firstNonAuthError(errs)
 	return errs
+}
+
+// RefreshStreaming aggregates the active profile's subscriptions incrementally,
+// updating the scene as each source returns instead of waiting for the slowest.
+// It marks every source pending and sets the scene loading, then on each
+// completed source refreshes the merged feed, clears that source's pending
+// marker, updates the progress counters, and re-derives the auth prompts and
+// status line (in stable subscription order, independent of completion order).
+// When the last source lands it turns loading off. The window front-end uses it
+// so the feed fills in live with a moving indicator; the CLI keeps the blocking
+// [Refresh]. It returns the collected failures (subscription order).
+func (a *App) RefreshStreaming(ctx context.Context) []error {
+	subs := a.subs
+	a.scene.SetPendingSources(subs)
+	a.scene.SetLoading(true, 0, len(subs))
+
+	byIndex := make([]error, len(subs))
+	a.reg.AggregateStream(ctx, subs, func(u source.StreamUpdate) {
+		a.scene.SetItems(u.Items)
+		if u.Err != nil && u.Index >= 0 {
+			byIndex[u.Index] = u.Err
+		}
+		if u.Index >= 0 {
+			a.scene.ClearPendingSource(u.Sub.Source, u.Sub.Channel)
+		}
+		errs := compactErrs(byIndex)
+		a.scene.SetAuthPrompts(authPrompts(errs))
+		a.scene.Status = firstNonAuthError(errs)
+		a.scene.SetLoading(u.Done < u.Total, u.Done, u.Total)
+	})
+	return compactErrs(byIndex)
+}
+
+// compactErrs drops the nil entries from an index-keyed error slice, preserving
+// subscription order.
+func compactErrs(byIndex []error) []error {
+	out := []error{}
+	for _, e := range byIndex {
+		if e != nil {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // authPrompts extracts a de-duplicated, subscription-ordered list of providers

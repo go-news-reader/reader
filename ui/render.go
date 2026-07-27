@@ -20,6 +20,7 @@ type metrics struct {
 	sideItemH, searchH        int
 	profileTabH, tabPad, btnH int
 	bannerH, navIcon          int
+	loadStripH                int
 	title, meta, badge, side  textFace
 	search, tab               textFace
 }
@@ -49,6 +50,7 @@ func (s *Scene) computeMetrics() metrics {
 	m.btnH = m.tab.height + rpx(8)
 	m.bannerH = m.side.height + rpx(16)
 	m.navIcon = m.side.height + rpx(4)
+	m.loadStripH = m.side.height + rpx(4) + rpx(5) + rpx(6)
 	return m
 }
 
@@ -124,11 +126,24 @@ func (s *Scene) layout() {
 	}
 	s.searchR = toolkit.Rect{X: headerW + m.pad, Y: (m.topbarH - m.searchH) / 2, W: s.W - headerW - 2*m.pad, H: m.searchH}
 
-	// "Needs sign-in" banner rows sit at the very top of the scrollable feed
-	// content, above the cards, so they scroll with the feed and compose with the
-	// card hit-testing through the same offset.
-	s.authRows = s.authRows[:0]
 	top := m.pad
+
+	// While a refresh streams in and some items are already showing, a slim
+	// progress strip sits at the very top of the scrollable feed content (above
+	// the banners and cards). With no items yet, the centred placeholder is drawn
+	// instead (in Draw), so the strip is reserved only when there is content.
+	fil := s.filtered()
+	s.showStrip = false
+	if s.loading && s.loadTotal > 0 && len(fil) > 0 {
+		s.loadStripTop = top
+		s.showStrip = true
+		top += m.loadStripH + m.cardGap
+	}
+
+	// "Needs sign-in" banner rows sit at the top of the scrollable feed content,
+	// above the cards, so they scroll with the feed and compose with the card
+	// hit-testing through the same offset.
+	s.authRows = s.authRows[:0]
 	for i := range s.authPrompts {
 		s.authRows = append(s.authRows, authRowLayout{idx: i, top: top})
 		top += m.bannerH + m.cardGap
@@ -136,7 +151,7 @@ func (s *Scene) layout() {
 
 	// Feed rows.
 	s.rows = s.rows[:0]
-	for _, it := range s.filtered() {
+	for _, it := range fil {
 		s.rows = append(s.rows, rowLayout{item: it, top: top})
 		top += m.rowH + m.cardGap
 	}
@@ -176,6 +191,14 @@ func (s *Scene) Draw(buf []byte) {
 	feedTop := m.topbarH
 	feedX := m.sidebarW + m.pad
 	feedW := s.W - m.sidebarW - 2*m.pad
+	// Progress strip (loading + some items): drawn above the banners, scrolling
+	// with the feed content.
+	if s.showStrip {
+		y := feedTop + s.loadStripTop - s.ScrollY
+		if y+m.loadStripH >= feedTop && y < s.H {
+			s.drawLoadStrip(p, img, feedX, y, feedW, muteS)
+		}
+	}
 	// "Needs sign-in" banners (drawn above the cards, scrolling with the feed).
 	for _, a := range s.authRows {
 		y := feedTop + a.top - s.ScrollY
@@ -192,9 +215,15 @@ func (s *Scene) Draw(buf []byte) {
 		blitAt(img, s.cardSprite(r.item, feedW, onAccent, muteS), feedX, y)
 	}
 	if len(s.rows) == 0 {
-		msg := "No items."
-		cx := m.sidebarW + (s.W-m.sidebarW-m.title.width(msg))/2
-		m.title.draw(img, cx, s.H/2, msg, muteS)
+		if s.loading {
+			// A refresh is running but nothing has arrived yet: show the animated
+			// placeholder rather than a bare "No items." that looks broken.
+			s.drawLoadingPlaceholder(p, img, feedX, feedW, muteS)
+		} else {
+			msg := "No items."
+			cx := m.sidebarW + (s.W-m.sidebarW-m.title.width(msg))/2
+			m.title.draw(img, cx, s.H/2, msg, muteS)
+		}
 	}
 
 	// --- chrome (cached sprites; static across scroll like Evas smart objects) ---
@@ -221,6 +250,7 @@ type sidebarKey struct {
 	activeP int
 	subsRev int
 	profRev int
+	pendRev int
 }
 type topbarKey struct {
 	w        int
@@ -236,7 +266,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	m := s.m
 	th := s.theme
 	h := s.H - m.topbarH
-	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev}
+	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev}
 	if s.sidebarSpr != nil && s.sidebarKey == k {
 		return s.sidebarSpr
 	}
@@ -277,6 +307,13 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		if e.index >= 0 {
 			s.drawDot(p, m.pad, ly+m.sideItemH/2, sourceColor(s.Subs[e.index].Source))
 			m.side.draw(img, m.pad+rpxOf(s, 14), ty, label, col)
+			// A source that has not returned yet shows a small hollow "pending"
+			// ring at the row's right edge; it clears once its items or error land.
+			if s.IsPendingSub(s.Subs[e.index].Source, s.Subs[e.index].Channel) {
+				d := rpxOf(s, 9)
+				rr := toolkit.Rect{X: m.sidebarW - m.pad - d, Y: ly + (m.sideItemH-d)/2, W: d, H: d}
+				p.StrokeRoundRect(rr, d/2, mute(th.OnSurface, th.SurfaceAlt), s.iconStroke())
+			}
 		} else {
 			m.side.draw(img, m.pad, ty, label, col)
 		}

@@ -80,51 +80,108 @@ func (e *SubscriptionError) Error() string {
 // Unwrap exposes the underlying error for errors.Is/As.
 func (e *SubscriptionError) Unwrap() error { return e.Err }
 
-// Aggregate fetches every subscription concurrently and merges the results
-// newest-first (by [Item.Created], descending; ties broken by ID for a stable
-// order). A failing subscription does not abort the others: its error is
-// returned in errs and its items are simply absent. The returned slices are
-// never nil.
-func (r *Registry) Aggregate(ctx context.Context, subs []Subscription) (items []Item, errs []error) {
-	items = []Item{}
-	errs = []error{}
+// StreamUpdate is one incremental result delivered by [Registry.AggregateStream]
+// as a subscription completes. Items is the FULL merged+sorted (newest-first)
+// feed accumulated across every subscription that has finished so far; Done and
+// Total report progress; Index is the position in the subs slice of the
+// subscription that just completed (-1 for the terminal update when there were
+// no subscriptions); Sub is that completed subscription; and Err is its failure
+// (a [*SubscriptionError]) or nil on success.
+type StreamUpdate struct {
+	Items       []Item
+	Done, Total int
+	Index       int
+	Sub         Subscription
+	Err         error
+}
 
-	type outcome struct {
-		items []Item
-		err   error
-	}
-	results := make([]outcome, len(subs))
-	var wg sync.WaitGroup
-	for i, sub := range subs {
-		wg.Add(1)
-		go func(i int, sub Subscription) {
-			defer wg.Done()
-			res, err := r.Feed(ctx, sub.Source, Query{
-				Channel: sub.Channel,
-				Sort:    sub.Sort,
-				Limit:   sub.Limit,
-			})
-			if err != nil {
-				results[i] = outcome{err: &SubscriptionError{Sub: sub, Err: err}}
-				return
-			}
-			results[i] = outcome{items: res.Items}
-		}(i, sub)
-	}
-	wg.Wait()
-
-	for _, o := range results {
-		if o.err != nil {
-			errs = append(errs, o.err)
-			continue
-		}
-		items = append(items, o.items...)
-	}
+// sortItems orders items newest-first (by [Item.Created] descending; ties broken
+// by ID for a stable order), in place.
+func sortItems(items []Item) {
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].Created != items[j].Created {
 			return items[i].Created > items[j].Created // newest first
 		}
 		return items[i].ID < items[j].ID
 	})
+}
+
+// AggregateStream fetches every subscription concurrently and streams the
+// merged feed as each one completes. It invokes onUpdate exactly once per
+// completed subscription — serialized on the calling goroutine, so onUpdate
+// needs no locking — passing the full merged+sorted feed accumulated so far, the
+// running done/total counts, and the subscription that just finished (with its
+// error, if any). A failing subscription does not abort the others: its items
+// are simply absent and its error rides along in the update. When subs is empty
+// a single terminal update (Done==Total==0, Index -1) is delivered so callers
+// can still clear any "loading" state. AggregateStream returns after the final
+// onUpdate.
+func (r *Registry) AggregateStream(ctx context.Context, subs []Subscription, onUpdate func(StreamUpdate)) {
+	total := len(subs)
+	if total == 0 {
+		onUpdate(StreamUpdate{Items: []Item{}, Done: 0, Total: 0, Index: -1})
+		return
+	}
+
+	type outcome struct {
+		index int
+		sub   Subscription
+		items []Item
+		err   error
+	}
+	ch := make(chan outcome, total)
+	for i, sub := range subs {
+		go func(i int, sub Subscription) {
+			res, err := r.Feed(ctx, sub.Source, Query{
+				Channel: sub.Channel,
+				Sort:    sub.Sort,
+				Limit:   sub.Limit,
+			})
+			if err != nil {
+				ch <- outcome{index: i, sub: sub, err: &SubscriptionError{Sub: sub, Err: err}}
+				return
+			}
+			ch <- outcome{index: i, sub: sub, items: res.Items}
+		}(i, sub)
+	}
+
+	acc := []Item{}
+	for done := 1; done <= total; done++ {
+		o := <-ch
+		if o.err == nil {
+			acc = append(acc, o.items...)
+		}
+		merged := make([]Item, len(acc))
+		copy(merged, acc)
+		sortItems(merged)
+		onUpdate(StreamUpdate{Items: merged, Done: done, Total: total, Index: o.index, Sub: o.sub, Err: o.err})
+	}
+}
+
+// Aggregate fetches every subscription concurrently and merges the results
+// newest-first (by [Item.Created], descending; ties broken by ID for a stable
+// order). A failing subscription does not abort the others: its error is
+// returned in errs (in subscription order) and its items are simply absent. The
+// returned slices are never nil. It is the blocking form of [AggregateStream].
+func (r *Registry) Aggregate(ctx context.Context, subs []Subscription) (items []Item, errs []error) {
+	items = []Item{}
+	errs = []error{}
+
+	// Collect errors by subscription index so the returned order is stable
+	// (subscription order) regardless of completion order.
+	byIndex := make([]error, len(subs))
+	r.AggregateStream(ctx, subs, func(u StreamUpdate) {
+		if u.Err != nil && u.Index >= 0 {
+			byIndex[u.Index] = u.Err
+		}
+		if u.Done >= u.Total {
+			items = u.Items
+		}
+	})
+	for _, e := range byIndex {
+		if e != nil {
+			errs = append(errs, e)
+		}
+	}
 	return items, errs
 }
