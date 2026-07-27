@@ -13,7 +13,7 @@ require (
 	github.com/go-lemmy/lemmy v0.1.0
 	github.com/go-mastodon/mastodon v0.1.0
 	github.com/go-newsgroups/newznab v0.1.0
-	github.com/go-newsgroups/nntp v0.2.0
+	github.com/go-newsgroups/nntp v0.2.1
 	github.com/go-newsgroups/nzb v0.1.0
 	github.com/go-newsgroups/par2 v0.1.0
 	github.com/go-newsgroups/yenc v0.1.0

@@ -22,8 +22,8 @@ github.com/go-mastodon/mastodon v0.1.0 h1:rf4NLOxrr97ZpzwfAKOVLJ9d/xRsP+pA/teEgK
 github.com/go-mastodon/mastodon v0.1.0/go.mod h1:BUNMTzBrelZtGi6qLuQ7s6mffxsETf1htxiquA3yuDU=
 github.com/go-newsgroups/newznab v0.1.0 h1:KJNaCoaE2coPaU8wvQzYF7aJ2UXmUp4qlnXfaVl+5hs=
 github.com/go-newsgroups/newznab v0.1.0/go.mod h1:ANfywyup2RC/t8NpHnpWm17SyDkCBskURUuoBtcyJ+c=
-github.com/go-newsgroups/nntp v0.2.0 h1:vitstHLkseSiUbo3AMRjaORPsPCN+9oG+NWSLAwp8Ws=
-github.com/go-newsgroups/nntp v0.2.0/go.mod h1:r2IY7RsxNL5U2Bh6gFKYRFK6tLml5+i2Poprlh05RkI=
+github.com/go-newsgroups/nntp v0.2.1 h1:1/S4QToZGrGfrqu0cPfCjudzhBxYY2QlRYSF+7vWy3g=
+github.com/go-newsgroups/nntp v0.2.1/go.mod h1:r2IY7RsxNL5U2Bh6gFKYRFK6tLml5+i2Poprlh05RkI=
 github.com/go-newsgroups/nzb v0.1.0 h1:o2djveyfMa6OECFU/Cr9bkJuNGilknjVa2oF4sttLDc=
 github.com/go-newsgroups/nzb v0.1.0/go.mod h1:RFhQAYFx/TfHy1ijqmj+y38NdMQi0uGrq5MwY3LwrFQ=
 github.com/go-newsgroups/par2 v0.1.0 h1:XQq/7uoRyj/P7gIvxX4w924ZU3E7yRGidH6j3POd1+Q=
