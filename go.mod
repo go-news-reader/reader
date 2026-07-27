@@ -20,8 +20,8 @@ require (
 	github.com/go-reddit/reddit v0.1.0
 	github.com/go-syndication/feed v0.1.0
 	github.com/go-tiktok/tiktok v0.1.0
-	github.com/go-widgets/painter v0.1.2
-	github.com/go-widgets/toolkit v0.9.3
+	github.com/go-widgets/painter v0.1.3
+	github.com/go-widgets/toolkit v0.23.0
 	github.com/jezek/xgb v1.3.0
 	golang.org/x/image v0.44.0
 	golang.org/x/sys v0.31.0
