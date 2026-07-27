@@ -184,6 +184,8 @@ func AccountsToOptions(base feeds.Options, accts []settings.Account) feeds.Optio
 			if v, ok := a.Fields["tls"]; ok {
 				out.UsenetTLS = v == "true"
 			}
+			setIf(&out.UsenetUsername, a.Fields["username"])
+			setIf(&out.UsenetPassword, a.Fields["password"])
 			setIf(&out.UsenetIndexerURL, a.Fields["indexer_url"])
 			setIf(&out.UsenetIndexerAPIKey, a.Fields["indexer_key"])
 		case source.Instagram:

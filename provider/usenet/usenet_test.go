@@ -21,6 +21,13 @@ type fakeConn struct {
 	closed   bool
 	gotLow   int
 	gotHigh  int
+
+	modeCalled bool
+	modeErr    error
+	authUser   string
+	authPass   string
+	authCalled bool
+	authErr    error
 }
 
 func (f *fakeConn) Group(string) (*gonntp.Group, error) { return f.group, f.groupErr }
@@ -29,7 +36,12 @@ func (f *fakeConn) Over(low, high int) ([]gonntp.Overview, error) {
 	return f.over, f.overErr
 }
 func (f *fakeConn) Article(string) (*gonntp.Article, error) { return nil, nil }
-func (f *fakeConn) Close() error                            { f.closed = true; return nil }
+func (f *fakeConn) ModeReader() error                       { f.modeCalled = true; return f.modeErr }
+func (f *fakeConn) Authenticate(user, pass string) error {
+	f.authCalled, f.authUser, f.authPass = true, user, pass
+	return f.authErr
+}
+func (f *fakeConn) Close() error { f.closed = true; return nil }
 
 func dialing(c conn, err error) dialFunc {
 	return func(context.Context) (conn, error) { return c, err }
@@ -139,6 +151,53 @@ func TestDialPrimitiveDefaults(t *testing.T) {
 	}
 	if _, err := nntpDialTLS(ctx, "127.0.0.1:1", &tls.Config{}); err == nil {
 		t.Fatal("expected TLS dial error to closed port")
+	}
+}
+
+func TestFeedWithAuth(t *testing.T) {
+	// With credentials, connect() issues MODE READER then AUTHINFO before Group.
+	fc := &fakeConn{group: &gonntp.Group{Low: 1, High: 3}}
+	p := NewWithDial(dialing(fc, nil)).WithAuth("alice", "s3cret")
+	if _, err := p.Feed(context.Background(), source.Query{Channel: "misc.test"}); err != nil {
+		t.Fatal(err)
+	}
+	if !fc.modeCalled {
+		t.Fatal("MODE READER not issued")
+	}
+	if !fc.authCalled || fc.authUser != "alice" || fc.authPass != "s3cret" {
+		t.Fatalf("AUTHINFO not sent with creds: called=%v user=%q", fc.authCalled, fc.authUser)
+	}
+}
+
+func TestFeedAnonymousNoAuth(t *testing.T) {
+	// Without credentials, MODE READER is still issued but AUTHINFO is skipped.
+	fc := &fakeConn{group: &gonntp.Group{Low: 1, High: 3}}
+	p := NewWithDial(dialing(fc, nil)) // no WithAuth
+	if _, err := p.Feed(context.Background(), source.Query{Channel: "alt.binaries.test"}); err != nil {
+		t.Fatal(err)
+	}
+	if !fc.modeCalled {
+		t.Fatal("MODE READER not issued")
+	}
+	if fc.authCalled {
+		t.Fatal("AUTHINFO must not be sent without credentials")
+	}
+}
+
+func TestFeedAuthRejectedNeedsAuth(t *testing.T) {
+	// An AUTHINFO rejection during connect maps to a typed Usenet AuthError and
+	// the connection is closed.
+	fc := &fakeConn{authErr: &textproto.Error{Code: 481, Msg: "authentication failed"}}
+	p := NewWithDial(dialing(fc, nil)).WithAuth("bob", "wrong")
+	_, err := p.Feed(context.Background(), source.Query{Channel: "misc.test"})
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Usenet {
+		t.Fatalf("AUTHINFO rejection not mapped to Usenet AuthError: %v", err)
+	}
+	if !fc.closed {
+		t.Fatal("connection not closed after auth failure")
+	}
+	if fc.group != nil || fc.gotHigh != 0 {
+		t.Fatal("Group/Over must not run after failed auth")
 	}
 }
 

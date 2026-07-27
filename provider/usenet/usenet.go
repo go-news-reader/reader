@@ -32,10 +32,15 @@ const searchPrefix = "search:"
 const defaultCount = 50
 
 // conn is the slice of *gonntp.Conn the adapter uses; an interface for tests.
+// Authenticate and ModeReader support modern servers that gate reader commands
+// behind MODE READER and require AUTHINFO credentials; both are no-ops on legacy
+// binary servers (Free), where the connection is used anonymously.
 type conn interface {
 	Group(name string) (*gonntp.Group, error)
 	Over(low, high int) ([]gonntp.Overview, error)
 	Article(msgIDorNum string) (*gonntp.Article, error)
+	Authenticate(user, pass string) error
+	ModeReader() error
 	Close() error
 }
 
@@ -63,6 +68,18 @@ var (
 type Provider struct {
 	dial   dialFunc
 	search searcher // nil when no indexer configured
+	user   string   // AUTHINFO USER; "" means connect anonymously (legacy Free)
+	pass   string   // AUTHINFO PASS
+}
+
+// WithAuth attaches AUTHINFO credentials used when connecting to modern servers
+// (TLS text/binary providers such as Eternal-September or XSUsenet). It returns
+// the provider so it can be chained onto any constructor; an empty user leaves
+// the connection anonymous (the legacy Free path). Password without a user is
+// ignored — AUTHINFO USER is what triggers authentication.
+func (p *Provider) WithAuth(user, pass string) *Provider {
+	p.user, p.pass = user, pass
+	return p
 }
 
 func dialer(addr string, useTLS bool) dialFunc {
@@ -100,6 +117,36 @@ func NewWithDial(dial dialFunc) *Provider { return &Provider{dial: dial} }
 // Kind reports source.Usenet.
 func (p *Provider) Kind() source.Kind { return source.Usenet }
 
+// connect dials the server and prepares the connection: it always issues MODE
+// READER (safe everywhere — a no-op on servers that greet in reader mode, and
+// what a modern server needs before reader commands) and then, when credentials
+// are configured, performs AUTHINFO USER/PASS before any group selection. A
+// preparation failure closes the connection and is returned raw for the caller
+// to classify (mapErr turns an AUTHINFO rejection into a NeedsAuth prompt).
+func (p *Provider) connect(ctx context.Context) (conn, error) {
+	c, err := p.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := prepare(c, p.user, p.pass); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
+// prepare issues MODE READER (tolerated everywhere) and, when user is non-empty,
+// authenticates with AUTHINFO. The MODE READER result is intentionally ignored:
+// the library already treats a 500/501 "unknown command" as success, and any
+// genuine transport failure surfaces on the following command.
+func prepare(c conn, user, pass string) error {
+	_ = c.ModeReader()
+	if user != "" {
+		return c.Authenticate(user, pass)
+	}
+	return nil
+}
+
 // Feed returns a page of items. A Query.Channel of "search:<query>" runs a
 // Newznab search (NZB results); any other non-empty channel is a newsgroup name
 // whose most recent article overviews are returned. Not cursor-paginated, so
@@ -112,9 +159,9 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	if group == "" {
 		return source.Result{}, ErrNoChannel
 	}
-	c, err := p.dial(ctx)
+	c, err := p.connect(ctx)
 	if err != nil {
-		return source.Result{}, err
+		return source.Result{}, mapErr(err)
 	}
 	defer c.Close()
 

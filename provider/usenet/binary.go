@@ -26,9 +26,9 @@ func (p *Provider) FetchNZB(ctx context.Context, nzbData []byte) (map[string][]b
 	if err != nil {
 		return nil, err
 	}
-	c, err := p.dial(ctx)
+	c, err := p.connect(ctx)
 	if err != nil {
-		return nil, err
+		return nil, mapErr(err)
 	}
 	defer c.Close()
 

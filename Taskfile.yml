@@ -36,3 +36,21 @@ tasks:
       - go test ./internal/window/...
       - 'go test -covermode=set -coverprofile=cover.out $(go list ./... | grep -vE "/internal/window($|/)")'
       - "go tool cover -func=cover.out | awk '/^total:/{print \"coverage:\",$3}'"
+
+  usenet-free:
+    desc: 'Legacy binary target — download+decode a real PAR2 from Free (news.free.fr:119, no auth)'
+    cmds:
+      - 'go test -tags nntpnet -run TestFreeLegacyPAR2 ./provider/usenet/ -v'
+    env:
+      NNTP_LEGACY_ADDR: '{{.NNTP_LEGACY_ADDR | default "news.free.fr:119"}}'
+      NNTP_LEGACY_GROUP: '{{.NNTP_LEGACY_GROUP | default "alt.binaries.test"}}'
+
+  usenet-modern:
+    desc: 'Modern text target — Eternal-September over TLS+AUTHINFO (set NNTP_MODERN_USER / NNTP_MODERN_PASS)'
+    cmds:
+      - 'go test -tags nntpnet -run TestModernText ./provider/usenet/ -v'
+
+  usenet-binary:
+    desc: 'Modern binary target — XSUsenet/any TLS+AUTHINFO (set NNTP_BIN_ADDR / NNTP_BIN_USER / NNTP_BIN_PASS)'
+    cmds:
+      - 'go test -tags nntpnet -run TestModernBinary ./provider/usenet/ -v'

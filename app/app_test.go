@@ -321,7 +321,7 @@ func TestAccountsToOptions(t *testing.T) {
 		{Kind: source.Reddit, Fields: map[string]string{"client_id": "id", "client_secret": "sec", "username": "u", "password": "p"}},
 		{Kind: source.Mastodon, Fields: map[string]string{"instance": "https://m", "token": "mt"}},
 		{Kind: source.Lemmy, Fields: map[string]string{"instance": "https://l"}},
-		{Kind: source.Usenet, Fields: map[string]string{"addr": "news:119", "tls": "true", "indexer_url": "https://ix", "indexer_key": "k"}},
+		{Kind: source.Usenet, Fields: map[string]string{"addr": "news:119", "tls": "true", "username": "usr", "password": "pw", "indexer_url": "https://ix", "indexer_key": "k"}},
 		{Kind: source.Instagram, Fields: map[string]string{"session": "ig"}},
 		{Kind: source.TikTok, Fields: map[string]string{"ms_token": "ms", "session": "ts"}},
 		{Kind: source.Twitter, Fields: map[string]string{"token": "tw"}},
@@ -333,7 +333,8 @@ func TestAccountsToOptions(t *testing.T) {
 	if o.MastodonInstance != "https://m" || o.MastodonToken != "mt" || o.LemmyInstance != "https://l" {
 		t.Fatalf("mastodon/lemmy mapping wrong: %+v", o)
 	}
-	if o.UsenetAddr != "news:119" || !o.UsenetTLS || o.UsenetIndexerURL != "https://ix" || o.UsenetIndexerAPIKey != "k" {
+	if o.UsenetAddr != "news:119" || !o.UsenetTLS || o.UsenetUsername != "usr" || o.UsenetPassword != "pw" ||
+		o.UsenetIndexerURL != "https://ix" || o.UsenetIndexerAPIKey != "k" {
 		t.Fatalf("usenet mapping wrong: %+v", o)
 	}
 	if o.InstagramSession != "ig" || o.TikTokMSToken != "ms" || o.TikTokSession != "ts" || o.TwitterToken != "tw" {

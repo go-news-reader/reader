@@ -56,10 +56,15 @@ type Options struct {
 	LemmyInstance string
 
 	// UsenetAddr ("host:port") enables the Usenet provider; UsenetTLS selects
-	// implicit TLS. UsenetIndexerURL + UsenetIndexerAPIKey additionally enable
-	// Newznab "search:" queries (direct indexer or NZBHydra2).
+	// implicit TLS. UsenetUsername + UsenetPassword supply AUTHINFO credentials
+	// for modern servers (Eternal-September text, XSUsenet binary); leave empty to
+	// connect anonymously to a legacy binary server (Free). UsenetIndexerURL +
+	// UsenetIndexerAPIKey additionally enable Newznab "search:" queries (direct
+	// indexer or NZBHydra2).
 	UsenetAddr          string
 	UsenetTLS           bool
+	UsenetUsername      string
+	UsenetPassword      string
 	UsenetIndexerURL    string
 	UsenetIndexerAPIKey string
 
@@ -101,9 +106,9 @@ func Registry(opts Options) *source.Registry {
 	}
 	if opts.UsenetAddr != "" {
 		if opts.UsenetIndexerURL != "" {
-			r.Register(newUsenetSearch(hc, opts.UsenetAddr, opts.UsenetTLS, opts.UsenetIndexerURL, opts.UsenetIndexerAPIKey))
+			r.Register(newUsenetSearch(hc, opts))
 		} else {
-			r.Register(usenet.New(opts.UsenetAddr, opts.UsenetTLS))
+			r.Register(usenet.New(opts.UsenetAddr, opts.UsenetTLS).WithAuth(opts.UsenetUsername, opts.UsenetPassword))
 		}
 	}
 
@@ -189,9 +194,12 @@ func newLemmy(hc *http.Client, instance string) source.Provider {
 	return lemmy.New(instance)
 }
 
-func newUsenetSearch(hc *http.Client, addr string, useTLS bool, indexerURL, apiKey string) source.Provider {
+func newUsenetSearch(hc *http.Client, opts Options) source.Provider {
+	var p *usenet.Provider
 	if hc != nil {
-		return usenet.NewWithSearchClient(hc, addr, useTLS, indexerURL, apiKey)
+		p = usenet.NewWithSearchClient(hc, opts.UsenetAddr, opts.UsenetTLS, opts.UsenetIndexerURL, opts.UsenetIndexerAPIKey)
+	} else {
+		p = usenet.NewWithSearch(opts.UsenetAddr, opts.UsenetTLS, opts.UsenetIndexerURL, opts.UsenetIndexerAPIKey)
 	}
-	return usenet.NewWithSearch(addr, useTLS, indexerURL, apiKey)
+	return p.WithAuth(opts.UsenetUsername, opts.UsenetPassword)
 }
