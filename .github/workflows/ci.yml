@@ -37,6 +37,26 @@ jobs:
           awk -v p="$pct" 'BEGIN { exit (p+0 < 100.0) ? 1 : 0 }' \
             || { echo "coverage ${pct}% < 100%"; go tool cover -func=cover.out | grep -v '100.0%'; exit 1; }
 
+  race:
+    # The native-window front-end aggregates on a background goroutine while the
+    # render thread draws; the scene-write marshaling (app.App.DeferSceneWrites)
+    # keeps that data-race-free. Guard it so it can't regress. -race needs the
+    # race runtime, which requires cgo, so this job runs with CGO enabled on
+    # linux/amd64 (the coverage gate above stays CGO=0, since -race is
+    # incompatible with -covermode=set). The window boundary is excluded here as
+    # in the coverage gate.
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "1"
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.4"
+      - name: Test with the race detector (all packages except the window boundary)
+        run: go test -race $(go list ./... | grep -vE '/internal/window($|/)')
+
   cross-build:
     runs-on: ubuntu-latest
     env:

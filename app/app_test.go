@@ -10,6 +10,7 @@ import (
 	"io"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/go-news-reader/reader/feeds"
 	"github.com/go-news-reader/reader/internal/httplog"
@@ -121,24 +122,6 @@ func TestRefreshError(t *testing.T) {
 	}
 }
 
-// snapProv records the scene's loading state at the moment its Feed is called,
-// which (because RefreshStreaming sets loading/pending before launching the
-// fetch goroutines) proves the indicator is live while the network is in flight.
-type snapProv struct {
-	kind       source.Kind
-	items      []source.Item
-	scene      *ui.Scene
-	gotLoading bool
-	gotPending int
-}
-
-func (p *snapProv) Kind() source.Kind { return p.kind }
-func (p *snapProv) Feed(context.Context, source.Query) (source.Result, error) {
-	p.gotLoading = p.scene.Loading()
-	p.gotPending = p.scene.PendingCount()
-	return source.Result{Items: p.items}, nil
-}
-
 func TestRefreshStreaming(t *testing.T) {
 	a := New(Config{
 		Subscriptions: []source.Subscription{
@@ -147,18 +130,16 @@ func TestRefreshStreaming(t *testing.T) {
 		},
 		Width: 400, Height: 300,
 	})
-	spy := &snapProv{kind: source.Reddit, items: []source.Item{{ID: "r", Source: source.Reddit, Created: 5}}, scene: a.Scene()}
-	reg := newReg(spy, fakeProv{kind: source.Mastodon, err: source.NeedsAuth(source.Mastodon, "token required")})
+	// Inline (single-threaded) mode: onUpdate applies the scene writes on this
+	// goroutine, and no provider reads the scene, so there is no concurrent access.
+	reg := newReg(
+		fakeProv{kind: source.Reddit, items: []source.Item{{ID: "r", Source: source.Reddit, Created: 5}}},
+		fakeProv{kind: source.Mastodon, err: source.NeedsAuth(source.Mastodon, "token required")},
+	)
 	a.reg = reg
 
 	errs := a.RefreshStreaming(context.Background())
 
-	// During the fetch the scene reported loading with sources still pending. (The
-	// exact count is timing-dependent — a concurrent source may already have
-	// cleared its own marker — so we only require the indicator was live.)
-	if !spy.gotLoading || spy.gotPending < 1 {
-		t.Fatalf("mid-stream loading=%v pending=%d, want loading with pending>=1", spy.gotLoading, spy.gotPending)
-	}
 	// After the last source the indicator is cleared.
 	if a.Scene().Loading() || a.Scene().PendingCount() != 0 {
 		t.Fatalf("post-stream loading=%v pending=%d, want false/0", a.Scene().Loading(), a.Scene().PendingCount())
@@ -179,6 +160,74 @@ func TestRefreshStreaming(t *testing.T) {
 	// The auth failure rides back in the returned errors (compactErrs path).
 	if len(errs) != 1 {
 		t.Fatalf("errs = %v, want 1", errs)
+	}
+}
+
+// blockProv blocks in Feed until its gate is closed, so a test can hold a fetch
+// mid-flight and observe the live loading indicator deterministically.
+type blockProv struct {
+	kind  source.Kind
+	items []source.Item
+	gate  <-chan struct{}
+}
+
+func (p blockProv) Kind() source.Kind { return p.kind }
+func (p blockProv) Feed(context.Context, source.Query) (source.Result, error) {
+	<-p.gate
+	return source.Result{Items: p.items}, nil
+}
+
+// TestRefreshStreamingDeferredIndicator exercises the native-window path:
+// DeferSceneWrites marshals every scene mutation onto the render thread, so the
+// background aggregation goroutine only touches the view-model and the queue
+// while the render thread (this goroutine, via Frame) owns the scene. With a
+// provider held mid-fetch it proves the loading indicator is live before the
+// source returns, then that draining the queue after completion clears it and
+// surfaces the item — all without a data race (go test -race).
+func TestRefreshStreamingDeferredIndicator(t *testing.T) {
+	a := New(Config{
+		Subscriptions: []source.Subscription{{Source: source.Reddit, Channel: "golang"}},
+		Width:         400, Height: 300,
+	})
+	a.DeferSceneWrites()
+	gate := make(chan struct{})
+	a.reg = newReg(blockProv{kind: source.Reddit, items: []source.Item{{ID: "r", Source: source.Reddit, Created: 5}}, gate: gate})
+
+	done := make(chan struct{})
+	go func() { a.RefreshStreaming(context.Background()); close(done) }()
+
+	// RefreshStreaming enqueues SetPending/SetLoading(true) before the fetch; drain
+	// frames on the render thread until the live indicator surfaces.
+	waitFor(t, func() bool {
+		a.Frame()
+		return a.Scene().Loading() && a.Scene().PendingCount() == 1
+	})
+	if len(a.Items()) != 0 {
+		t.Fatalf("items should be empty while the source is blocked: %+v", a.Items())
+	}
+
+	close(gate) // let the provider return
+	<-done      // the completion updates are now enqueued
+
+	a.Frame() // drain them on the render thread
+	if a.Scene().Loading() || a.Scene().PendingCount() != 0 {
+		t.Fatalf("post-stream loading=%v pending=%d, want false/0", a.Scene().Loading(), a.Scene().PendingCount())
+	}
+	if len(a.Items()) != 1 || a.Items()[0].ID != "r" {
+		t.Fatalf("items = %+v, want [r]", a.Items())
+	}
+}
+
+// waitFor spins cond (which advances the render loop) until it holds or the
+// deadline elapses, so a deferred-mode test need not sleep on a fixed timer.
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition not met before deadline")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -489,12 +538,40 @@ func TestApplySceneSettingsNoStore(t *testing.T) {
 	a.ApplySceneSettings()      // store == nil branch, must not panic
 }
 
+// signalProv reports on fed each time Feed is called, so a test can join an
+// otherwise-anonymous background refresh goroutine deterministically.
+type signalProv struct {
+	kind  source.Kind
+	items []source.Item
+	fed   chan struct{}
+}
+
+func (p signalProv) Kind() source.Kind { return p.kind }
+func (p signalProv) Feed(context.Context, source.Query) (source.Result, error) {
+	p.fed <- struct{}{}
+	return source.Result{Items: p.items}, nil
+}
+
 func TestDefaultRefreshHook(t *testing.T) {
-	// Exercise the default (goroutine) refresh hook against a fake provider.
-	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit})})
+	// Exercise the default (goroutine) refresh hook — the async path the window
+	// front-end uses. In deferred mode the background Refresh only enqueues its
+	// scene write (guarded by the queue mutex), so it never touches the scene the
+	// test reads, and draining via Frame applies the result on this goroutine.
+	fed := make(chan struct{}, 1)
+	a := New(Config{
+		Registry:      newReg(signalProv{kind: source.Reddit, items: []source.Item{{ID: "z", Source: source.Reddit}}, fed: fed}),
+		Subscriptions: []source.Subscription{{Source: source.Reddit}},
+		Width:         400, Height: 300,
+	})
+	a.DeferSceneWrites()
 	a.ApplySceneSettings() // spawns go a.Refresh(...)
-	// Give the goroutine a chance without asserting on its async result.
-	_ = a.Items()
+	select {
+	case <-fed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("default refresh hook did not run")
+	}
+	// Drain until the enqueued items land (the goroutine posts after Feed returns).
+	waitFor(t, func() bool { a.Frame(); return len(a.Items()) == 1 })
 }
 
 func TestRefreshAuthPromptsMixed(t *testing.T) {

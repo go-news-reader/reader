@@ -13,6 +13,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/go-newsgroups/par2"
 
@@ -74,6 +75,21 @@ type App struct {
 	bufs    [2][]byte
 	cur     int
 	lastRev int
+
+	// Scene mutations arriving from background goroutines — the streaming
+	// aggregation (RefreshStreaming) and the async reconstruct/refresh — must not
+	// touch the scene while the render thread reads it in Frame/Draw. When
+	// deferScene is set (the native-window front-end enables it via
+	// DeferSceneWrites), bindScene enqueues each scene write onto queued instead
+	// of applying it inline; Frame drains the queue on the render thread before
+	// drawing, so the scene is only ever mutated there and Draw needs no lock.
+	// The CLI (PNG/JSON/serve) and the tests leave deferScene false and apply
+	// inline, since those paths are single-threaded. deferScene is set once,
+	// before any background goroutine starts, then only read; queued is guarded
+	// by qmu.
+	qmu        sync.Mutex
+	queued     []func()
+	deferScene bool
 }
 
 // Config configures a new App.
@@ -154,8 +170,42 @@ func New(cfg Config) *App {
 		Refresh:       func() { a.refresh() },
 		ToggleSidebar: func() { a.scene.ToggleSidebar() },
 	})
-	bindScene(a.scene, a.vm)
+	bindScene(a)
 	return a
+}
+
+// DeferSceneWrites routes view-model→scene mutations through a render-thread
+// queue instead of applying them inline. The native-window front-end enables it
+// so the background streaming-aggregation goroutine never mutates the scene the
+// render thread is drawing (Frame drains the queue on the render thread). It
+// must be called before the present loop and the aggregation goroutine start,
+// so deferScene is set before any concurrent reader exists.
+func (a *App) DeferSceneWrites() { a.deferScene = true }
+
+// post applies a scene mutation. In deferred mode (the window front-end) it
+// enqueues fn to run on the render thread at the next Frame; otherwise it runs
+// fn inline, matching the single-threaded CLI/test paths.
+func (a *App) post(fn func()) {
+	if !a.deferScene {
+		fn()
+		return
+	}
+	a.qmu.Lock()
+	a.queued = append(a.queued, fn)
+	a.qmu.Unlock()
+}
+
+// drainScene applies every queued scene mutation. Frame calls it on the render
+// thread before drawing, so the scene is mutated only there. It is a no-op (an
+// empty queue) on the inline CLI/test paths.
+func (a *App) drainScene() {
+	a.qmu.Lock()
+	q := a.queued
+	a.queued = nil
+	a.qmu.Unlock()
+	for _, fn := range q {
+		fn()
+	}
 }
 
 // VM exposes the view-model so front-ends can execute its commands and read its
@@ -289,6 +339,9 @@ func (a *App) SetSystemAppearance(dark bool, accent color.RGBA, hasAccent bool, 
 // clock first so every present tick yields a fresh frame; when nothing is
 // loading the scene is idle and the damage gate skips the redraw entirely.
 func (a *App) Frame() (buf []byte, changed bool) {
+	// Apply any scene mutations enqueued by background goroutines first, on this
+	// (the render) thread, so the scene is only ever touched here.
+	a.drainScene()
 	s := a.scene
 	if s.Animating() {
 		s.AdvanceAnim()
