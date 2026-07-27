@@ -142,6 +142,39 @@ func TestCommands(t *testing.T) {
 	}
 }
 
+// TestInputDrivers proves the parameterized input drivers set their observables:
+// search focus, account selection, fix-auth (account + accounts mode), and the
+// active-profile index.
+func TestInputDrivers(t *testing.T) {
+	vm := New(Actions{})
+
+	vm.FocusSearch(true)
+	if !vm.SearchFocus.Get() {
+		t.Fatal("FocusSearch did not set the observable")
+	}
+
+	vm.SelectAccount(source.Usenet)
+	if vm.Account.Get() != source.Usenet {
+		t.Fatalf("SelectAccount = %q", vm.Account.Get())
+	}
+
+	// FixAuth records the provider AND switches Mode to the accounts editor.
+	var modes []ui.Mode
+	vm.Mode.Subscribe(func(m ui.Mode) { modes = append(modes, m) })
+	vm.FixAuth(source.Reddit)
+	if vm.Account.Get() != source.Reddit || vm.Mode.Get() != ui.ModeAccounts {
+		t.Fatalf("FixAuth: account=%q mode=%v", vm.Account.Get(), vm.Mode.Get())
+	}
+	if len(modes) != 1 || modes[0] != ui.ModeAccounts {
+		t.Fatalf("FixAuth mode notifications = %v", modes)
+	}
+
+	vm.SelectProfile(2)
+	if vm.Profile.Get() != 2 {
+		t.Fatalf("SelectProfile = %d", vm.Profile.Get())
+	}
+}
+
 // TestNilActions proves a ViewModel built without actions is safe to execute
 // (the commands guard on a nil exec).
 func TestNilActions(t *testing.T) {

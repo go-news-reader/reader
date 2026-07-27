@@ -50,9 +50,41 @@ func TestVMDrivesSceneData(t *testing.T) {
 		t.Fatalf("prompts not reflected: %+v", p)
 	}
 
+	vm.SearchFocus.Set(true)
+	if !s.SearchFocused() {
+		t.Fatal("search focus not reflected")
+	}
+
+	vm.Account.Set(source.Mastodon)
+	if s.SelectedAccount() != source.Mastodon {
+		t.Fatalf("account not reflected: %q", s.SelectedAccount())
+	}
+}
+
+// TestVMSearchTwoWayBinding proves the mvvm.BindField wiring of vm.Search to the
+// scene's toolkit.SearchEntry is genuinely two-way and loop-free: a ViewModel Set
+// pushes into the widget (and repaints via InvalidateSearch), and a keystroke
+// routed through the widget flows back into the ViewModel.
+func TestVMSearchTwoWayBinding(t *testing.T) {
+	a := New(Config{Registry: newReg(), Width: 400, Height: 300})
+	vm, s := a.VM(), a.Scene()
+
+	// ViewModel -> widget field, with a repaint (the topbar sprite keys on text).
+	rev := s.Rev()
 	vm.Search.Set("golang")
-	if s.Search() != "golang" {
-		t.Fatalf("search = %q", s.Search())
+	if s.SearchEntry().Text != "golang" || s.Search() != "golang" {
+		t.Fatalf("vm->widget: entry=%q search=%q", s.SearchEntry().Text, s.Search())
+	}
+	if s.Rev() <= rev {
+		t.Fatal("vm.Search change did not repaint the scene")
+	}
+
+	// Widget -> ViewModel: a focused topbar keystroke routes through the widget's
+	// OnEvent, whose OnChange (composed by BindField) sets vm.Search — no loop.
+	vm.FocusSearch(true)
+	s.TypeRune('!')
+	if vm.Search.Get() != "golang!" || s.SearchEntry().Text != "golang!" {
+		t.Fatalf("widget->vm: vm=%q entry=%q", vm.Search.Get(), s.SearchEntry().Text)
 	}
 }
 

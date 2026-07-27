@@ -67,12 +67,12 @@ func (h *Handler) Resize(w, height int, scale float64) {
 // MouseDown routes a click across the feed, detail and settings views: open an
 // item, follow a link, switch a filter or profile, or drive the settings editor.
 func (h *Handler) MouseDown(x, y int) {
-	s := h.a.Scene()
+	s, vm := h.a.Scene(), h.a.VM()
 	switch hit := s.HitTest(x, y); hit.Kind {
 	case ui.HitItem:
-		s.OpenDetail(hit.Item) // read it in-app, not in a browser
+		vm.OpenDetail(hit.Item) // read it in-app, not in a browser
 	case ui.HitBack:
-		s.CloseDetail()
+		vm.CloseView.Execute()
 	case ui.HitOpenExternal:
 		// HitOpenExternal only fires when the item has a URL, so one is present.
 		url := hit.Item.Link
@@ -81,28 +81,26 @@ func (h *Handler) MouseDown(x, y int) {
 		}
 		_ = openURL(url)
 	case ui.HitSub:
-		s.SetActive(hit.Sub)
-		s.FocusSearch(false)
+		s.SetActive(hit.Sub) // the sub filter is a pure view concern
+		vm.FocusSearch(false)
 	case ui.HitSearch:
-		s.FocusSearch(true)
+		vm.FocusSearch(true)
 	case ui.HitProfile:
-		s.SetActiveProfile(hit.Profile)
-		h.a.ApplySceneSettings() // persist + re-aggregate the new profile
+		h.a.SelectProfile(hit.Profile) // switch + persist + re-aggregate through the app/VM
 	case ui.HitSettings:
-		s.OpenSettings()
+		vm.OpenSettings.Execute()
 	case ui.HitLog:
-		s.OpenLog()
+		vm.OpenLog.Execute()
 	case ui.HitCloseLog:
-		s.CloseLog()
+		vm.CloseView.Execute()
 	case ui.HitBurger:
-		s.ToggleSidebar()
+		vm.ToggleSidebar.Execute()
 	case ui.HitSidebarDivider:
 		s.BeginSidebarResize()
 	case ui.HitFixAuth:
 		// A click on an in-feed "needs sign-in" banner opens the Accounts editor
-		// pre-focused on the provider that needs fixing.
-		s.OpenAccounts()
-		s.SelectAccount(source.Kind(hit.Value))
+		// pre-selected on the provider that needs fixing.
+		vm.FixAuth(source.Kind(hit.Value))
 	case ui.HitToggleGroup:
 		s.ToggleGroup(hit.Value) // expand/collapse a Usenet post group
 	case ui.HitReconstruct:
@@ -110,15 +108,14 @@ func (h *Handler) MouseDown(x, y int) {
 	case ui.HitCloseSettings:
 		s.CommitRename()
 		s.CommitCache()
-		s.CloseSettings()
+		vm.CloseView.Execute()
 		h.a.ApplySceneSettings()
 	case ui.HitSelectProfile:
 		s.SelectEditProfile(hit.Profile)
 	case ui.HitNewProfile:
 		s.NewProfile()
 	case ui.HitDeleteProfile:
-		s.DeleteProfile(hit.Profile)
-		h.a.ApplySceneSettings()
+		h.a.DeleteProfile(hit.Profile)
 	case ui.HitRenameProfile:
 		s.FocusRename()
 	case ui.HitSelectKind:
@@ -137,18 +134,18 @@ func (h *Handler) MouseDown(x, y int) {
 		s.SetThemeName(hit.Value)
 		h.a.ApplySceneSettings()
 	case ui.HitAccounts:
-		s.OpenAccounts()
+		vm.OpenAccounts.Execute()
 	case ui.HitCloseAccounts:
-		s.CloseAccounts()
+		vm.CloseView.Execute()
 		h.a.ApplyAccounts() // persist creds + rebuild registry (Reddit→OAuth) + re-aggregate
 	case ui.HitSelectAccount:
-		s.SelectAccount(source.Kind(hit.Value))
+		vm.SelectAccount(source.Kind(hit.Value))
 	case ui.HitFocusAccountField:
 		s.FocusAccountField(hit.Value)
 	case ui.HitToggleAccountBool:
 		s.ToggleAccountBool(hit.Value)
 	default:
-		s.FocusSearch(false)
+		vm.FocusSearch(false)
 	}
 }
 
@@ -175,26 +172,26 @@ var _ window.AppearanceSink = (*Handler)(nil)
 // Key handles editing keys and printable runes for whichever view/field is
 // focused (topbar search in the feed, or the settings text fields).
 func (h *Handler) Key(name string, r rune) {
-	s := h.a.Scene()
+	s, vm := h.a.Scene(), h.a.VM()
 	switch name {
 	case "Backspace":
 		s.Backspace()
 	case "Escape":
 		switch s.Mode() {
 		case ui.ModeDetail:
-			s.CloseDetail() // Esc returns from the reading view to the feed
+			vm.CloseView.Execute() // Esc returns from the reading view to the feed
 		case ui.ModeLog:
-			s.CloseLog() // Esc returns from the Network log to the feed
+			vm.CloseView.Execute() // Esc returns from the Network log to the feed
 		case ui.ModeSettings:
 			s.CommitRename()
 			s.CommitCache()
-			s.CloseSettings()
+			vm.CloseView.Execute()
 			h.a.ApplySceneSettings()
 		case ui.ModeAccounts:
-			s.CloseAccounts() // Esc commits the accounts editor, like Settings
+			vm.CloseView.Execute() // Esc commits the accounts editor, like Settings
 			h.a.ApplyAccounts()
 		default:
-			s.FocusSearch(false)
+			vm.FocusSearch(false)
 		}
 	case "Enter":
 		switch s.Mode() {
@@ -203,7 +200,7 @@ func (h *Handler) Key(name string, r rune) {
 		case ui.ModeAccounts:
 			h.a.ApplyAccounts() // apply credentials in place (re-aggregate without leaving)
 		default:
-			s.FocusSearch(false)
+			vm.FocusSearch(false)
 		}
 	default:
 		if r != 0 {

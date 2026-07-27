@@ -368,7 +368,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	m := s.m
 	th := s.theme
-	k := topbarKey{w: s.W, sidebarW: m.sidebarW, scale: s.Scale, theme: th, search: s.search, focused: s.searchFocused}
+	k := topbarKey{w: s.W, sidebarW: m.sidebarW, scale: s.Scale, theme: th, search: s.searchEntry.Text, focused: s.searchFocused}
 	if s.topbarSpr != nil && s.topbarKey == k {
 		return s.topbarSpr
 	}
@@ -382,21 +382,18 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	ic := m.navIcon
 	drawMenuIcon(p, toolkit.Rect{X: s.burgerR.X + (s.burgerR.W-ic)/2, Y: (m.topbarH - ic) / 2, W: ic, H: ic}, onAccent, s.iconStroke())
 	m.title.draw(img, s.burgerR.W+m.pad, (m.topbarH-m.title.height)/2, "News", onAccent)
-	// Search box (topbar is full-width at y=0, so local == absolute coords).
-	p.FillRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Surface)
+	// Search box: render the topbar's toolkit.SearchEntry widget itself (its own
+	// AA font via ttFont), so what the user sees is the bound widget's text. The
+	// scene overlays a rounded focus ring + caret because SearchEntry is
+	// focus-agnostic. (topbar is full-width at y=0, so local == absolute coords.)
+	se := s.searchEntry
+	se.SetBounds(toolkit.Rect(s.searchR))
+	se.Font = ttFont(false, rpxOf(s, 13))
+	se.Draw(p, th)
 	if s.searchFocused {
 		p.StrokeRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Accent, rpxOf(s, 2))
-	}
-	tx := s.searchR.X + m.pad/2
-	ty := s.searchR.Y + (s.searchR.H-m.search.height)/2
-	if s.search == "" && !s.searchFocused {
-		m.search.draw(img, tx, ty, "Search…", mute(th.OnSurface, th.Surface))
-	} else {
-		caret := ""
-		if s.searchFocused {
-			caret = "|"
-		}
-		m.search.draw(img, tx, ty, s.search+caret, th.OnSurface)
+		caretX := s.searchR.X + toolkit.SearchEntryPadX + toolkit.SearchEntryIconW + m.search.width(se.Text)
+		m.search.draw(img, caretX, s.searchR.Y+(s.searchR.H-m.search.height)/2, "|", th.OnSurface)
 	}
 	s.topbarKey, s.topbarSpr = k, img
 	return img

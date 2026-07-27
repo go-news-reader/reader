@@ -122,8 +122,8 @@ func TestMouseDownItemOpensDetail(t *testing.T) {
 func TestMouseDownDetailBack(t *testing.T) {
 	a := newApp(t)
 	s := a.Scene()
-	s.OpenDetail(source.Item{ID: "1", Title: "t"})
-	New(a).MouseDown(20, 24) // Back button in the detail topbar
+	a.VM().OpenDetail(source.Item{ID: "1", Title: "t"}) // drive mode through the VM
+	New(a).MouseDown(20, 24)                            // Back button in the detail topbar
 	if s.Mode() != ui.ModeFeed {
 		t.Fatal("Back should return to the feed")
 	}
@@ -183,7 +183,7 @@ func TestMouseDownSearch(t *testing.T) {
 
 func TestMouseDownNone(t *testing.T) {
 	a := newApp(t)
-	a.Scene().FocusSearch(true)
+	a.VM().FocusSearch(true)
 	New(a).MouseDown(10, 400) // empty sidebar area -> HitNone
 	if a.Scene().SearchFocused() {
 		t.Fatal("click on empty area should blur search")
@@ -194,7 +194,7 @@ func TestKey(t *testing.T) {
 	a := newApp(t)
 	h := New(a)
 	s := a.Scene()
-	s.FocusSearch(true)
+	a.VM().FocusSearch(true)
 
 	h.Key("", 'a') // printable rune
 	h.Key("", 'b')
@@ -213,13 +213,13 @@ func TestKey(t *testing.T) {
 	if s.SearchFocused() {
 		t.Fatal("Enter should blur search")
 	}
-	s.FocusSearch(true)
+	a.VM().FocusSearch(true)
 	h.Key("Escape", 0)
 	if s.SearchFocused() {
 		t.Fatal("Escape should blur search")
 	}
 	// In the detail view, Escape returns to the feed.
-	s.OpenDetail(source.Item{ID: "x", Title: "t"})
+	a.VM().OpenDetail(source.Item{ID: "x", Title: "t"})
 	h.Key("Escape", 0)
 	if s.Mode() != ui.ModeFeed {
 		t.Fatal("Escape in detail should close it")
@@ -281,7 +281,7 @@ func TestKeySettingsCommits(t *testing.T) {
 	a := profApp(t)
 	h := New(a)
 	s := a.Scene()
-	s.OpenSettings()
+	a.VM().OpenSettings.Execute() // enter the editor through the VM
 
 	// Enter with the channel field focused adds a subscription.
 	s.FocusChannel()
@@ -320,7 +320,7 @@ func TestKeySettingsCommits(t *testing.T) {
 		t.Fatal("Escape should close settings")
 	}
 	// Backspace routes into the focused settings field.
-	s.OpenSettings()
+	a.VM().OpenSettings.Execute()
 	s.FocusChannel()
 	s.TypeRune('x')
 	h.Key("Backspace", 0)
@@ -380,7 +380,7 @@ func TestAccountsRouting(t *testing.T) {
 		t.Fatal("HitCloseAccounts should return to the feed")
 	}
 	// Escape also commits + closes the editor.
-	s.OpenAccounts()
+	a.VM().OpenAccounts.Execute()
 	h.Key("Escape", 0)
 	if s.Mode() != ui.ModeFeed {
 		t.Fatal("Escape in the accounts editor should return to the feed")
@@ -402,7 +402,7 @@ func TestMouseDownLogAndClose(t *testing.T) {
 		t.Fatal("HitCloseLog should return to the feed")
 	}
 	// Escape also closes the log.
-	s.OpenLog()
+	a.VM().OpenLog.Execute()
 	h.Key("Escape", 0)
 	if s.Mode() != ui.ModeFeed {
 		t.Fatal("Escape in the log should return to the feed")
