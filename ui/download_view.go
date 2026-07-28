@@ -72,9 +72,9 @@ func (s *Scene) downloadPanelH() int {
 }
 
 // feedBottom is the bottom edge of the feed/preview content: the window height
-// minus the download panel. Every feed/preview layout, draw and scroll path uses
-// it so they leave room for the panel.
-func (s *Scene) feedBottom() int { return s.H - s.downloadPanelH() }
+// minus the download panel and the status bar (both docked below the feed).
+// Every feed/preview layout, draw and scroll path uses it so they leave room.
+func (s *Scene) feedBottom() int { return s.H - s.statusBarH() - s.downloadPanelH() }
 
 // downloadPanelRect is the panel's rect (feed+preview width, docked bottom), or
 // empty when hidden. It spans from the sidebar's right edge so the sidebar keeps
