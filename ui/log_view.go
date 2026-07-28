@@ -71,6 +71,49 @@ func (s *Scene) layoutLog() {
 }
 
 // drawLog paints the Network-log view.
+// logRow is one network-log entry as a toolkit widget so the log view lays rows
+// out with a VBox: it composes two box lines (method | URL, then status |
+// right-aligned duration) plus a bottom divider, all via getFace textLines.
+type logRow struct {
+	toolkit.Base
+	s   *Scene
+	e   LogEntry
+	p   *painter.PixelPainter
+	img *image.RGBA
+}
+
+func (w *logRow) Draw(_ painter.Painter, th *toolkit.Theme) {
+	s, b := w.s, w.Bounds()
+	m := s.m
+	muteS := mute(th.OnSurface, th.Surface)
+	methodFace := getFace(rpxOf(s, 13), true)
+	urlFace := getFace(rpxOf(s, 13), false)
+	durW := rpxOf(s, 72)
+	mw := methodFace.width(w.e.Method) + m.pad
+
+	// Line 1: method (fixed) | elided URL (flex).
+	l1 := toolkit.NewHBox()
+	l1.Spacing = -1
+	l1.AddFixed(&textLine{face: methodFace, text: w.e.Method, ink: th.OnSurface, img: w.img}, mw)
+	l1.AddFlex(&textLine{face: urlFace, text: truncate(urlFace, shortURL(w.e.URL), b.W-mw), ink: muteS, img: w.img}, 1)
+	l1.SetBounds(toolkit.Rect{X: b.X, Y: b.Y, W: b.W, H: urlFace.height})
+	l1.Draw(w.p, th)
+
+	// Line 2: status/error colour-coded (flex) | duration right-aligned (fixed).
+	text, col := fmt.Sprintf("%d", w.e.Status), statusColor(w.e.Status)
+	if w.e.Err != "" {
+		text, col = w.e.Err, rgb(0xD03030)
+	}
+	l2 := toolkit.NewHBox()
+	l2.Spacing = -1
+	l2.AddFlex(&textLine{face: m.meta, text: truncate(m.meta, text, b.W-durW), ink: col, img: w.img}, 1)
+	l2.AddFixed(&textLine{face: m.meta, text: formatDur(w.e.Dur), ink: muteS, img: w.img, alignRight: true}, durW)
+	l2.SetBounds(toolkit.Rect{X: b.X, Y: b.Y + urlFace.height + rpxOf(s, 4), W: b.W, H: m.meta.height})
+	l2.Draw(w.p, th)
+
+	w.p.FillRect(painter.Rect{X: b.X, Y: b.Y + b.H - 1, W: b.W, H: 1}, th.Border)
+}
+
 func (s *Scene) drawLog(buf []byte) {
 	s.layoutLog()
 	m := s.m
@@ -86,44 +129,23 @@ func (s *Scene) drawLog(buf []byte) {
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
 
 	entries := s.logEntries()
-	methodFace := getFace(rpxOf(s, 13), true)
-	urlFace := getFace(rpxOf(s, 13), false)
-	metaFace := m.meta
 	x := m.pad * 2
 	w := s.W - x - m.pad
-	durW := rpxOf(s, 72) // reserved right column for the duration
 
 	if len(entries) == 0 {
-		metaFace.draw(img, x, m.topbarH+m.pad, "No requests yet", muteS)
+		m.meta.draw(img, x, m.topbarH+m.pad, "No requests yet", muteS)
 	}
 
+	// Rows are a VBox of logRow widgets: each row is two box-composed lines
+	// (method | URL, then status | duration).
 	rowH := s.logRowH
-	top := m.topbarH + m.pad - s.logScrollY
-	for i, e := range entries {
-		ry := top + i*rowH
-		if ry+rowH < m.topbarH || ry >= s.H {
-			continue // fully off-screen; skip
-		}
-		// Line 1: method + elided host/path of the URL.
-		methodFace.draw(img, x, ry, e.Method, th.OnSurface)
-		mw := methodFace.width(e.Method) + m.pad
-		url := truncate(urlFace, shortURL(e.URL), w-mw)
-		urlFace.draw(img, x+mw, ry, url, muteS)
-
-		// Line 2: status (or error) colour-coded, duration right-aligned.
-		sy := ry + urlFace.height + rpxOf(s, 4)
-		status, col := e.Status, toolkit.RGBA{}
-		var text string
-		if e.Err != "" {
-			text, col = e.Err, rgb(0xD03030)
-		} else {
-			text, col = fmt.Sprintf("%d", status), statusColor(status)
-		}
-		metaFace.draw(img, x, sy, truncate(metaFace, text, w-durW), col)
-		metaFace.drawRight(img, x+w, sy, formatDur(e.Dur), muteS)
-
-		p.FillRect(painter.Rect{X: x, Y: ry + rowH - 1, W: w, H: 1}, th.Border)
+	col := toolkit.NewVBox()
+	col.Spacing = -1
+	for _, e := range entries {
+		col.AddFixed(&logRow{s: s, e: e, p: p, img: img}, rowH)
 	}
+	col.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.logScrollY, W: w, H: len(entries) * rowH})
+	col.Draw(p, th)
 
 	// Scrollbar down the right edge when the log overflows the viewport.
 	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, s.logContentH, s.logScrollY)
