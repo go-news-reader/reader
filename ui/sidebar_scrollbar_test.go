@@ -36,11 +36,12 @@ func TestSidebarScrollbar(t *testing.T) {
 		t.Fatalf("40 subs should overflow, maxScroll=%d", s.sideMaxScroll)
 	}
 	th := s.theme
+	thumb := mute(th.OnSurface, th.SurfaceAlt) // the visible thumb colour
 	found := false
 	for x := s.m.sidebarW - s.scrollbarW() - rpxOf(s, 4); x < s.m.sidebarW && !found; x++ {
 		for y := s.sideBandTop; y < s.sideBandBot; y++ {
 			c := px(buf, s.W, x, y)
-			if c.R == th.Border.R && c.G == th.Border.G && c.B == th.Border.B {
+			if c.R == thumb.R && c.G == thumb.G && c.B == thumb.B {
 				found = true
 				break
 			}
