@@ -238,8 +238,24 @@ func (h *Handler) Key(name string, r rune) {
 			h.a.ApplyAccounts() // apply credentials in place (re-aggregate without leaving)
 		case ui.ModeBrowse:
 			s.FocusBrowseFilter(false) // Enter defocuses the filter (live-filtered already)
+		case ui.ModeFeed:
+			if _, ok := s.PreviewItem(); ok {
+				h.a.OpenSelected() // Enter opens the selected post's reading view
+			} else {
+				vm.FocusSearch(false)
+			}
 		default:
 			vm.FocusSearch(false)
+		}
+	case "Up":
+		if s.Mode() == ui.ModeFeed {
+			s.FocusSearch(false)
+			h.a.SelectAdjacent(-1) // move the feed selection up (previous post)
+		}
+	case "Down":
+		if s.Mode() == ui.ModeFeed {
+			s.FocusSearch(false)
+			h.a.SelectAdjacent(1) // move the feed selection down (next post)
 		}
 	default:
 		if r != 0 {
