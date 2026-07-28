@@ -583,10 +583,11 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 // getFace draws into an *image.RGBA, not through the painter.
 type textLine struct {
 	toolkit.Base
-	face textFace
-	text string
-	ink  toolkit.RGBA
-	img  *image.RGBA
+	face       textFace
+	text       string
+	ink        toolkit.RGBA
+	img        *image.RGBA
+	alignRight bool // right-align within the bounds (e.g. a duration column)
 }
 
 func (t *textLine) Draw(_ painter.Painter, _ *toolkit.Theme) {
@@ -595,7 +596,11 @@ func (t *textLine) Draw(_ painter.Painter, _ *toolkit.Theme) {
 	if b.H > t.face.height {
 		ty += (b.H - t.face.height) / 2
 	}
-	t.face.draw(t.img, b.X, ty, t.text, t.ink)
+	tx := b.X
+	if t.alignRight {
+		tx = b.X + b.W - t.face.width(t.text)
+	}
+	t.face.draw(t.img, tx, ty, t.text, t.ink)
 }
 
 // truncateFont clips s with a trailing ellipsis to fit maxW pixels in the
