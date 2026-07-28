@@ -122,6 +122,22 @@ func (s *Scene) feedGeom() (x, w int) {
 	return x, w
 }
 
+// feedScrollbarShown reports whether the feed's vertical scrollbar is visible
+// (its content overflows the viewport between the topbar and the download panel).
+func (s *Scene) feedScrollbarShown() bool {
+	return s.contentH > s.feedBottom()-s.m.topbarH
+}
+
+// feedCardW is the feed content width for cards/banners: when the scrollbar is
+// shown it reserves a gutter so cards stop before the bar instead of sitting
+// under it. Draw and hit-test both go through it so they stay aligned.
+func (s *Scene) feedCardW(feedW int) int {
+	if s.feedScrollbarShown() {
+		return feedW - s.scrollbarW() - rpxOf(s, 8)
+	}
+	return feedW
+}
+
 // SelectPreview loads it into the preview pane (clicking a feed item), resetting
 // the pane scroll. The app calls SetPreviewLoading before an async image fetch.
 func (s *Scene) SelectPreview(it source.Item) {
