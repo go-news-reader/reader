@@ -72,6 +72,8 @@ github.com/go-widgets/toolkit v0.50.0 h1:IuLeztJAsrFMqodYTY64/54AmeT4s6PMOSd2h+y
 github.com/go-widgets/toolkit v0.50.0/go.mod h1:+w2xbylmYZXRibmoxcnrjte37FnRGG3Hc3GMAk9gOk8=
 github.com/go-widgets/toolkit v0.52.0 h1:EqO0fOh67yBBSfdsHgizSPKq2IeU9XKaccaQRQ3yDzw=
 github.com/go-widgets/toolkit v0.52.0/go.mod h1:I78U7gP04LPNfmTKIXhDwfl0ZvNmYEgLY8LhJZwp5ic=
+github.com/go-widgets/toolkit v0.53.0 h1:gXBAefh6n6OZ6B4JQL6N/Z1Cwk+m+hNVGrIN70Z7yqo=
+github.com/go-widgets/toolkit v0.53.0/go.mod h1:I78U7gP04LPNfmTKIXhDwfl0ZvNmYEgLY8LhJZwp5ic=
 github.com/jezek/xgb v1.3.0 h1:Wa1pn4GVtcmNVAVB6/pnQVJ7xPFZVZ/W1Tc27msDhgI=
 github.com/jezek/xgb v1.3.0/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
 github.com/klauspost/compress v1.17.4 h1:Ej5ixsIri7BrIjBkRZLTo6ghwrEtHFk7ijlczPW4fZ4=
