@@ -389,36 +389,52 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 			p.FillRect(painter.Rect{X: 0, Y: ly, W: rpxOf(s, 3), H: m.sideItemH}, th.Accent)
 			col = th.Accent
 		}
-		ty := ly + (m.sideItemH-m.side.height)/2
-		if e.index >= 0 {
-			sub := s.Subs[e.index]
-			s.drawDot(p, m.pad, ly+m.sideItemH/2, sourceColor(sub.Source))
-			labelX := m.pad + rpxOf(s, 14)
-			rightX := m.sidebarW - m.pad
-			labelW := rightX - labelX
-			// Right of the row: a spinner while the source is still fetching, else a
-			// "<unseen>/<total>" post count (unseen in accent, total muted).
-			if s.IsPendingSub(sub.Source, sub.Channel) {
-				d := rpxOf(s, 14)
-				rr := toolkit.Rect{X: m.sidebarW - m.pad - d, Y: ly + (m.sideItemH-d)/2, W: d, H: d}
-				s.spinnerAt(rr).Draw(p, th)
-				labelW = rr.X - labelX - rpxOf(s, 4)
-			} else if total, unseen := s.subCounts(sub); total > 0 {
-				cty := ly + (m.sideItemH-m.meta.height)/2
-				totalStr := strconv.Itoa(total)
-				tw := m.meta.width(totalStr)
-				m.meta.draw(img, rightX-tw, cty, totalStr, mute(th.OnSurface, th.SurfaceAlt))
-				countLeft := rightX - tw
-				if unseen > 0 {
-					us := strconv.Itoa(unseen) + "/"
-					countLeft -= m.meta.width(us)
-					m.meta.draw(img, countLeft, cty, us, th.Accent)
-				}
-				labelW = countLeft - labelX - rpxOf(s, 4)
-			}
-			m.side.draw(img, labelX, ty, truncate(m.side, label, labelW), col)
-		} else {
-			m.side.draw(img, m.pad, ty, label, col)
+		sideF := ttFont(false, rpxOf(s, 13))
+		if e.index < 0 {
+			// "All Sources": a single label filling the row.
+			lbl := toolkit.NewLabel(label)
+			lbl.Font, lbl.Ink = sideF, col
+			lbl.SetBounds(toolkit.Rect{X: m.pad, Y: ly, W: m.sidebarW - 2*m.pad, H: m.sideItemH})
+			lbl.Draw(p, th)
+			continue
+		}
+		// A subscription row, composed as an HBox: source dot | channel label |
+		// (post count, or a spinner while the source is still fetching). The label
+		// renders through ttFont so non-Latin channel names (e.g. CJK) show.
+		sub := s.Subs[e.index]
+		gap := rpxOf(s, 4)
+		dotSlot := rpxOf(s, 14)
+		innerW := m.sidebarW - 2*m.pad
+		pending := s.IsPendingSub(sub.Source, sub.Channel)
+		var chip *countChip
+		rightW := 0
+		if pending {
+			rightW = rpxOf(s, 14) // reserved for the spinner
+		} else if total, unseen := s.subCounts(sub); total > 0 {
+			chip = &countChip{s: s, unseen: unseen, total: total}
+			rightW = chip.width()
+		}
+		labelW := innerW - dotSlot - gap
+		if rightW > 0 {
+			labelW -= rightW + gap
+		}
+		lbl := toolkit.NewLabel(truncateFont(sideF, label, labelW))
+		lbl.Font, lbl.Ink = sideF, col
+		row := toolkit.NewHBox()
+		row.Spacing = gap
+		row.AddFixed(&sideDot{s: s, col: sourceColor(sub.Source)}, dotSlot)
+		row.AddFlex(lbl, 1)
+		switch {
+		case chip != nil:
+			row.AddFixed(chip, rightW)
+		case pending:
+			row.AddFixed(toolkit.NewLabel(""), rightW) // reserve the spinner slot
+		}
+		row.SetBounds(toolkit.Rect{X: m.pad, Y: ly, W: innerW, H: m.sideItemH})
+		row.Draw(p, th)
+		if pending {
+			d := rpxOf(s, 14)
+			s.spinnerAt(toolkit.Rect{X: m.sidebarW - m.pad - d, Y: ly + (m.sideItemH-d)/2, W: d, H: d}).Draw(p, th)
 		}
 	}
 
@@ -557,6 +573,76 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 	row.SetBounds(toolkit.Rect{X: x + pad, Y: y + pad, W: w - 2*pad, H: m.rowH - 2*pad})
 	row.Draw(p, th)
 	_ = onAccent
+}
+
+// truncateFont clips s with a trailing ellipsis to fit maxW pixels in the
+// toolkit font f — the box-layout analogue of truncate (which measures a
+// getFace textFace), so a Label pre-fits its computed slot.
+func truncateFont(f toolkit.Font, s string, maxW int) string {
+	if maxW <= 0 || f.Measure(s) <= maxW {
+		return s
+	}
+	r := []rune(s)
+	for len(r) > 0 {
+		r = r[:len(r)-1]
+		if f.Measure(string(r)+"…") <= maxW {
+			return string(r) + "…"
+		}
+	}
+	return "…"
+}
+
+// sideDot is a toolkit widget painting a subscription's source-colour dot, so a
+// sidebar row lays out as a box (dot | label | count) instead of hand-placed x/y.
+type sideDot struct {
+	toolkit.Base
+	s   *Scene
+	col toolkit.RGBA
+}
+
+func (d *sideDot) Draw(p painter.Painter, _ *toolkit.Theme) {
+	if pix, ok := p.(*painter.PixelPainter); ok {
+		b := d.Bounds()
+		d.s.drawDot(pix, b.X, b.Y+b.H/2, d.col)
+	}
+}
+
+// countChip renders a sidebar row's post count right-aligned in its bounds: the
+// group total muted, and — when non-zero — the unseen/new count in accent before
+// it ("<unseen>/<total>"). Both are toolkit Labels (via ttFont).
+type countChip struct {
+	toolkit.Base
+	s             *Scene
+	unseen, total int
+}
+
+// width is the chip's rendered pixel width, so the row's HBox can reserve it.
+func (c *countChip) width() int {
+	f := ttFont(false, rpxOf(c.s, 12))
+	w := f.Measure(strconv.Itoa(c.total))
+	if c.unseen > 0 {
+		w += f.Measure(strconv.Itoa(c.unseen) + "/")
+	}
+	return w
+}
+
+func (c *countChip) Draw(p painter.Painter, th *toolkit.Theme) {
+	b := c.Bounds()
+	f := ttFont(false, rpxOf(c.s, 12))
+	totalStr := strconv.Itoa(c.total)
+	tw := f.Measure(totalStr)
+	tot := toolkit.NewLabel(totalStr)
+	tot.Font, tot.Ink = f, mute(th.OnSurface, th.SurfaceAlt)
+	tot.SetBounds(toolkit.Rect{X: b.X + b.W - tw, Y: b.Y, W: tw, H: b.H})
+	tot.Draw(p, th)
+	if c.unseen > 0 {
+		us := strconv.Itoa(c.unseen) + "/"
+		uw := f.Measure(us)
+		un := toolkit.NewLabel(us)
+		un.Font, un.Ink = f, th.Accent
+		un.SetBounds(toolkit.Rect{X: b.X + b.W - tw - uw, Y: b.Y, W: uw, H: b.H})
+		un.Draw(p, th)
+	}
 }
 
 // drawAuthBanner paints one clickable "needs sign-in" row with toolkit.Banner:

@@ -1,11 +1,33 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
 )
+
+// TestTruncateFont covers the toolkit-font ellipsis clip used by box-composed
+// labels: a fit (early return), a zero width, a mid clip, and the tiny-width
+// "…"-only fallback.
+func TestTruncateFont(t *testing.T) {
+	f := ttFont(false, 14)
+	if got := truncateFont(f, "hi", 100000); got != "hi" {
+		t.Fatalf("fit = %q, want hi", got)
+	}
+	if got := truncateFont(f, "hi", 0); got != "hi" {
+		t.Fatalf("zero width = %q, want hi (early return)", got)
+	}
+	const long = "verylongchannelname_that_will_not_fit_here"
+	got := truncateFont(f, long, f.Measure("verylong"))
+	if got == long || !strings.HasSuffix(got, "…") {
+		t.Fatalf("clip = %q, want a shorter …-terminated string", got)
+	}
+	if got := truncateFont(f, long, 1); got != "…" {
+		t.Fatalf("tiny width = %q, want …", got)
+	}
+}
 
 // TestTTFont covers the toolkit-TrueType font cache: the regular branch (badges
 // only use bold), the px<1 clamp, and a cache hit on repeat.
