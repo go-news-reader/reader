@@ -79,8 +79,10 @@ type App struct {
 	// synchronous variant.
 	previewFetch func(id string, parts []usenet.ReconstructPart)
 
-	// dl is the parallel image download manager (feed-wide thumbnail prefetch).
-	dl *downloader
+	// dl is the parallel image download manager (feed-wide thumbnail prefetch);
+	// fdl is the parallel file download manager (reconstruct+save checked posts).
+	dl  *downloader
+	fdl *fileDownloader
 
 	// Double-buffered present state (see Frame): two framebuffers plus the
 	// last-presented damage sequence, so a window/canvas front-end only redraws
@@ -205,6 +207,7 @@ func New(cfg Config) *App {
 		go a.loadPreviewImage(context.Background(), id, parts)
 	}
 	a.dl = newDownloader(a)
+	a.fdl = newFileDownloader(a)
 	a.applyUsenetServer()
 
 	// The view-model is the single source of truth for the core state flow; the
@@ -630,7 +633,12 @@ func toReconstructParts(parts []ui.ReconstructPart) []usenet.ReconstructPart {
 // saveFiles writes each reconstructed data file into the cache directory (the
 // current working directory when no cache path is set).
 func (a *App) saveFiles(files map[string][]byte) error {
-	dir := a.scene.CachePath()
+	return a.saveFilesTo(files, a.scene.CachePath())
+}
+
+// saveFilesTo writes each reconstructed file into dir (captured by the caller so
+// a background worker never reads the scene for the path).
+func (a *App) saveFilesTo(files map[string][]byte, dir string) error {
 	for name, data := range files {
 		if err := writeFile(filepath.Join(dir, filepath.Base(name)), data, 0o644); err != nil {
 			return err
