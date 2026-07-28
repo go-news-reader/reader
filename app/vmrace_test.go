@@ -28,9 +28,14 @@ func TestConcurrentVMMutationsNoRace(t *testing.T) {
 		go func() { defer wg.Done(); a.Refresh(context.Background()) }()
 		go func() { defer wg.Done(); a.RefreshStreaming(context.Background()) }()
 	}
-	// Drain posted scene writes concurrently, mimicking the render thread.
+	// Drain posted scene writes concurrently, mimicking the render thread. Only
+	// ONE drainer runs at a time (production drains from a single render thread),
+	// so wait for this one to stop via `stopped` before the final drain below —
+	// otherwise the two drainScene calls overlap and race on the scene.
 	done := make(chan struct{})
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		for {
 			select {
 			case <-done:
@@ -42,5 +47,6 @@ func TestConcurrentVMMutationsNoRace(t *testing.T) {
 	}()
 	wg.Wait()
 	close(done)
+	<-stopped // the background drainer has fully stopped; safe to drain once more
 	a.drainScene()
 }
