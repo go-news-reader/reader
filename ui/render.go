@@ -468,7 +468,10 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	// includes sideScrollY so it re-rasterises as the list scrolls).
 	if s.sideMaxScroll > 0 {
 		band := s.sideBandBot - s.sideBandTop
-		s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: s.sideBandTop - m.topbarH, W: m.sidebarW, H: band}, band+s.sideMaxScroll, s.sideScrollY)
+		// Keep the scrollbar clear of the resize grip that sits on the divider at
+		// the sidebar's right edge, so the two don't crowd each other.
+		w := m.sidebarW - rpxOf(s, 10)
+		s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: s.sideBandTop - m.topbarH, W: w, H: band}, band+s.sideMaxScroll, s.sideScrollY)
 	}
 
 	s.sidebarKey, s.sidebarSpr = k, img

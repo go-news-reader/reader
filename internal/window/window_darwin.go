@@ -419,6 +419,11 @@ func viewScrollWheel(self objc.ID, _ objc.SEL, event objc.ID) {
 	if handler == nil {
 		return
 	}
+	// Forward the cursor position first: the wheel is routed to whichever panel
+	// (sidebar list vs feed vs preview) the pointer is over, and there is no
+	// mouseMoved: tracking, so without this the routing uses a stale position.
+	x, y := viewCoords(self, event)
+	handler.MouseMove(x, y)
 	dy := float64(objc.Send[float64](event, selScrollingDeltaY))
 	mu.Lock()
 	scale := curScale

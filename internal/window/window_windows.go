@@ -37,6 +37,7 @@ var (
 	procBeginPaint         = user32.NewProc("BeginPaint")
 	procEndPaint           = user32.NewProc("EndPaint")
 	procGetClientRect      = user32.NewProc("GetClientRect")
+	procScreenToClient     = user32.NewProc("ScreenToClient")
 	procInvalidateRect     = user32.NewProc("InvalidateRect")
 	procSetTimer           = user32.NewProc("SetTimer")
 	procLoadCursorW        = user32.NewProc("LoadCursorW")
@@ -263,6 +264,13 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			wmu.Lock()
 			scale := wScale
 			wmu.Unlock()
+			// WM_MOUSEWHEEL carries the pointer position in SCREEN coords; convert
+			// to client and forward it so the wheel is routed to the panel under the
+			// cursor (WM_MOUSEMOVE only fires while a button is held).
+			sx, sy := winMouseCoords(uint32(lparam))
+			pt := struct{ X, Y int32 }{int32(sx), int32(sy)}
+			procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
+			wHandler.MouseMove(int(pt.X), int(pt.Y))
 			wHandler.Scroll(int(float64(winWheelScroll(winWheelDelta(uint32(wparam)))) * scale))
 			if present() {
 				procInvalidateRect.Call(hwnd, 0, 0)
