@@ -109,13 +109,27 @@ func TestScroll(t *testing.T) {
 	}
 }
 
-func TestMouseDownItemOpensDetail(t *testing.T) {
+func TestMouseDownItemSelectsPreview(t *testing.T) {
 	a := newApp(t)
 	a.Scene().SetItems([]source.Item{{ID: "1", Source: source.Reddit, Title: "hi", Permalink: "https://ex/1", Score: -1, Comments: -1}})
-	New(a).MouseDown(250, 60) // feed row 0 -> opens the in-app reading view
+	h := New(a)
+	h.MouseDown(250, 60) // feed row 0 -> select into the right preview pane
 	s := a.Scene()
+	if it, ok := s.PreviewItem(); !ok || it.ID != "1" {
+		t.Fatalf("item click should select the preview; got %+v ok=%v", it, ok)
+	}
+	if s.Mode() == ui.ModeDetail {
+		t.Fatal("item click should not jump straight to full-screen detail")
+	}
+	// The preview pane's "Open" button opens the full-screen reading view.
+	s.HitTest(0, 0) // force a layout so the button rect is current
+	oc, shown := s.PreviewOpenButton()
+	if !shown {
+		t.Fatal("Open button should be shown for a selected item")
+	}
+	h.MouseDown(oc.X+oc.W/2, oc.Y+oc.H/2)
 	if s.Mode() != ui.ModeDetail || s.Detail().ID != "1" {
-		t.Fatalf("item click should open detail; mode=%v id=%q", s.Mode(), s.Detail().ID)
+		t.Fatalf("Open button should open detail; mode=%v id=%q", s.Mode(), s.Detail().ID)
 	}
 }
 

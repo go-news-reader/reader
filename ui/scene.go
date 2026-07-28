@@ -75,6 +75,8 @@ const (
 	HitFixAuth                // an in-feed "needs sign-in" banner row — Value = source kind
 	HitToggleGroup            // a Usenet group card's header/chevron — Value = release base
 	HitReconstruct            // a Usenet group card's "Reconstruct" affordance — Value = release base
+	HitPreviewGroup           // a Usenet group card's body (preview it in the pane) — Value = release base
+	HitOpenPreview            // the preview pane's "Open" button (full reading view) — Item set
 
 	// Newsgroup browser (Mode == ModeBrowse):
 	HitBrowse           // the sidebar "＋ Browse newsgroups" entry (open the browser)
@@ -213,6 +215,22 @@ type Scene struct {
 	// other views. settingsContentH is the laid-out height below the topbar.
 	settingsScrollY  int
 	settingsContentH int
+
+	// Right-hand preview/details pane (feed view). It is docked on the right and
+	// shows the item last clicked in the feed — its badge, title, meta, an image
+	// (from Thumbs, e.g. a decoded Usenet binary) and body — with an "Open" button
+	// for the full-screen reading view. previewHas is false before any selection
+	// (the pane shows an empty prompt). previewImgPending marks that an async image
+	// fetch was requested for the current item, so the pane shows a spinner until
+	// SetThumb lands. previewOpenR/previewImgR are the laid-out button/image rects.
+	previewItem       source.Item
+	previewHas        bool
+	previewScrollY    int
+	previewContentH   int
+	previewImgPending bool
+	previewR          toolkit.Rect // the whole pane
+	previewOpenR      toolkit.Rect // "Open" (full detail) button
+	previewImgR       toolkit.Rect // image area (for hit-testing / geometry)
 
 	// Network-log (ModeLog) view: a scrollable, newest-first list of the HTTP
 	// exchanges the providers made, fed live from an injected source so the app
@@ -742,9 +760,15 @@ func (s *Scene) Scroll(dy int) {
 		s.touch()
 		return
 	}
-	// Feed view: a wheel over the sidebar scrolls its (overflowing) subscription
-	// list; anywhere else scrolls the feed. sideMaxScroll is 0 when the sub list
-	// fits, so this only diverts the wheel when there is actually overflow.
+	// Feed view: a wheel over the preview pane scrolls the pane's content.
+	if s.previewR.W > 0 && s.lastMouseX >= s.previewR.X && s.previewContentH > s.previewR.H {
+		s.previewScrollY = clampScroll(s.previewScrollY+dy, s.previewContentH-s.previewR.H)
+		s.touch()
+		return
+	}
+	// A wheel over the sidebar scrolls its (overflowing) subscription list; anywhere
+	// else scrolls the feed. sideMaxScroll is 0 when the sub list fits, so this only
+	// diverts the wheel when there is actually overflow.
 	if !s.sidebarCollapsed && s.lastMouseX < s.m.sidebarW && s.sideMaxScroll > 0 {
 		s.sideScrollY = clampScroll(s.sideScrollY+dy, s.sideMaxScroll)
 		s.layout()

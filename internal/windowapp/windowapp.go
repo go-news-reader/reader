@@ -70,7 +70,11 @@ func (h *Handler) MouseDown(x, y int) {
 	s, vm := h.a.Scene(), h.a.VM()
 	switch hit := s.HitTest(x, y); hit.Kind {
 	case ui.HitItem:
-		vm.OpenDetail(hit.Item) // read it in-app, not in a browser
+		h.a.SelectPreview(hit.Item) // show it in the right preview pane (fetch image if any)
+	case ui.HitPreviewGroup:
+		h.a.PreviewGroup(hit.Value) // preview a Usenet post: reconstruct its image into the pane
+	case ui.HitOpenPreview:
+		vm.OpenDetail(hit.Item) // the pane's "Open" button → full-screen reading view
 	case ui.HitBack:
 		vm.CloseView.Execute()
 	case ui.HitOpenExternal:
