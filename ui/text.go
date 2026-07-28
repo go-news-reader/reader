@@ -5,6 +5,13 @@ import (
 	"image/color"
 	"sync"
 
+	"github.com/go-opentype/fonts/notosansarabic"
+	"github.com/go-opentype/fonts/notosansarmenian"
+	"github.com/go-opentype/fonts/notosansdevanagari"
+	"github.com/go-opentype/fonts/notosansgeorgian"
+	"github.com/go-opentype/fonts/notosanshebrew"
+	"github.com/go-opentype/fonts/notosanssc"
+	"github.com/go-opentype/fonts/notosansthai"
 	"github.com/go-widgets/toolkit"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
@@ -79,9 +86,27 @@ var (
 	ttCache = map[faceKey]toolkit.Font{}
 )
 
-// ttFont returns a cached toolkit TrueType font at px pixels, regular or bold,
-// backed by the same embedded Go fonts as getFace. Assigned to a widget's
-// Base.Font so the widget draws crisp AA text itself (no more "text on top").
+// scriptFallbackTTFs are the per-script Noto faces chained after the Latin UI
+// font so the reader can display text in any of them — no single font covers
+// every script, and Noto is split per script, so mixed text (e.g. a Chinese or
+// Arabic title next to Latin) needs per-rune font routing. go-opentype parses
+// each lazily (~1ms), and go:embed shares one copy of the bytes, so the chain is
+// cheap in time and memory despite the large CJK face.
+var scriptFallbackTTFs = [][]byte{
+	notosanssc.TTF,         // Chinese + Han ideographs + kana
+	notosansthai.TTF,       // Thai
+	notosansarabic.TTF,     // Arabic
+	notosansdevanagari.TTF, // Devanagari (Hindi, …)
+	notosanshebrew.TTF,     // Hebrew
+	notosansarmenian.TTF,   // Armenian
+	notosansgeorgian.TTF,   // Georgian
+}
+
+// ttFont returns a cached toolkit TrueType font at px pixels, regular or bold.
+// The Latin UI face (embedded Go font) is the primary; the per-script Noto faces
+// are chained after it via toolkit.NewFallbackFont so glyphs the primary lacks
+// (CJK, Arabic, Thai, …) render from the face that has them. Assigned to a
+// widget's Base.Font so the widget draws crisp AA text itself.
 func ttFont(bold bool, px int) toolkit.Font {
 	if px < 1 {
 		px = 1
@@ -96,7 +121,16 @@ func ttFont(bold bool, px int) toolkit.Font {
 	if bold {
 		src = gobold.TTF
 	}
-	f, _ := toolkit.NewTrueTypeFont(src, px)
+	primary, _ := toolkit.NewTrueTypeFont(src, px)
+	fonts := []toolkit.Font{primary}
+	for _, ttf := range scriptFallbackTTFs {
+		if fb, err := toolkit.NewTrueTypeFont(ttf, px); err == nil {
+			fonts = append(fonts, fb)
+		}
+	}
+	// The primary (an embedded Go face) always parses, so the chain always has a
+	// valid first font and NewFallbackFont never errors here.
+	f, _ := toolkit.NewFallbackFont(fonts...)
 	ttCache[k] = f
 	return f
 }
