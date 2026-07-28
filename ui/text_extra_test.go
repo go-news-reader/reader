@@ -1,12 +1,74 @@
 package ui
 
 import (
+	"image"
 	"strings"
 	"testing"
 
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
 )
+
+// TestGetFaceCJKFallback covers the getFace fallback path (the hand-drawn views):
+// coverage routing, per-rune width, and mixed-script draw (with + without the
+// synthetic-bold pass), while the Latin fast path stays byte-identical.
+func TestGetFaceCJKFallback(t *testing.T) {
+	f := getFace(16, false)
+	if len(f.faces) < 2 {
+		t.Fatal("getFace should build a primary + fallback faces")
+	}
+	// Coverage routing.
+	if !f.primaryCovers("Hi!") || f.primaryCovers("中") {
+		t.Fatal("primaryCovers: Latin yes, CJK no")
+	}
+	if f.faceFor('A') != f.face {
+		t.Fatal("Latin routes to the primary face")
+	}
+	if f.faceFor('中') == f.face {
+		t.Fatal("CJK routes to a fallback face")
+	}
+	if f.faceFor('🙂') != f.face {
+		t.Fatal("an uncovered rune falls back to the primary")
+	}
+	// Width: the fallback sum is positive and mixed text is wider than its Latin
+	// prefix alone.
+	if f.width("中文") <= 0 || f.width("Hi 中文") <= f.width("Hi ") {
+		t.Fatal("CJK width should be measured through the fallback")
+	}
+	// A rune no face covers (emoji) alongside CJK still measures (uncovered → the
+	// primary's .notdef advance) without panicking.
+	if f.width("中🙂") < f.width("中") {
+		t.Fatal("an uncovered rune must not shrink the measured width")
+	}
+	// Draw the mixed run (fallback path) — expect painted pixels.
+	img := image.NewRGBA(image.Rect(0, 0, 220, 30))
+	f.draw(img, 2, 4, "Hi 中文", toolkit.RGBA{R: 0, G: 0, B: 0, A: 255})
+	if !anyPainted(img.Pix) {
+		t.Fatal("mixed Latin+CJK drew nothing")
+	}
+	// The synthetic-bold fallback branch (a system font exposes only Regular).
+	bold := textFace{face: f.face, faces: f.faces, ascent: f.ascent, height: f.height, synthBold: true}
+	img2 := image.NewRGBA(image.Rect(0, 0, 120, 30))
+	bold.draw(img2, 2, 4, "中A", toolkit.RGBA{R: 0, G: 0, B: 0, A: 255})
+	if !anyPainted(img2.Pix) {
+		t.Fatal("synth-bold mixed draw painted nothing")
+	}
+	// A face with no fallback chain uses the primary-only fast path.
+	primaryOnly := textFace{face: f.face, ascent: f.ascent, height: f.height}
+	if primaryOnly.width("中") < 0 { // no panic; measures via the primary
+		t.Fatal("unreachable")
+	}
+	primaryOnly.draw(image.NewRGBA(image.Rect(0, 0, 30, 30)), 0, 0, "A", toolkit.RGBA{A: 255})
+}
+
+func anyPainted(pix []byte) bool {
+	for _, b := range pix {
+		if b != 0 {
+			return true
+		}
+	}
+	return false
+}
 
 // TestTruncateFont covers the toolkit-font ellipsis clip used by box-composed
 // labels: a fit (early return), a zero width, a mid clip, and the tiny-width
