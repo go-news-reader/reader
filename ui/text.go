@@ -11,6 +11,8 @@ import (
 	"github.com/go-opentype/fonts/notosansdevanagari"
 	"github.com/go-opentype/fonts/notosansgeorgian"
 	"github.com/go-opentype/fonts/notosanshebrew"
+	"github.com/go-opentype/fonts/notosansjp"
+	"github.com/go-opentype/fonts/notosanskr"
 	"github.com/go-opentype/fonts/notosanssc"
 	"github.com/go-opentype/fonts/notosansthai"
 	"github.com/go-widgets/toolkit"
@@ -165,6 +167,8 @@ var (
 // cheap in time and memory despite the large CJK face.
 var scriptFallbackTTFs = [][]byte{
 	notosanssc.TTF,         // Chinese + Han ideographs + kana
+	notosansjp.TTF,         // Japanese (kana + JP kanji forms)
+	notosanskr.TTF,         // Korean (Hangul)
 	notosansthai.TTF,       // Thai
 	notosansarabic.TTF,     // Arabic
 	notosansdevanagari.TTF, // Devanagari (Hindi, …)
