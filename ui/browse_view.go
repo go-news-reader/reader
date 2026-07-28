@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"image"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/go-widgets/painter"
@@ -35,17 +36,18 @@ type browseViewKey struct {
 	filter string
 }
 
-// SetBrowseGroups stores the server's full active group list (the browse view's
-// data source) and invalidates the cached tree so the next layout rebuilds it.
-func (s *Scene) SetBrowseGroups(names []string) {
-	s.browseGroups = names
+// SetBrowseGroups stores the server's full active group list (name + estimated
+// post count — the browse view's data source) and invalidates the cached tree so
+// the next layout rebuilds it.
+func (s *Scene) SetBrowseGroups(groups []source.GroupInfo) {
+	s.browseGroups = groups
 	s.browseGroupsRev++
 	s.browseScrollY = 0
 	s.touch()
 }
 
 // BrowseGroups returns the loaded group list.
-func (s *Scene) BrowseGroups() []string { return s.browseGroups }
+func (s *Scene) BrowseGroups() []source.GroupInfo { return s.browseGroups }
 
 // SetUsenetServer records the configured Usenet server address. A non-empty
 // value gates the sidebar "Browse newsgroups" entry and titles the browse view.
@@ -365,8 +367,17 @@ func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browse
 		}
 	}
 	ty := y + (m.sideItemH-m.side.height)/2
-	m.side.draw(img, textX, ty, truncate(m.side, label, right-textX-m.pad), th.OnSurface)
-	_ = muteS
+	// A real group shows its estimated post count, right-aligned before the
+	// Subscribe marker, so the browser conveys how busy each newsgroup is.
+	labelRight := right
+	if n.IsGroup && n.Count > 0 {
+		cnt := strconv.Itoa(n.Count)
+		cw := m.side.width(cnt)
+		cx := right - m.pad - cw
+		m.side.draw(img, cx, ty, cnt, muteS)
+		labelRight = cx - rpxOf(s, 6)
+	}
+	m.side.draw(img, textX, ty, truncate(m.side, label, labelRight-textX-m.pad), th.OnSurface)
 }
 
 // browseHitTest maps a click in the newsgroup browser to an action.

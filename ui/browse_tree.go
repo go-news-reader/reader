@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/go-news-reader/reader/source"
 )
 
 // groupNode is one node of the newsgroup hierarchy.
@@ -21,20 +23,24 @@ type groupNode struct {
 	Children []*groupNode // child nodes, sorted by Segment
 	IsGroup  bool         // a real newsgroup exists at exactly Name
 	Leaves   int          // number of real groups in this subtree (incl. self)
+	Count    int          // estimated post count when IsGroup (0 unknown)
 }
 
-// buildGroupTree assembles the hierarchy from a flat list of full group names.
-// Blank names are ignored; the result's children are the top-level hierarchies
-// (root itself is a synthetic, unnamed holder that is never rendered). Every
-// node's Leaves count is populated.
-func buildGroupTree(names []string) *groupNode {
+// buildGroupTree assembles the hierarchy from a flat list of groups (name +
+// estimated post count). Blank names are ignored; the result's children are the
+// top-level hierarchies (root itself is a synthetic, unnamed holder that is
+// never rendered). Every node's Leaves count is populated, and each real group's
+// Count is carried onto its leaf node.
+func buildGroupTree(groups []source.GroupInfo) *groupNode {
 	root := &groupNode{}
 	index := map[string]*groupNode{"": root}
-	for _, name := range names {
-		if name == "" {
+	for _, g := range groups {
+		if g.Name == "" {
 			continue
 		}
-		ensureNode(index, name).IsGroup = true
+		n := ensureNode(index, g.Name)
+		n.IsGroup = true
+		n.Count = g.Count
 	}
 	sortNode(root)
 	countLeaves(root)
@@ -108,7 +114,7 @@ func filterNode(n *groupNode, re *regexp.Regexp) *groupNode {
 	if !selfMatch && len(kids) == 0 {
 		return nil
 	}
-	return &groupNode{Name: n.Name, Segment: n.Segment, IsGroup: selfMatch, Children: kids}
+	return &groupNode{Name: n.Name, Segment: n.Segment, IsGroup: selfMatch, Count: n.Count, Children: kids}
 }
 
 // browseRow is one visible row of the flattened tree: a node plus its indent

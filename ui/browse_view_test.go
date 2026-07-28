@@ -9,8 +9,8 @@ import (
 	"github.com/go-news-reader/reader/source"
 )
 
-func browseSample() []string {
-	return []string{"alt.binaries.cd.image", "alt.binaries.test", "alt.test", "comp.lang.go", "fr.test"}
+func browseSample() []source.GroupInfo {
+	return gis("alt.binaries.cd.image", "alt.binaries.test", "alt.test", "comp.lang.go", "fr.test")
 }
 
 // browseScene builds a browser scene with a configured server, one profile and
@@ -191,9 +191,9 @@ func TestBrowseChromeHits(t *testing.T) {
 
 func TestBrowseScrollClamps(t *testing.T) {
 	// A long group list makes the tree taller than the viewport.
-	names := make([]string, 0, 400)
+	names := make([]source.GroupInfo, 0, 400)
 	for i := 0; i < 400; i++ {
-		names = append(names, "group"+itoa(i)) // flat top-level leaves -> many rows
+		names = append(names, source.GroupInfo{Name: "group" + itoa(i)}) // flat top-level leaves -> many rows
 	}
 	s := browseScene()
 	s.SetBrowseGroups(names)
@@ -214,6 +214,21 @@ func TestBrowseScrollClamps(t *testing.T) {
 	}
 }
 
+func TestBrowseShowsPostCount(t *testing.T) {
+	s := New(900, 640, ThemeFor(OSLinux, false))
+	s.SetProfiles([]settings.Profile{{Name: "Home"}}, 0)
+	s.SetUsenetServer("news.free.fr:119")
+	// A flat top-level group leaf so it renders (with its count) in the collapsed
+	// tree, exercising drawBrowseRow's post-count branch.
+	s.SetBrowseGroups([]source.GroupInfo{{Name: "control", Count: 248680}})
+	s.OpenBrowse()
+	s.Draw(make([]byte, s.W*s.H*4))
+	s.layoutBrowse()
+	if len(s.browseRows) != 1 || !s.browseRows[0].node.IsGroup || s.browseRows[0].node.Count != 248680 {
+		t.Fatalf("leaf post count not threaded to the tree: %+v", s.browseRows)
+	}
+}
+
 func TestBrowseFocusedGetter(t *testing.T) {
 	s := browseScene()
 	if s.BrowseFocused() {
@@ -231,7 +246,7 @@ func TestBrowseSubscribeRectOnGroupWithChildren(t *testing.T) {
 	s := New(900, 640, ThemeFor(OSLinux, false))
 	s.SetProfiles([]settings.Profile{{Name: "Home"}}, 0)
 	s.SetUsenetServer("news.free.fr:119")
-	s.SetBrowseGroups([]string{"alt.test", "alt.test.foo"})
+	s.SetBrowseGroups(gis("alt.test", "alt.test.foo"))
 	s.OpenBrowse()
 	s.ToggleBrowseNode("alt")
 	s.layoutBrowse()

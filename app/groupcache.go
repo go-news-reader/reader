@@ -3,7 +3,10 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"github.com/go-news-reader/reader/source"
 )
 
 // groupCacheAppDir is the per-user cache subdirectory for the reader.
@@ -37,10 +40,11 @@ func sanitizeServer(s string) string {
 	return strings.NewReplacer(":", "_", "/", "_", "\\", "_").Replace(s)
 }
 
-// loadGroupCache reads the persisted group list for server (one name per line),
-// reporting false when there is no usable cache — so the browser opens instantly
-// from disk instead of re-fetching tens of thousands of groups on every launch.
-func loadGroupCache(server string) ([]string, bool) {
+// loadGroupCache reads the persisted group list for server (one "name\tcount"
+// per line), reporting false when there is no usable cache — so the browser
+// opens instantly from disk instead of re-fetching tens of thousands of groups
+// on every launch. A legacy name-only line (no tab) parses with a zero count.
+func loadGroupCache(server string) ([]source.GroupInfo, bool) {
 	path := groupCachePath(server)
 	if path == "" {
 		return nil, false
@@ -49,21 +53,27 @@ func loadGroupCache(server string) ([]string, bool) {
 	if err != nil {
 		return nil, false
 	}
-	var names []string
+	var groups []source.GroupInfo
 	for _, line := range strings.Split(string(data), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			names = append(names, line)
+		if line = strings.TrimSpace(line); line == "" {
+			continue
 		}
+		name, count := line, 0
+		if tab := strings.IndexByte(line, '\t'); tab >= 0 {
+			name = line[:tab]
+			count, _ = strconv.Atoi(line[tab+1:])
+		}
+		groups = append(groups, source.GroupInfo{Name: name, Count: count})
 	}
-	if len(names) == 0 {
+	if len(groups) == 0 {
 		return nil, false
 	}
-	return names, true
+	return groups, true
 }
 
 // saveGroupCache persists the group list for server (best-effort; a failure just
 // means the next launch re-fetches). The Refresh button rewrites it.
-func saveGroupCache(server string, names []string) {
+func saveGroupCache(server string, groups []source.GroupInfo) {
 	path := groupCachePath(server)
 	if path == "" {
 		return
@@ -71,5 +81,12 @@ func saveGroupCache(server string, names []string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
 	}
-	_ = os.WriteFile(path, []byte(strings.Join(names, "\n")), 0o644)
+	var b strings.Builder
+	for _, g := range groups {
+		b.WriteString(g.Name)
+		b.WriteByte('\t')
+		b.WriteString(strconv.Itoa(g.Count))
+		b.WriteByte('\n')
+	}
+	_ = os.WriteFile(path, []byte(b.String()), 0o644)
 }
