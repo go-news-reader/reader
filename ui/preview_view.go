@@ -300,6 +300,36 @@ func (s *Scene) layoutPreview() {
 
 // drawPreview paints the pane: its surface, left divider, and either the empty
 // prompt or the selected item's badge/title/meta/image/body plus the Open button.
+// previewImage is the preview pane's image cell as a toolkit widget so the box
+// layout positions it: it records its rect (for the click-to-open hit-test) and
+// draws the decoded thumbnail, a spinner while it loads, or a kind placeholder.
+type previewImage struct {
+	toolkit.Base
+	s   *Scene
+	it  source.Item
+	p   *painter.PixelPainter
+	img *image.RGBA
+}
+
+func (w *previewImage) Draw(_ painter.Painter, th *toolkit.Theme) {
+	s, b := w.s, w.Bounds()
+	s.previewImgR = b
+	w.p.FillRect(painter.Rect(b), th.SurfaceAlt)
+	switch {
+	case s.thumb(w.it.ID) != nil:
+		s.drawPreviewImage(w.p, th, s.thumb(w.it.ID), b)
+	case s.previewImgPending:
+		d := rpxOf(s, 22)
+		s.spinnerAt(toolkit.Rect{X: b.X + (b.W-d)/2, Y: b.Y + (b.H-d)/2, W: d, H: d}).Draw(w.p, th)
+	default:
+		lbl := "image"
+		if len(w.it.Media) > 0 {
+			lbl = string(w.it.Media[0].Kind)
+		}
+		s.m.meta.draw(w.img, b.X+(b.W-s.m.meta.width(lbl))/2, b.Y+(b.H-s.m.meta.height)/2, lbl, mute(th.OnSurface, th.Surface))
+	}
+}
+
 func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	if s.previewR.W == 0 {
 		return
@@ -322,54 +352,40 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	it := s.previewItem
 	gap := rpxOf(s, 8)
 	x := d.innerX
-	y := r.Y + m.pad - s.previewScrollY
 
-	// Source badge + channel.
+	// Content, composed with the Sencha box model: a VBox stacks the badge row,
+	// title lines, meta, image and body lines; each is a widget the box positions.
+	// The text widgets reuse the getFace line renderer (textLine) so wrapping and
+	// CJK stay identical — only the layout is now box-driven.
 	label := sourceLabel(it.Source)
+	badge := &toolkit.Badge{Text: label, Fill: sourceColor(it.Source), Ink: onAccentFor(sourceColor(it.Source))}
+	badge.Font = ttFont(true, rpxOf(s, 10))
 	bw := m.badge.width(label) + m.pad
-	p.FillRoundRect(painter.Rect{X: x, Y: y, W: bw, H: m.badgeH}, m.badgeH/2, sourceColor(it.Source))
-	m.badge.draw(img, x+m.pad/2, y+(m.badgeH-m.badge.height)/2, label, onAccentFor(sourceColor(it.Source)))
-	if it.Channel != "" {
-		cw := r.X + r.W - m.pad - (x + bw + m.pad/2)
-		m.meta.draw(img, x+bw+m.pad/2, y+(m.badgeH-m.meta.height)/2, truncate(m.meta, it.Channel, cw), muteS)
-	}
-	y += m.badgeH + gap
+	badgeRow := toolkit.NewHBox()
+	badgeRow.Spacing = rpxOf(s, 6)
+	badgeRow.AddFixed(badge, bw)
+	channel := truncate(m.meta, it.Channel, d.innerW-bw-rpxOf(s, 6))
+	badgeRow.AddFlex(&textLine{face: m.meta, text: channel, ink: muteS, img: img}, 1)
 
-	tlh := d.titleFace.height + rpxOf(s, 2)
+	col := toolkit.NewVBox()
+	col.Spacing = -1
+	col.AddFixed(badgeRow, m.badgeH)
+	col.AddFixed(toolkit.NewLabel(""), gap)
 	for _, ln := range d.titleLines {
-		d.titleFace.draw(img, x, y, ln, th.OnSurface)
-		y += tlh
+		col.AddFixed(&textLine{face: d.titleFace, text: ln, ink: th.OnSurface, img: img}, d.titleFace.height+rpxOf(s, 2))
 	}
-	y += gap
-	m.meta.draw(img, x, y, truncate(m.meta, d.meta, d.innerW), muteS)
-	y += m.meta.height + gap
-
+	col.AddFixed(toolkit.NewLabel(""), gap)
+	col.AddFixed(&textLine{face: m.meta, text: truncate(m.meta, d.meta, d.innerW), ink: muteS, img: img}, m.meta.height)
+	col.AddFixed(toolkit.NewLabel(""), gap)
 	if d.imgH > 0 {
-		ir := toolkit.Rect{X: x, Y: y, W: d.innerW, H: d.imgH}
-		s.previewImgR = ir
-		p.FillRect(painter.Rect(ir), th.SurfaceAlt)
-		if t := s.thumb(it.ID); t != nil {
-			s.drawPreviewImage(p, th, t, ir)
-		} else if s.previewImgPending {
-			d := rpxOf(s, 22)
-			s.spinnerAt(toolkit.Rect{X: ir.X + (ir.W-d)/2, Y: ir.Y + (ir.H-d)/2, W: d, H: d}).Draw(p, th)
-		} else {
-			lbl := "image"
-			if len(it.Media) > 0 {
-				lbl = string(it.Media[0].Kind)
-			}
-			m.meta.draw(img, ir.X+(ir.W-m.meta.width(lbl))/2, ir.Y+(ir.H-m.meta.height)/2, lbl, muteS)
-		}
-		y += d.imgH + gap
+		col.AddFixed(&previewImage{s: s, it: it, p: p, img: img}, d.imgH)
+		col.AddFixed(toolkit.NewLabel(""), gap)
 	}
-
-	blh := d.bodyFace.height + rpxOf(s, 3)
 	for _, ln := range d.bodyLines {
-		if y+blh >= r.Y && y < s.H {
-			d.bodyFace.draw(img, x, y, ln, th.OnSurface)
-		}
-		y += blh
+		col.AddFixed(&textLine{face: d.bodyFace, text: ln, ink: th.OnSurface, img: img}, d.bodyFace.height+rpxOf(s, 3))
 	}
+	col.SetBounds(toolkit.Rect{X: x, Y: r.Y + m.pad - s.previewScrollY, W: d.innerW, H: d.height})
+	col.Draw(p, th)
 
 	// Scrollbar down the pane's right edge when the preview overflows.
 	s.drawVScrollbar(p, r, s.previewContentH, s.previewScrollY)
