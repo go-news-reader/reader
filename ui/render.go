@@ -241,13 +241,14 @@ func (s *Scene) Draw(buf []byte) {
 	// --- feed (drawn first; chrome overpaints scroll overflow) ---
 	feedTop := m.topbarH
 	feedX, feedW := s.feedGeom()
+	cardW := s.feedCardW(feedW) // narrower than feedW when the scrollbar shows
 	// Progress strip (loading + some items): drawn above the banners, scrolling
 	// with the feed content.
 	feedBot := s.feedBottom() // content stops above the download panel
 	if s.showStrip {
 		y := feedTop + s.loadStripTop - s.ScrollY
 		if y+m.loadStripH >= feedTop && y < feedBot {
-			s.drawLoadStrip(p, img, feedX, y, feedW, muteS)
+			s.drawLoadStrip(p, img, feedX, y, cardW, muteS)
 		}
 	}
 	// "Needs sign-in" banners (drawn above the cards, scrolling with the feed).
@@ -256,7 +257,7 @@ func (s *Scene) Draw(buf []byte) {
 		if y+m.bannerH < feedTop || y >= feedBot {
 			continue
 		}
-		s.drawAuthBanner(p, img, s.authPrompts[a.idx], feedX, y, feedW, onAccent)
+		s.drawAuthBanner(p, img, s.authPrompts[a.idx], feedX, y, cardW, onAccent)
 	}
 	for _, r := range s.rows {
 		y := feedTop + r.top - s.ScrollY
@@ -264,14 +265,14 @@ func (s *Scene) Draw(buf []byte) {
 			continue
 		}
 		if r.group != nil {
-			s.drawGroup(p, img, r.group, feedX, y, feedW, onAccent, muteS)
+			s.drawGroup(p, img, r.group, feedX, y, cardW, onAccent, muteS)
 			continue
 		}
-		blitAt(img, s.cardSprite(r.item, feedW, onAccent, muteS), feedX, y)
+		blitAt(img, s.cardSprite(r.item, cardW, onAccent, muteS), feedX, y)
 		if s.previewHas && sameItem(r.item, s.previewItem) {
 			// Selected card: an accent outline so the current post is visibly
 			// picked out, mirroring the sidebar's selected-group affordance.
-			p.StrokeRoundRect(painter.Rect{X: feedX, Y: y, W: feedW, H: r.height}, rpxOf(s, 6), th.Accent, rpxOf(s, 2))
+			p.StrokeRoundRect(painter.Rect{X: feedX, Y: y, W: cardW, H: r.height}, rpxOf(s, 6), th.Accent, rpxOf(s, 2))
 		}
 	}
 	// Scrollbar down the feed's right edge when the content overflows the viewport
@@ -281,7 +282,7 @@ func (s *Scene) Draw(buf []byte) {
 		if s.loading {
 			// A refresh is running but nothing has arrived yet: show the animated
 			// placeholder rather than a bare "No items." that looks broken.
-			s.drawLoadingPlaceholder(p, img, feedX, feedW, muteS)
+			s.drawLoadingPlaceholder(p, img, feedX, cardW, muteS)
 		} else {
 			msg := "No items."
 			cx := m.sidebarW + (s.W-m.sidebarW-m.title.width(msg))/2
@@ -880,6 +881,7 @@ func (s *Scene) HitTest(x, y int) Hit {
 	}
 	// Feed.
 	feedX, feedW := s.feedGeom()
+	cardW := s.feedCardW(feedW) // match the draw's scrollbar gutter
 	contentY := y - m.topbarH + s.ScrollY
 	for _, a := range s.authRows {
 		if contentY >= a.top && contentY < a.top+m.bannerH {
@@ -893,7 +895,7 @@ func (s *Scene) HitTest(x, y int) Hit {
 		if r.group == nil {
 			return Hit{Kind: HitItem, Item: r.item}
 		}
-		return s.hitGroup(r, feedX, feedW, x, contentY)
+		return s.hitGroup(r, feedX, cardW, x, contentY)
 	}
 	return Hit{Kind: HitNone}
 }
