@@ -481,6 +481,27 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	return img
 }
 
+// cardThumb is a toolkit.Widget wrapping a feed card's thumbnail so the card's
+// box layout positions it like any other child; its Draw blits the cached image
+// (or a placeholder) into the box-computed rect via drawThumb.
+type cardThumb struct {
+	toolkit.Base
+	s    *Scene
+	it   source.Item
+	p    *painter.PixelPainter
+	img  *image.RGBA
+	mute toolkit.RGBA
+}
+
+func (c *cardThumb) Draw(_ painter.Painter, _ *toolkit.Theme) {
+	c.s.drawThumb(c.p, c.img, c.it, c.Bounds(), c.mute)
+}
+
+// drawCard paints one feed card. Its interior is composed with toolkit box
+// layouts (Sencha model) rather than hand-positioned draws: an outer HBox splits
+// the content column from the thumbnail, and the column is a VBox of a badge row,
+// the title, a flexible spacer, and the meta line — each a real widget (Badge /
+// Label / cardThumb) the boxes lay out and draw.
 func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Item, x, y, w int, onAccent, muteS toolkit.RGBA) {
 	m := s.m
 	th := s.theme
@@ -488,34 +509,50 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 	p.StrokeRoundRect(painter.Rect{X: x, Y: y, W: w, H: m.rowH}, rpxOf(s, 6), th.Border, 1)
 
 	pad := m.pad
-	textW := w - 2*pad
 	hasThumb := len(it.Media) > 0
+	textW := w - 2*pad
 	if hasThumb {
-		textW -= m.thumbW + pad
+		textW -= m.thumbW + pad // pad = the HBox gap the thumbnail column reserves
 	}
 
-	// Source badge pill (a toolkit.Badge coloured per source; the label is
-	// drawn on top in the reader's TrueType face for crisp small text).
+	// Badge row: the source pill (fixed to its label width) then the channel.
 	label := sourceLabel(it.Source)
-	bw := m.badge.width(label) + pad
-	s.drawSourceBadge(p, toolkit.Rect{X: x + pad, Y: y + pad, W: bw, H: m.badgeH}, it.Source)
-	// Channel next to the badge.
-	if it.Channel != "" {
-		m.meta.draw(img, x+pad+bw+pad/2, y+pad+(m.badgeH-m.meta.height)/2, it.Channel, muteS)
-	}
+	badge := &toolkit.Badge{Text: label, Fill: sourceColor(it.Source), Ink: onAccentFor(sourceColor(it.Source))}
+	badge.Font = ttFont(true, rpxOf(s, 10))
+	badgeRow := toolkit.NewHBox()
+	badgeRow.Spacing = rpxOf(s, 4)
+	badgeRow.AddFixed(badge, m.badge.width(label)+pad)
+	channel := toolkit.NewLabel(it.Channel)
+	channel.Font = ttFont(false, rpxOf(s, 12))
+	channel.Ink = muteS
+	badgeRow.AddFlex(channel, 1)
 
-	// Title.
-	titleY := y + pad + m.badgeH + rpxOf(s, 4)
-	m.title.draw(img, x+pad, titleY, truncate(m.title, it.Title, textW), th.OnSurface)
+	title := toolkit.NewLabel(truncate(m.title, it.Title, textW))
+	title.Font = ttFont(true, rpxOf(s, 15))
+	title.Ink = th.OnSurface
 
-	// Meta line.
-	m.meta.draw(img, x+pad, y+m.rowH-m.meta.height-rpxOf(s, 8), truncate(m.meta, metaLine(it), textW), muteS)
+	meta := toolkit.NewLabel(truncate(m.meta, metaLine(it), textW))
+	meta.Font = ttFont(false, rpxOf(s, 12))
+	meta.Ink = muteS
 
-	// Thumbnail.
+	// Content column: badge row, title, flexible gap (pushes meta to the bottom),
+	// meta line.
+	col := toolkit.NewVBox()
+	col.Spacing = -1
+	col.AddFixed(badgeRow, m.badgeH)
+	col.AddFixed(title, m.title.height+rpxOf(s, 4))
+	col.AddFlex(toolkit.NewLabel(""), 1)
+	col.AddFixed(meta, m.meta.height+rpxOf(s, 8))
+
+	// Card row: content column (flex) then the optional thumbnail (fixed).
+	row := toolkit.NewHBox()
+	row.Spacing = pad
+	row.AddFlex(col, 1)
 	if hasThumb {
-		r := toolkit.Rect{X: x + w - pad - m.thumbW, Y: y + (m.rowH-m.thumbH)/2, W: m.thumbW, H: m.thumbH}
-		s.drawThumb(p, img, it, r, muteS)
+		row.AddFixed(&cardThumb{s: s, it: it, p: p, img: img, mute: muteS}, m.thumbW)
 	}
+	row.SetBounds(toolkit.Rect{X: x + pad, Y: y + pad, W: w - 2*pad, H: m.rowH - 2*pad})
+	row.Draw(p, th)
 	_ = onAccent
 }
 
