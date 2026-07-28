@@ -341,11 +341,7 @@ func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browse
 			drawCheckIcon(p, sr, successColor(th), s.iconStroke())
 		} else {
 			p.FillRoundRect(painter.Rect(sr), rpxOf(s, 4), th.Accent)
-			onAccent := th.Background
-			if v, ok := th.Extra["OnAccent"]; ok {
-				onAccent = v
-			}
-			drawPlusIcon(p, sr, onAccent, s.iconStroke())
+			drawPlusIcon(p, sr, themeOnAccent(th), s.iconStroke())
 		}
 	}
 	ty := y + (m.sideItemH-m.side.height)/2
@@ -370,8 +366,19 @@ func (s *Scene) browseHitTest(x, y int) Hit {
 	}
 	m := s.m
 	feedW := s.W - 2*m.pad
+	// A click above the tree viewport (in the filter/count chrome) hits no row:
+	// without this, a row scrolled up under the count line was still selectable
+	// through it, silently subscribing to or toggling an invisible group.
+	if y < s.browseTreeTop {
+		return Hit{Kind: HitNone}
+	}
 	for _, r := range s.browseRows {
 		top := s.browseTreeTop + r.top - s.browseScrollY
+		// Skip rows outside the tree viewport, mirroring the draw-side clip so a
+		// drawn-clipped (invisible) row is never hit-testable.
+		if top+m.sideItemH < s.browseTreeTop || top >= s.H {
+			continue
+		}
 		if y < top || y >= top+m.sideItemH {
 			continue
 		}

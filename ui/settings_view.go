@@ -282,6 +282,29 @@ func (s *Scene) layoutSettings() {
 	label(pad, y, "MEDIA CACHE")
 	y += m.side.height + gap
 	s.sCacheR = toolkit.Rect{X: pad, Y: y, W: s.W - 2*pad, H: btnH}
+	y += btnH + pad
+
+	// The editor can be taller than the surface (many subscriptions, high zoom, a
+	// short window); the whole body scrolls, with the topbar + Done painted over
+	// the overflow. Everything above was laid out unscrolled; clamp the offset
+	// (robust to a taller window) and shift the scrollable elements up by it. The
+	// Done button lives in the fixed topbar band, so it is not shifted.
+	s.settingsContentH = y - m.topbarH
+	s.settingsScrollY = clampScroll(s.settingsScrollY, s.settingsContentH-(s.H-m.topbarH))
+	if dy := -s.settingsScrollY; dy != 0 {
+		for i := range s.sButtons {
+			s.sButtons[i].rect.Y += dy
+		}
+		for i := range s.sChips {
+			s.sChips[i].rect.Y += dy
+		}
+		for i := range s.sLabels {
+			s.sLabels[i].y += dy
+		}
+		s.sRenameR.Y += dy
+		s.sChannelR.Y += dy
+		s.sCacheR.Y += dy
+	}
 }
 
 // drawSettings paints the preferences editor.
@@ -291,10 +314,7 @@ func (s *Scene) drawSettings(buf []byte) {
 	p := painter.NewPixelPainter(buf, s.W, s.H)
 	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, s.H)}
 	th := s.theme
-	onAccent := th.Background
-	if v, ok := th.Extra["OnAccent"]; ok {
-		onAccent = v
-	}
+	onAccent := themeOnAccent(th)
 	muteS := mute(th.OnSurface, th.Surface)
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
@@ -352,15 +372,22 @@ func (s *Scene) drawInput(p *painter.PixelPainter, img *image.RGBA, r toolkit.Re
 		border = th.Accent
 	}
 	p.StrokeRoundRect(painter.Rect(r), rpxOf(s, 6), border, rpxOf(s, 1))
-	txt, col := text, th.OnSurface
-	if txt == "" {
-		txt, col = placeholder, muteS
-	}
 	tx := r.X + rpxOf(s, 8)
 	ty := r.Y + (r.H-m.tab.height)/2
+	avail := r.W - 2*rpxOf(s, 8)
+	// Show the trailing portion of the value that fits, so a long entry scrolls
+	// left (keeping its end and the caret visible) rather than overrunning the box.
+	vis := m.tab.clipRight(text, avail)
+	txt, col := vis, th.OnSurface
+	if text == "" {
+		txt, col = m.tab.clipRight(placeholder, avail), muteS
+	}
 	m.tab.draw(img, tx, ty, txt, col)
-	if focused && text != "" {
-		cx := tx + m.tab.width(text) + rpxOf(s, 1)
+	if focused {
+		// Caret follows the visible value's end (which clipRight already bounds to
+		// the field width, so it stays inside the box) and is drawn even on an empty
+		// field, where it sits at the field start.
+		cx := tx + m.tab.width(vis) + rpxOf(s, 1)
 		p.FillRect(painter.Rect{X: cx, Y: ty, W: rpxOf(s, 2), H: m.tab.height}, th.OnSurface)
 	}
 	_ = onAccent

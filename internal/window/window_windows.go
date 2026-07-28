@@ -137,6 +137,7 @@ var (
 	wW, wH   int
 	wScale   = 1.0
 	wHwnd    uintptr
+	wCharAsm utf16Assembler // combines WM_CHAR UTF-16 units (UI thread only)
 )
 
 // present pulls the latest frame; it stores and reports true only when changed.
@@ -216,19 +217,22 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		wScale = scale
 		wmu.Unlock()
 		if wHandler != nil {
-			wHandler.Resize(int(float64(w)*scale), int(float64(h)*scale), scale)
+			// SetProcessDpiAware makes WM_SIZE report PHYSICAL (device) pixels, so
+			// w/h are already device px — pass them straight through and let the
+			// scene alone apply `scale`. Multiplying here double-scaled the scene,
+			// which StretchDIBits then downscaled back, rendering blurry at ~1×.
+			wHandler.Resize(w, h, scale)
 			if present() {
 				procInvalidateRect.Call(hwnd, 0, 0)
 			}
 		}
 		return 0
 	case wmLButtonDown:
+		// Mouse coords arrive in physical (device) pixels under DPI-awareness, the
+		// same space the scene is sized in — forward them unscaled (see wmSize).
 		if wHandler != nil {
 			x, y := winMouseCoords(uint32(lparam))
-			wmu.Lock()
-			scale := wScale
-			wmu.Unlock()
-			wHandler.MouseDown(int(float64(x)*scale), int(float64(y)*scale))
+			wHandler.MouseDown(x, y)
 			if present() {
 				procInvalidateRect.Call(hwnd, 0, 0)
 			}
@@ -239,10 +243,7 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		// hovers do not flood the handler.
 		if wHandler != nil && winLeftButtonHeld(uint32(wparam)) {
 			x, y := winMouseCoords(uint32(lparam))
-			wmu.Lock()
-			scale := wScale
-			wmu.Unlock()
-			wHandler.MouseMove(int(float64(x)*scale), int(float64(y)*scale))
+			wHandler.MouseMove(x, y)
 			if present() {
 				procInvalidateRect.Call(hwnd, 0, 0)
 			}
@@ -251,10 +252,7 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	case wmLButtonUp:
 		if wHandler != nil {
 			x, y := winMouseCoords(uint32(lparam))
-			wmu.Lock()
-			scale := wScale
-			wmu.Unlock()
-			wHandler.MouseUp(int(float64(x)*scale), int(float64(y)*scale))
+			wHandler.MouseUp(x, y)
 			if present() {
 				procInvalidateRect.Call(hwnd, 0, 0)
 			}
@@ -282,8 +280,11 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		}
 		return 0
 	case wmChar:
+		// WM_CHAR delivers UTF-16 code units; astral characters (emoji) arrive as
+		// two surrogate messages that wCharAsm combines into one rune. Runs on the
+		// single UI thread, so the assembler needs no locking.
 		if wHandler != nil {
-			if r := winCharRune(uint16(wparam)); r != 0 {
+			if r := wCharAsm.next(uint16(wparam)); r != 0 {
 				wHandler.Key("", r)
 				if present() {
 					procInvalidateRect.Call(hwnd, 0, 0)
@@ -369,7 +370,9 @@ func Run(cfg Config, h Handler) error {
 	wmu.Lock()
 	wScale = scale
 	wmu.Unlock()
-	h.Resize(int(float64(cw)*scale), int(float64(ch)*scale), scale)
+	// GetClientRect is physical (device) px under DPI-awareness; pass it straight
+	// through with the scale (see wmSize) so the scene renders 1:1 and crisp.
+	h.Resize(cw, ch, scale)
 	present()
 
 	procShowWindow.Call(hwnd, swShow)

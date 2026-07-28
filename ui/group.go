@@ -42,7 +42,12 @@ var (
 // multipart/archive/sidecar tokens are stripped — arbitrary extensions and
 // release qualifiers (.1080p, .2024) are preserved so distinct releases stay
 // distinct.
-var reMultiTok = regexp.MustCompile(`(?i)\.(par2|vol\d+\+\d+|part\d+|par\d+|r\d{2}|s\d{2}|\d{3}|rar|zip|7z|tar|gz|bz2|xz|zst|nfo|sfv|nzb|srr|srs)$`)
+// The bare numeric-split token is 0\d\d (000-099) rather than \d{3}: a classic
+// .NNN split starts at .000/.001 and rarely exceeds ~99 parts, whereas a plain
+// 3-digit resolution tag (.720/.480/.576/.360/.240) has a non-zero hundreds
+// digit — restricting to 0\d\d strips the split index without swallowing a
+// resolution that would wrongly merge two distinct releases.
+var reMultiTok = regexp.MustCompile(`(?i)\.(par2|vol\d+\+\d+|part\d+|par\d+|r\d{2}|s\d{2}|0\d\d|rar|zip|7z|tar|gz|bz2|xz|zst|nfo|sfv|nzb|srr|srs)$`)
 
 // subjectInfo is the parsed form of a Usenet binary subject.
 type subjectInfo struct {
@@ -153,28 +158,34 @@ func newGroup(base string, items []source.Item) *itemGroup {
 //     part counter counts as one implicit part, hence always complete for parts).
 func (g *itemGroup) Complete() bool {
 	fileTotal := 0
-	byFile := map[int]map[int]bool{} // file index -> set of present part numbers
-	partTotal := map[int]int{}       // file index -> declared part total
+	byName := map[string]map[int]bool{} // filename -> set of present part numbers
+	partTotal := map[string]int{}       // filename -> declared part total
+	presentIdx := map[int]bool{}        // declared file indices (the F in [F/T]) present
 	for _, m := range g.Members {
-		fi := m.Info.FileIndex
 		if m.Info.FileTotal > fileTotal {
 			fileTotal = m.Info.FileTotal
 		}
-		if byFile[fi] == nil {
-			byFile[fi] = map[int]bool{}
+		presentIdx[m.Info.FileIndex] = true
+		// Track parts by filename, the true per-file identity: subjects without an
+		// [F/T] marker all report FileIndex 0, so keying parts by file index would
+		// merge distinct files and mask a missing part of one behind a present part
+		// of another (a .rar + .r00 split reported "complete" while .r00 lost a part).
+		name := m.Info.Filename
+		if byName[name] == nil {
+			byName[name] = map[int]bool{}
 		}
 		part := m.Info.Part
 		if part == 0 {
 			part = 1 // no yEnc counter => a single implicit part
 		}
-		byFile[fi][part] = true
-		if m.Info.PartTotal > partTotal[fi] {
-			partTotal[fi] = m.Info.PartTotal
+		byName[name][part] = true
+		if m.Info.PartTotal > partTotal[name] {
+			partTotal[name] = m.Info.PartTotal
 		}
 	}
 	// Every present file must have all of its declared parts.
-	for fi, parts := range byFile {
-		for pp := 1; pp <= partTotal[fi]; pp++ {
+	for name, parts := range byName {
+		for pp := 1; pp <= partTotal[name]; pp++ {
 			if !parts[pp] {
 				return false
 			}
@@ -182,7 +193,7 @@ func (g *itemGroup) Complete() bool {
 	}
 	// Every declared file (1..T) must be present.
 	for fi := 1; fi <= fileTotal; fi++ {
-		if byFile[fi] == nil {
+		if !presentIdx[fi] {
 			return false
 		}
 	}

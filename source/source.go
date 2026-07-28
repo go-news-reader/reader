@@ -9,7 +9,22 @@
 // whole application.
 package source
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// UnixOrZero returns t as Unix seconds, or 0 — the "unknown" sentinel for
+// [Item.Created] — when t is the zero Time. A zero time.Time is Unix
+// -62135596800 (year 1); left as-is it sorts BELOW genuine unknowns (Created 0)
+// and every real item, sinking such items below the fold. Providers map an
+// unparsed/missing date through this so a zero time becomes a proper unknown.
+func UnixOrZero(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
 
 // Kind identifies a source platform. The zero value is invalid.
 type Kind string

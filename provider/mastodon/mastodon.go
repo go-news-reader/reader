@@ -100,7 +100,7 @@ func mapStatus(channel string, s gomasto.Status) source.Item {
 		Permalink: s.URL,
 		Score:     s.Favourites,
 		Comments:  s.Replies,
-		Created:   s.CreatedAt.Unix(),
+		Created:   source.UnixOrZero(s.CreatedAt),
 		NSFW:      s.Sensitive,
 	}
 	for _, m := range s.Media {
