@@ -109,6 +109,9 @@ func (c *binaryFakeConn) Group(string) (*gonntp.Group, error)      { return nil,
 func (c *binaryFakeConn) Over(int, int) ([]gonntp.Overview, error) { return nil, nil }
 func (c *binaryFakeConn) ModeReader() error                        { return nil }
 func (c *binaryFakeConn) Authenticate(string, string) error        { return nil }
+func (c *binaryFakeConn) List(string) ([]gonntp.NewsgroupInfo, error) {
+	return nil, nil
+}
 func (c *binaryFakeConn) Article(id string) (*gonntp.Article, error) {
 	if c.artErr != nil {
 		return nil, c.artErr

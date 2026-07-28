@@ -69,6 +69,11 @@ type App struct {
 	// front-ends/tests can substitute a synchronous variant.
 	reconstruct func(base string)
 
+	// loadGroups triggers an asynchronous fetch of the Usenet server's full group
+	// list for the browse window (force bypasses the provider cache). A field so
+	// front-ends/tests can substitute a synchronous variant.
+	loadGroups func(force bool)
+
 	// Double-buffered present state (see Frame): two framebuffers plus the
 	// last-presented damage sequence, so a window/canvas front-end only redraws
 	// and uploads when the scene actually changed.
@@ -162,6 +167,8 @@ func New(cfg Config) *App {
 	}
 	a.refresh = func() { go a.Refresh(context.Background()) }
 	a.reconstruct = func(base string) { go a.doReconstruct(context.Background(), base) }
+	a.loadGroups = func(force bool) { go a.doLoadGroups(context.Background(), force) }
+	a.applyUsenetServer()
 
 	// The view-model is the single source of truth for the core state flow; the
 	// commands' actions late-bind through a's fields (so a test's SetRefreshHook
@@ -247,6 +254,15 @@ func (a *App) rebuildRegistry() {
 	opts := AccountsToOptions(a.baseOpts, a.set.Accounts)
 	opts.Recorder = a.recorder
 	a.reg = a.newRegistry(opts)
+	a.applyUsenetServer()
+}
+
+// applyUsenetServer tells the scene which Usenet server is configured (the base
+// options overlaid with the stored account), which gates the sidebar "Browse
+// newsgroups" entry and titles the browse view.
+func (a *App) applyUsenetServer() {
+	addr := AccountsToOptions(a.baseOpts, a.set.Accounts).UsenetAddr
+	a.scene.SetUsenetServer(addr)
 }
 
 // AccountsToOptions overlays stored per-provider credentials onto base feeds

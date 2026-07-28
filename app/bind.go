@@ -40,6 +40,10 @@ func bindScene(a *App) {
 	// goroutines, so the write cannot race Draw. InvalidateSearch requests the
 	// repaint (the topbar sprite cache keys on the widget text).
 	mvvm.BindField(vm.Search, &s.SearchEntry().Text, &s.SearchEntry().OnChange, s.InvalidateSearch)
+	// The newsgroup browser's regexp filter is bound the same way: BrowseFilter is
+	// only ever Set from the input/render thread, so it too writes the widget field
+	// directly rather than through a.post.
+	mvvm.BindField(vm.BrowseFilter, &s.BrowseEntry().Text, &s.BrowseEntry().OnChange, s.InvalidateBrowse)
 	vm.SearchFocus.Subscribe(func(v bool) { a.post(func() { s.FocusSearch(v) }) })
 	vm.Account.Subscribe(func(k source.Kind) { a.post(func() { s.SelectAccount(k) }) })
 	vm.Mode.Subscribe(func(m ui.Mode) { d := vm.Detail.Get(); a.post(func() { applyMode(s, m, d) }) })
@@ -67,6 +71,8 @@ func applyMode(s *ui.Scene, m ui.Mode, detail source.Item) {
 		s.OpenLog()
 	case ui.ModeAccounts:
 		s.OpenAccounts()
+	case ui.ModeBrowse:
+		s.OpenBrowse()
 	default: // ui.ModeFeed
 		s.CloseDetail()
 	}

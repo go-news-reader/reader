@@ -105,6 +105,23 @@ func (h *Handler) MouseDown(x, y int) {
 		s.ToggleGroup(hit.Value) // expand/collapse a Usenet post group
 	case ui.HitReconstruct:
 		h.a.ReconstructGroup(hit.Value) // download parts + reassemble + PAR2 verify/repair
+	case ui.HitBrowse:
+		vm.OpenBrowse.Execute() // open the newsgroup browser
+		h.a.LoadGroups()        // fetch the server's full group list (cached)
+	case ui.HitCloseBrowse:
+		vm.CloseView.Execute()
+		s.FocusBrowseFilter(false)
+	case ui.HitBrowseRefresh:
+		s.FocusBrowseFilter(false)
+		h.a.RefreshGroups() // re-fetch the group list, bypassing the cache
+	case ui.HitBrowseFilter:
+		s.FocusBrowseFilter(true) // focus the regexp filter field
+	case ui.HitToggleBrowseNode:
+		s.FocusBrowseFilter(false)
+		s.ToggleBrowseNode(hit.Value) // expand/collapse a tree hierarchy
+	case ui.HitSubscribeGroup:
+		s.FocusBrowseFilter(false)
+		h.a.SubscribeGroup(hit.Value) // add usenet:<group> to the active profile
 	case ui.HitCloseSettings:
 		s.CommitRename()
 		s.CommitCache()
@@ -190,6 +207,9 @@ func (h *Handler) Key(name string, r rune) {
 		case ui.ModeAccounts:
 			vm.CloseView.Execute() // Esc commits the accounts editor, like Settings
 			h.a.ApplyAccounts()
+		case ui.ModeBrowse:
+			vm.CloseView.Execute() // Esc returns from the browser to the feed
+			s.FocusBrowseFilter(false)
 		default:
 			vm.FocusSearch(false)
 		}
@@ -199,6 +219,8 @@ func (h *Handler) Key(name string, r rune) {
 			h.commitSettingsField()
 		case ui.ModeAccounts:
 			h.a.ApplyAccounts() // apply credentials in place (re-aggregate without leaving)
+		case ui.ModeBrowse:
+			s.FocusBrowseFilter(false) // Enter defocuses the filter (live-filtered already)
 		default:
 			vm.FocusSearch(false)
 		}

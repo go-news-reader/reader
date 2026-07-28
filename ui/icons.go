@@ -36,12 +36,15 @@ func iconInset(r toolkit.Rect, frac int) toolkit.Rect {
 // Cached Iconoir icon lookups. Get is cheap, but caching avoids a registry
 // lookup per frame. Names verified present in iconoir v0.1.0.
 var (
-	iconMenu     = iconoir.MustGet("menu")     // burger / open-sidebar
-	iconLock     = iconoir.MustGet("lock")     // auth-banner padlock
-	iconUser     = iconoir.MustGet("user")     // sidebar Accounts
-	iconList     = iconoir.MustGet("list")     // sidebar Network log
-	iconSettings = iconoir.MustGet("settings") // sidebar Settings (gear)
-	iconSearch   = iconoir.MustGet("search")   // topbar SearchEntry magnifier
+	iconMenu     = iconoir.MustGet("menu")           // burger / open-sidebar
+	iconLock     = iconoir.MustGet("lock")           // auth-banner padlock
+	iconUser     = iconoir.MustGet("user")           // sidebar Accounts
+	iconList     = iconoir.MustGet("list")           // sidebar Network log
+	iconSettings = iconoir.MustGet("settings")       // sidebar Settings (gear)
+	iconSearch   = iconoir.MustGet("search")         // topbar SearchEntry magnifier
+	iconPlus     = iconoir.MustGet("plus")           // sidebar "Browse newsgroups" + subscribe
+	iconRefresh  = iconoir.MustGet("refresh-double") // browse view Refresh control
+	iconCheck    = iconoir.MustGet("check")          // subscribed / complete marker
 )
 
 // drawIcon blits a cached Iconoir mask into r, inset slightly so the glyph keeps
@@ -80,4 +83,19 @@ func drawListIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int
 // rather than the "?" bitmap-font stand-in.
 func drawSearchIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
 	drawIcon(p, r, iconSearch, ink)
+}
+
+// drawPlusIcon paints the Iconoir "plus" glyph (sidebar Browse entry, subscribe).
+func drawPlusIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
+	drawIcon(p, r, iconPlus, col)
+}
+
+// drawRefreshIcon paints the Iconoir "refresh-double" glyph (browse Refresh).
+func drawRefreshIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
+	drawIcon(p, r, iconRefresh, col)
+}
+
+// drawCheckIcon paints the Iconoir "check" glyph (a subscribed group marker).
+func drawCheckIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
+	drawIcon(p, r, iconCheck, col)
 }

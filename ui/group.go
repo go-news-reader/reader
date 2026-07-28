@@ -139,6 +139,56 @@ func newGroup(base string, items []source.Item) *itemGroup {
 	return g
 }
 
+// Complete reports whether every declared file and part of the post is present
+// in the retained members, so the reassembly can actually run. A binary post
+// declares its file count as the T in each subject's "[F/T]" and, per file, its
+// part count as the P in the yEnc "(p/P)" counter. The post is complete when:
+//
+//   - every file index 1..T is present (T = the largest declared file total; 0
+//     when no subject carries an "[F/T]" marker, in which case only the parts of
+//     the files that ARE present are checked — nothing is known to be missing);
+//     and
+//   - for every present file, all parts 1..P are present (P = that file's
+//     largest declared part total; a single-part "(1/1)" or a subject with no
+//     part counter counts as one implicit part, hence always complete for parts).
+func (g *itemGroup) Complete() bool {
+	fileTotal := 0
+	byFile := map[int]map[int]bool{} // file index -> set of present part numbers
+	partTotal := map[int]int{}       // file index -> declared part total
+	for _, m := range g.Members {
+		fi := m.Info.FileIndex
+		if m.Info.FileTotal > fileTotal {
+			fileTotal = m.Info.FileTotal
+		}
+		if byFile[fi] == nil {
+			byFile[fi] = map[int]bool{}
+		}
+		part := m.Info.Part
+		if part == 0 {
+			part = 1 // no yEnc counter => a single implicit part
+		}
+		byFile[fi][part] = true
+		if m.Info.PartTotal > partTotal[fi] {
+			partTotal[fi] = m.Info.PartTotal
+		}
+	}
+	// Every present file must have all of its declared parts.
+	for fi, parts := range byFile {
+		for pp := 1; pp <= partTotal[fi]; pp++ {
+			if !parts[pp] {
+				return false
+			}
+		}
+	}
+	// Every declared file (1..T) must be present.
+	for fi := 1; fi <= fileTotal; fi++ {
+		if byFile[fi] == nil {
+			return false
+		}
+	}
+	return true
+}
+
 // feedEntry is one row of the display list: either a standalone item (group
 // nil) or a collapsed group.
 type feedEntry struct {

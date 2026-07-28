@@ -77,15 +77,32 @@ func (s *Scene) drawGroup(p *painter.PixelPainter, img *image.RGBA, g *itemGroup
 	badgeY := y + m.pad
 	s.drawSourceBadge(p, toolkit.Rect{X: nameX, Y: badgeY, W: bw, H: m.badgeH}, source.Usenet)
 
-	// Reconstruct pill (right-aligned).
+	// Right-aligned action, in the reconstruct pill's slot: a "Reconstruct" pill
+	// when the post is complete (all files+parts present, so reassembly can run),
+	// or a muted "incomplete" label when it is not (the pill is hidden and
+	// hitGroup makes it non-clickable, since an incomplete post cannot be rebuilt).
+	complete := g.Complete()
 	rr := s.reconstructRect(x, y, w)
-	p.FillRoundRect(painter.Rect(rr), rr.H/2, th.Accent)
-	m.badge.draw(img, rr.X+(rr.W-m.badge.width("Reconstruct"))/2, rr.Y+(rr.H-m.badge.height)/2, "Reconstruct", onAccent)
+	if complete {
+		p.FillRoundRect(painter.Rect(rr), rr.H/2, th.Accent)
+		m.badge.draw(img, rr.X+(rr.W-m.badge.width("Reconstruct"))/2, rr.Y+(rr.H-m.badge.height)/2, "Reconstruct", onAccent)
+	} else {
+		lbl := "incomplete"
+		m.badge.draw(img, rr.X+rr.W-m.badge.width(lbl), rr.Y+(rr.H-m.badge.height)/2, lbl, errorColor(th))
+	}
 
-	// Base name (title) below the badge.
+	// Base name (title) below the badge, preceded by a small green/red
+	// completeness badge (green when every declared file+part is present).
 	titleY := badgeY + m.badgeH + rpxOf(s, 4)
-	nameW := rr.X - nameX - m.pad
-	m.title.draw(img, nameX, titleY, truncate(m.title, g.Base, nameW), th.OnSurface)
+	dotCol := errorColor(th)
+	if complete {
+		dotCol = successColor(th)
+	}
+	dotD := rpxOf(s, 10)
+	p.FillRoundRect(painter.Rect{X: nameX, Y: titleY + (m.title.height-dotD)/2, W: dotD, H: dotD}, rpxOf(s, 3), dotCol)
+	textX := nameX + dotD + m.pad/2
+	nameW := rr.X - textX - m.pad
+	m.title.draw(img, textX, titleY, truncate(m.title, g.Base, nameW), th.OnSurface)
 
 	// Meta line "N parts · M files · SIZE".
 	m.meta.draw(img, nameX, titleY+m.title.height+rpxOf(s, 2), truncate(m.meta, groupMeta(g), w-nameX-m.pad), muteS)
