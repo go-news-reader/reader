@@ -87,7 +87,13 @@ func (s *Scene) previewWidth() int {
 	}
 	w := rpxOf(s, previewPaneW)
 	if s.previewUserW > 0 {
-		w = s.previewUserW // user-dragged width, clamped below
+		w = s.previewUserW // user-dragged width pins the pane, clamped below
+	} else if grow := avail * 2 / 5; grow > w {
+		// With no explicit drag, the default pane tracks the window: it claims up
+		// to ~2/5 of the space a pane may use, so the preview (image included)
+		// grows when the window grows instead of only shrinking. It never drops
+		// below the preferred width.
+		w = grow
 	}
 	if w > avail {
 		w = avail
