@@ -285,7 +285,7 @@ func mapOverview(group string, ov gonntp.Overview) source.Item {
 		Permalink: "news:" + strings.Trim(ov.MessageID, "<>"),
 		Score:     -1,
 		Comments:  -1,
-		Created:   ov.Date.Unix(),
+		Created:   source.UnixOrZero(ov.Date),
 	}
 }
 
@@ -317,7 +317,7 @@ func mapSearchItem(it newznab.Item) source.Item {
 		Link:      it.NZBURL,
 		Score:     it.Grabs,
 		Comments:  -1,
-		Created:   it.PublishDate.Unix(),
+		Created:   source.UnixOrZero(it.PublishDate),
 	}
 	if it.Category != "" {
 		item.Tags = []string{it.Category}

@@ -27,9 +27,11 @@ func TestReleaseBase(t *testing.T) {
 		"flt-iwd2.rar":         "flt-iwd2", // rar volume
 		"flt-iwd2.r07":         "flt-iwd2", // .rNN old rar volume
 		"movie.part03.rar":     "movie",    // .partNN.rar (two-level)
-		"vty-0183.045":         "vty-0183", // .NNN numeric split
+		"vty-0183.045":         "vty-0183", // .0NN numeric split
 		"rld-p2aw.r04":         "rld-p2aw",
 		"The.Movie.2024.1080p": "The.Movie.2024.1080p", // qualifiers preserved (no over-strip)
+		"clip.720":             "clip.720",             // 3-digit resolution NOT a split (hundreds digit != 0)
+		"clip.480":             "clip.480",             // idem
 	}
 	for in, want := range cases {
 		if got := releaseBase(in); got != want {

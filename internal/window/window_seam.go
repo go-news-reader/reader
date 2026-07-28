@@ -9,6 +9,8 @@
 
 package window
 
+import "unicode/utf16"
+
 // wheelPixelsPerNotch is how many device pixels one mouse-wheel notch scrolls.
 // Win32 reports wheel motion in 120-unit (WHEEL_DELTA) steps; X11 reports one
 // button-press per notch. Both funnel through this constant so the two
@@ -90,12 +92,42 @@ func winKeyName(vk uint32) string {
 }
 
 // winCharRune maps a WM_CHAR code unit to a printable rune, or 0 for control
-// characters (which are handled as named keys via WM_KEYDOWN instead).
+// characters (handled as named keys via WM_KEYDOWN) and for surrogate halves
+// (0xD800..0xDFFF), which are UTF-16 fragments that only form a rune in pairs —
+// see [utf16Assembler]. Casting a lone surrogate to a rune would insert an
+// invalid code point.
 func winCharRune(c uint16) rune {
+	if c >= 0xD800 && c <= 0xDFFF {
+		return 0
+	}
 	if c >= 0x20 && c != 0x7f {
 		return rune(c)
 	}
 	return 0
+}
+
+// utf16Assembler combines the UTF-16 code units WM_CHAR delivers into whole
+// runes. A BMP unit yields its rune at once; a high surrogate is held until the
+// following low surrogate arrives, when the pair is decoded into one astral
+// rune (e.g. an emoji). Control units and unpaired surrogates yield 0. The
+// win32 Run loop keeps one of these across WM_CHAR messages.
+type utf16Assembler struct{ hi uint16 }
+
+func (a *utf16Assembler) next(c uint16) rune {
+	switch {
+	case c >= 0xD800 && c <= 0xDBFF: // high surrogate: hold for its low half
+		a.hi = c
+		return 0
+	case c >= 0xDC00 && c <= 0xDFFF: // low surrogate: complete the pair
+		hi := a.hi
+		a.hi = 0
+		if hi == 0 {
+			return 0 // unpaired low surrogate
+		}
+		return utf16.DecodeRune(rune(hi), rune(c))
+	}
+	a.hi = 0 // a non-surrogate cancels any dangling high surrogate
+	return winCharRune(c)
 }
 
 // x11ButtonScroll maps an X11 pointer button to a wheel Scroll delta: button 4
@@ -140,6 +172,43 @@ func x11KeyDecode(ks uint32) (name string, r rune) {
 		return "", rune(ks - ksUnicodeBase)
 	}
 	return "", 0
+}
+
+// X11 modifier-state mask bits (the state field of an XKeyEvent).
+const (
+	x11Control = 1 << 2 // Control
+	x11Mod1    = 1 << 3 // Alt / Meta
+	x11Mod4    = 1 << 6 // Super
+)
+
+// x11KeyDecodeState is [x11KeyDecode] with modifier awareness: when a
+// command-style modifier (Control, Alt or Super) is held, a printable keysym is
+// NOT surfaced as a typed rune — it is a shortcut (Ctrl+V, Alt+F …), not text —
+// which is what win32's WM_CHAR collapses for free. Named editing keys still
+// resolve. Shift alone is not command-style and is left to produce its rune.
+func x11KeyDecodeState(ks, state uint32) (name string, r rune) {
+	name, r = x11KeyDecode(ks)
+	if r != 0 && state&(x11Control|x11Mod1|x11Mod4) != 0 {
+		return "", 0
+	}
+	return name, r
+}
+
+// macOS NSEvent modifier-flag bits (the relevant device-independent flags).
+const (
+	nsControl = 1 << 18
+	nsOption  = 1 << 19
+	nsCommand = 1 << 20
+)
+
+// cocoaSuppressesRune reports whether a printable character produced by
+// -charactersIgnoringModifiers should be dropped rather than typed, because a
+// command-style modifier (Command, Control or Option) is held. Command/Control
+// are always shortcuts; Option composes accented input on some layouts, but with
+// no input-method plumbing here it only yields shortcut-style symbols, so it is
+// suppressed too. Shift is not command-style and does not suppress.
+func cocoaSuppressesRune(modFlags uint64) bool {
+	return modFlags&(nsCommand|nsControl|nsOption) != 0
 }
 
 // putImageRows returns how many scanline rows of a stride-byte-wide image fit

@@ -89,7 +89,7 @@ func mapPost(p golem.Post) source.Item {
 		Link:      p.URL,
 		Score:     p.Score,
 		Comments:  p.Comments,
-		Created:   p.Published.Unix(),
+		Created:   source.UnixOrZero(p.Published),
 		NSFW:      p.NSFW,
 	}
 	if p.ThumbnailURL != "" {

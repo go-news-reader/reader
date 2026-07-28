@@ -80,6 +80,18 @@ func WithAccent(t *toolkit.Theme, r, g, b uint8) *toolkit.Theme {
 	return withOnAccent(t, onAccentFor(t.Accent))
 }
 
+// themeOnAccent returns the label colour to draw on an accent fill: the theme's
+// explicit Extra["OnAccent"] when it tags one, else a luminance-derived
+// black/white via [onAccentFor]. The fallback matters because WhiteSur (macOS)
+// and the Default themes never set Extra["OnAccent"]; defaulting to th.Background
+// there painted near-black topbar text on the blue accent.
+func themeOnAccent(t *toolkit.Theme) toolkit.RGBA {
+	if v, ok := t.Extra["OnAccent"]; ok {
+		return v
+	}
+	return onAccentFor(t.Accent)
+}
+
 // onAccentFor returns black or white for text drawn on c, whichever contrasts
 // better, using a perceived-luminance (Rec. 601) threshold.
 func onAccentFor(c toolkit.RGBA) toolkit.RGBA {

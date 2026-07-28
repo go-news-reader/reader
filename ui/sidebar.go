@@ -38,6 +38,7 @@ func (s *Scene) DraggingSidebar() bool { return s.draggingSidebar }
 // new sidebar width (clamped when read). It is a no-op otherwise, so front-ends
 // can forward every pointer move unconditionally.
 func (s *Scene) MouseMove(x, y int) {
+	s.lastMouseX, s.lastMouseY = x, y
 	if !s.draggingSidebar {
 		return
 	}
