@@ -131,6 +131,26 @@ func (s *Scene) SubscribeActive(k source.Kind, channel string) bool {
 	return true
 }
 
+// UnsubscribeActive removes the source+channel subscription from the active
+// profile (case-insensitive on the channel) and rebuilds the sidebar, reporting
+// whether one was removed (false when absent or there is no active profile). The
+// app persists + re-aggregates after a true return.
+func (s *Scene) UnsubscribeActive(k source.Kind, channel string) bool {
+	if s.activeProf < 0 || s.activeProf >= len(s.Profiles) {
+		return false
+	}
+	p := &s.Profiles[s.activeProf]
+	for i, su := range p.Subs {
+		if su.Source == k && strings.EqualFold(su.Channel, channel) {
+			p.Subs = append(p.Subs[:i], p.Subs[i+1:]...)
+			s.rebuildSubs()
+			s.touchProfiles()
+			return true
+		}
+	}
+	return false
+}
+
 // ensureBrowseView (re)builds the cached full tree from the group list and the
 // filtered view for the current filter text, recording the match count and any
 // regexp-compile error. It is a no-op when neither the list nor the filter has
@@ -383,16 +403,24 @@ func (s *Scene) browseHitTest(x, y int) Hit {
 			continue
 		}
 		n := r.node
-		if n.IsGroup && !s.IsSubscribed(source.Usenet, n.Name) && inRect(s.browseSubscribeRect(m.pad, top, feedW), x, y) {
+		// A real group's ✓/＋ marker toggles the subscription: ＋ subscribes, ✓
+		// unsubscribes. The chevron area (a node with children) toggles expand; a
+		// childless leaf row toggles the subscription too.
+		subHit := func() Hit {
+			if s.IsSubscribed(source.Usenet, n.Name) {
+				return Hit{Kind: HitUnsubscribeGroup, Value: n.Name}
+			}
 			return Hit{Kind: HitSubscribeGroup, Value: n.Name}
+		}
+		if n.IsGroup && inRect(s.browseSubscribeRect(m.pad, top, feedW), x, y) {
+			return subHit()
 		}
 		if len(n.Children) > 0 {
 			return Hit{Kind: HitToggleBrowseNode, Value: n.Name}
 		}
-		if n.IsGroup && !s.IsSubscribed(source.Usenet, n.Name) {
-			return Hit{Kind: HitSubscribeGroup, Value: n.Name}
-		}
-		return Hit{Kind: HitNone}
+		// A matched row with no children is a real group leaf; its row toggles the
+		// subscription.
+		return subHit()
 	}
 	return Hit{Kind: HitNone}
 }
