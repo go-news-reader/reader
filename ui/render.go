@@ -463,6 +463,14 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	drawNavRow(s.logR.Y-m.topbarH, drawListIcon, "Network log")
 	drawNavRow(s.settingsR.Y-m.topbarH, drawSlidersIcon, "Settings")
 
+	// Scrollbar down the sub-list's right edge when it overflows the band between
+	// the profile tabs and the pinned footer (sprite-local coords; the sprite key
+	// includes sideScrollY so it re-rasterises as the list scrolls).
+	if s.sideMaxScroll > 0 {
+		band := s.sideBandBot - s.sideBandTop
+		s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: s.sideBandTop - m.topbarH, W: m.sidebarW, H: band}, band+s.sideMaxScroll, s.sideScrollY)
+	}
+
 	s.sidebarKey, s.sidebarSpr = k, img
 	return img
 }
