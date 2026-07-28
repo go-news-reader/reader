@@ -198,6 +198,10 @@ func (s *Scene) layout() {
 		top += r.height + m.cardGap
 	}
 	s.contentH = top
+
+	// Per-newsgroup post counts for the bottom status bar (computed here so the
+	// feed geometry, which subtracts the bar, is consistent this frame).
+	s.statusSegs = groupCountSegs(fil)
 }
 
 // Draw paints the whole scene into buf (s.W*s.H*4 RGBA bytes).
@@ -296,6 +300,9 @@ func (s *Scene) Draw(buf []byte) {
 
 	// --- download-manager panel (docked bottom, over the feed/preview) ---
 	s.drawDownloadPanel(p, img)
+
+	// --- per-group post-count status bar (very bottom) ---
+	s.drawStatusBar(p, img)
 }
 
 // sidebarKey / topbarKey identify the single-slot chrome sprite caches. The

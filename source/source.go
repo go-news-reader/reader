@@ -84,6 +84,9 @@ type Item struct {
 	NSFW      bool     // adult / sensitive content
 	Pinned    bool     // stickied / pinned in its channel
 	Tags      []string // flair, hashtags, categories
+	// GroupCount is the number of posts in the item's source group/newsgroup (the
+	// NNTP GROUP article estimate), for a status-bar count. 0 when unknown.
+	GroupCount int
 }
 
 // Query selects what a provider should fetch.

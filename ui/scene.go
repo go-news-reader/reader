@@ -246,6 +246,10 @@ type Scene struct {
 	downloads []DownloadItem
 	dlClearR  toolkit.Rect // the panel's "Clear" button
 
+	// statusSegs are the bottom status-bar segments ("<group> N posts") computed
+	// each layout from the feed's newsgroup article counts.
+	statusSegs []string
+
 	// Network-log (ModeLog) view: a scrollable, newest-first list of the HTTP
 	// exchanges the providers made, fed live from an injected source so the app
 	// need not push updates. logSource is nil when no recorder is wired.
