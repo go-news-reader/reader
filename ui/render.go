@@ -576,6 +576,28 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 	_ = onAccent
 }
 
+// textLine is a toolkit widget that draws one line of anti-aliased getFace text
+// (which carries the script-fallback chain, so CJK/Arabic/… render), vertically
+// centred in its bounds. It lets box layouts position pre-wrapped text lines
+// without changing how they rasterise. It captures the scene's RGBA buffer since
+// getFace draws into an *image.RGBA, not through the painter.
+type textLine struct {
+	toolkit.Base
+	face textFace
+	text string
+	ink  toolkit.RGBA
+	img  *image.RGBA
+}
+
+func (t *textLine) Draw(_ painter.Painter, _ *toolkit.Theme) {
+	b := t.Bounds()
+	ty := b.Y
+	if b.H > t.face.height {
+		ty += (b.H - t.face.height) / 2
+	}
+	t.face.draw(t.img, b.X, ty, t.text, t.ink)
+}
+
 // truncateFont clips s with a trailing ellipsis to fit maxW pixels in the
 // toolkit font f — the box-layout analogue of truncate (which measures a
 // getFace textFace), so a Label pre-fits its computed slot.
