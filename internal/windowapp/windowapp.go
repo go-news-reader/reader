@@ -237,7 +237,7 @@ func (h *Handler) Key(name string, r rune) {
 		case ui.ModeAccounts:
 			h.a.ApplyAccounts() // apply credentials in place (re-aggregate without leaving)
 		case ui.ModeBrowse:
-			s.FocusBrowseFilter(false) // Enter defocuses the filter (live-filtered already)
+			h.activateBrowseSelection() // Enter expands a hierarchy or (un)subscribes a group
 		case ui.ModeFeed:
 			if _, ok := s.PreviewItem(); ok {
 				h.a.OpenSelected() // Enter opens the selected post's reading view
@@ -248,19 +248,45 @@ func (h *Handler) Key(name string, r rune) {
 			vm.FocusSearch(false)
 		}
 	case "Up":
-		if s.Mode() == ui.ModeFeed {
+		switch s.Mode() {
+		case ui.ModeFeed:
 			s.FocusSearch(false)
 			h.a.SelectAdjacent(-1) // move the feed selection up (previous post)
+		case ui.ModeBrowse:
+			s.NavBrowse(-1) // move the newsgroup-tree selection up
 		}
 	case "Down":
-		if s.Mode() == ui.ModeFeed {
+		switch s.Mode() {
+		case ui.ModeFeed:
 			s.FocusSearch(false)
 			h.a.SelectAdjacent(1) // move the feed selection down (next post)
+		case ui.ModeBrowse:
+			s.NavBrowse(1) // move the newsgroup-tree selection down
 		}
 	default:
 		if r != 0 {
 			s.TypeRune(r)
 		}
+	}
+}
+
+// activateBrowseSelection acts on the keyboard-selected newsgroup-tree node
+// (Enter): an expandable hierarchy toggles open/closed, a real group is
+// subscribed (or unsubscribed if already), and with no selection the filter
+// field just defocuses — mirroring what a click on that row would do.
+func (h *Handler) activateBrowseSelection() {
+	s := h.a.Scene()
+	s.FocusBrowseFilter(false) // Enter always leaves the filter field
+	name, hasChildren, isGroup, subscribed, ok := s.BrowseSelectedNode()
+	switch {
+	case !ok:
+		// Nothing selected: the defocus above is the whole action.
+	case hasChildren:
+		s.ToggleBrowseNode(name)
+	case isGroup && subscribed:
+		h.a.UnsubscribeGroup(name)
+	case isGroup:
+		h.a.SubscribeGroup(name)
 	}
 }
 
