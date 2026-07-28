@@ -133,6 +133,26 @@ func getFace(px int, bold bool) textFace {
 // width measures the rendered pixel width of s in this face.
 func (tf textFace) width(s string) int { return font.MeasureString(tf.face, s).Round() }
 
+// clipRight returns the longest trailing run of s (by whole runes) whose
+// rendered width does not exceed w. A text field uses it to show the END of an
+// over-long value — where the caret sits — so the value scrolls left inside the
+// box instead of spilling over the neighbouring controls.
+func (tf textFace) clipRight(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	if tf.width(s) <= w {
+		return s
+	}
+	rs := []rune(s)
+	for i := 1; i < len(rs); i++ {
+		if tf.width(string(rs[i:])) <= w {
+			return string(rs[i:])
+		}
+	}
+	return ""
+}
+
 // draw renders s with its top-left at (x, top) in col, into img (which must
 // alias the scene's RGBA buffer).
 func (tf textFace) draw(img *image.RGBA, x, top int, s string, col toolkit.RGBA) {

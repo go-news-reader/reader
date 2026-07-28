@@ -78,7 +78,7 @@ func mapEntry(channel, feedTitle string, e gofeed.Entry) source.Item {
 		Link:      e.Link,
 		Comments:  -1, // feeds carry no comment count
 		Score:     -1, // feeds carry no score
-		Created:   e.Published.Unix(),
+		Created:   source.UnixOrZero(e.Published),
 	}
 	for _, m := range e.Media {
 		it.Media = append(it.Media, source.Media{URL: m.URL, Kind: mediaKind(m.Type)})

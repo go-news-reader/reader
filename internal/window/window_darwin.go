@@ -60,6 +60,7 @@ var (
 	selScrollingDeltaY           = objc.RegisterName("scrollingDeltaY")
 	selKeyCode                   = objc.RegisterName("keyCode")
 	selCharsIgnoringMods         = objc.RegisterName("charactersIgnoringModifiers")
+	selModifierFlags             = objc.RegisterName("modifierFlags")
 	selLengthOfBytes             = objc.RegisterName("lengthOfBytesUsingEncoding:")
 	selGetCString                = objc.RegisterName("getCString:maxLength:encoding:")
 	selInitBitmapRep             = objc.RegisterName("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:hasAlpha:isPlanar:colorSpaceName:bytesPerRow:bitsPerPixel:")
@@ -458,6 +459,12 @@ func decodeKey(event objc.ID) (name string, r rune) {
 	// press leaks in as a "printable" glyph and gets inserted into the search
 	// field (garbage char + a mis-positioned caret). DEL (0x7f) is excluded too.
 	if len(rs) == 1 && rs[0] >= 0x20 && rs[0] != 0x7f && (rs[0] < 0xF700 || rs[0] > 0xF8FF) {
+		// A command-style modifier (Command/Control/Option) makes this a shortcut,
+		// not text: -charactersIgnoringModifiers strips those modifiers, so Cmd+A /
+		// Ctrl+C would otherwise leak the bare letter into the focused field.
+		if cocoaSuppressesRune(uint64(event.Send(selModifierFlags))) {
+			return "", 0
+		}
 		return "", rs[0]
 	}
 	return "", 0

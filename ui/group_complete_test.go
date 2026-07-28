@@ -61,6 +61,34 @@ func TestGroupIncompleteMissingFile(t *testing.T) {
 	}
 }
 
+func TestGroupIncompleteNoFileMarkerDistinctFiles(t *testing.T) {
+	// Classic RAR split with NO [F/T] marker: every subject reports FileIndex 0,
+	// so parts must be tracked by filename, not file index. movie.r00 is missing
+	// its part 2/2 while movie.rar is whole — the post is incomplete even though a
+	// file-index-keyed check would merge both files' parts and call it complete.
+	g := groupFrom(
+		`"movie.rar" yEnc (1/2) 100`,
+		`"movie.rar" yEnc (2/2) 100`,
+		`"movie.r00" yEnc (1/2) 100`,
+	)
+	if g.Complete() {
+		t.Fatal("movie.r00 missing part 2/2 must be incomplete (parts keyed by filename)")
+	}
+}
+
+func TestGroupCompleteNoFileMarkerDistinctFiles(t *testing.T) {
+	// Same shape, but now every part of both files is present -> complete.
+	g := groupFrom(
+		`"movie.rar" yEnc (1/2) 100`,
+		`"movie.rar" yEnc (2/2) 100`,
+		`"movie.r00" yEnc (1/2) 100`,
+		`"movie.r00" yEnc (2/2) 100`,
+	)
+	if !g.Complete() {
+		t.Fatal("both files whole must be complete")
+	}
+}
+
 // incompleteGroupScene builds a feed with one incomplete multipart post.
 func incompleteGroupScene() *Scene {
 	s := New(900, 600, ThemeFor(OSLinux, false))

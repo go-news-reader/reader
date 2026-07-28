@@ -95,7 +95,32 @@ type App struct {
 	qmu        sync.Mutex
 	queued     []func()
 	deferScene bool
+
+	// vmu serializes view-model mutations. mvvm.Observable/ObservableList are
+	// intentionally not concurrency-safe, yet several background operations mutate
+	// the view-model on their own goroutines — a streaming refresh, an async
+	// reconstruction, and the browse group-list load can overlap (e.g. opening the
+	// newsgroup browser while a feed refresh is still in flight). Every such
+	// mutation runs inside vmDo so the view-model is only ever touched by one
+	// goroutine at a time. This is distinct from the scene-write marshaling above:
+	// post/queued protect the SCENE; vmu protects the VIEW-MODEL that feeds it.
+	vmu sync.Mutex
 }
+
+// vmDo runs a view-model mutation under the VM lock. Subscriber callbacks fired
+// during fn only enqueue scene writes through post (guarded by qmu, a different
+// lock, and never touching the view-model), so this cannot deadlock.
+func (a *App) vmDo(fn func()) {
+	a.vmu.Lock()
+	defer a.vmu.Unlock()
+	fn()
+}
+
+// vmStatus / vmLoad are single-mutation shortcuts over vmDo for the scattered
+// status/progress updates in the reconstruct and group-load goroutines. Do NOT
+// use them inside a vmDo block — sync.Mutex is not reentrant.
+func (a *App) vmStatus(s string)                 { a.vmDo(func() { a.vm.SetStatus(s) }) }
+func (a *App) vmLoad(active bool, done, tot int) { a.vmDo(func() { a.vm.SetLoad(active, done, tot) }) }
 
 // Config configures a new App.
 type Config struct {
@@ -409,9 +434,11 @@ func (a *App) Scene() *ui.Scene { return a.scene }
 // non-auth failure is shown in the status line.
 func (a *App) Refresh(ctx context.Context) []error {
 	items, errs := a.reg.Aggregate(ctx, a.subs)
-	a.vm.SetItems(items)
-	a.vm.SetAuthPrompts(authPrompts(errs))
-	a.vm.SetStatus(firstNonAuthError(errs))
+	a.vmDo(func() {
+		a.vm.SetItems(items)
+		a.vm.SetAuthPrompts(authPrompts(errs))
+		a.vm.SetStatus(firstNonAuthError(errs))
+	})
 	return errs
 }
 
@@ -426,22 +453,26 @@ func (a *App) Refresh(ctx context.Context) []error {
 // [Refresh]. It returns the collected failures (subscription order).
 func (a *App) RefreshStreaming(ctx context.Context) []error {
 	subs := a.subs
-	a.vm.SetPending(subs)
-	a.vm.SetLoad(true, 0, len(subs))
+	a.vmDo(func() {
+		a.vm.SetPending(subs)
+		a.vm.SetLoad(true, 0, len(subs))
+	})
 
 	byIndex := make([]error, len(subs))
 	a.reg.AggregateStream(ctx, subs, func(u source.StreamUpdate) {
-		a.vm.SetItems(u.Items)
 		if u.Err != nil && u.Index >= 0 {
-			byIndex[u.Index] = u.Err
+			byIndex[u.Index] = u.Err // byIndex is this call's local, touched only here
 		}
-		if u.Index >= 0 {
-			a.vm.ClearPending(u.Sub.Source, u.Sub.Channel)
-		}
-		errs := compactErrs(byIndex)
-		a.vm.SetAuthPrompts(authPrompts(errs))
-		a.vm.SetStatus(firstNonAuthError(errs))
-		a.vm.SetLoad(u.Done < u.Total, u.Done, u.Total)
+		a.vmDo(func() {
+			a.vm.SetItems(u.Items)
+			if u.Index >= 0 {
+				a.vm.ClearPending(u.Sub.Source, u.Sub.Channel)
+			}
+			errs := compactErrs(byIndex)
+			a.vm.SetAuthPrompts(authPrompts(errs))
+			a.vm.SetStatus(firstNonAuthError(errs))
+			a.vm.SetLoad(u.Done < u.Total, u.Done, u.Total)
+		})
 	})
 	return compactErrs(byIndex)
 }
@@ -535,42 +566,42 @@ func (a *App) ReconstructGroup(base string) { a.reconstruct(base) }
 func (a *App) doReconstruct(ctx context.Context, base string) {
 	parts, ok := a.scene.GroupParts(base)
 	if !ok {
-		a.vm.SetStatus("Nothing to reconstruct for " + base)
+		a.vmStatus("Nothing to reconstruct for " + base)
 		return
 	}
 	prov, ok := a.reg.Get(source.Usenet)
 	if !ok {
-		a.vm.SetStatus("Usenet provider not configured")
+		a.vmStatus("Usenet provider not configured")
 		return
 	}
 	rc, ok := prov.(reconstructor)
 	if !ok {
-		a.vm.SetStatus("Usenet provider cannot reconstruct")
+		a.vmStatus("Usenet provider cannot reconstruct")
 		return
 	}
 
 	total := len(parts)
-	a.vm.SetLoad(true, 0, total)
-	a.vm.SetStatus(fmt.Sprintf("Reconstructing %s… (0/%d parts)", base, total))
+	a.vmLoad(true, 0, total)
+	a.vmStatus(fmt.Sprintf("Reconstructing %s… (0/%d parts)", base, total))
 
 	req := usenet.ReconstructRequest{
 		Parts: toReconstructParts(parts),
 		OnProgress: func(done, tot int) {
-			a.vm.SetLoad(true, done, tot)
-			a.vm.SetStatus(fmt.Sprintf("Reconstructing %s… (%d/%d parts)", base, done, tot))
+			a.vmLoad(true, done, tot)
+			a.vmStatus(fmt.Sprintf("Reconstructing %s… (%d/%d parts)", base, done, tot))
 		},
 	}
 	files, vr, err := rc.Reconstruct(ctx, req)
-	a.vm.SetLoad(false, total, total)
+	a.vmLoad(false, total, total)
 	if err != nil {
-		a.vm.SetStatus(fmt.Sprintf("Reconstruct %s failed: %v", base, err))
+		a.vmStatus(fmt.Sprintf("Reconstruct %s failed: %v", base, err))
 		return
 	}
 	if err := a.saveFiles(files); err != nil {
-		a.vm.SetStatus(fmt.Sprintf("Reconstruct %s: save failed: %v", base, err))
+		a.vmStatus(fmt.Sprintf("Reconstruct %s: save failed: %v", base, err))
 		return
 	}
-	a.vm.SetStatus(fmt.Sprintf("Saved %s (%d files, %s)", base, len(files), verifyWord(vr)))
+	a.vmStatus(fmt.Sprintf("Saved %s (%d files, %s)", base, len(files), verifyWord(vr)))
 }
 
 // toReconstructParts converts the ui-level part list to the provider request.

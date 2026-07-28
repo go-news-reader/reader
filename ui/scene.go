@@ -208,6 +208,12 @@ type Scene struct {
 	detailContentH int
 	backR, openR   toolkit.Rect
 
+	// Settings (ModeSettings) scroll: the editor can be taller than the surface
+	// (many subscriptions, high zoom, or a short window), so it scrolls like the
+	// other views. settingsContentH is the laid-out height below the topbar.
+	settingsScrollY  int
+	settingsContentH int
+
 	// Network-log (ModeLog) view: a scrollable, newest-first list of the HTTP
 	// exchanges the providers made, fed live from an injected source so the app
 	// need not push updates. logSource is nil when no recorder is wired.
@@ -223,6 +229,20 @@ type Scene struct {
 	sidebarCollapsed bool
 	sidebarUserW     int // device px; 0 => default width
 	draggingSidebar  bool
+
+	// Sidebar subscription-list scroll. When the "All Sources" + subscription +
+	// "Browse" rows are taller than the band between the tab strip and the pinned
+	// footer (Accounts/Log/Settings), that band scrolls independently of the feed
+	// so overflowing subscriptions stay reachable and never draw over the footer.
+	// sideMaxScroll is 0 (and everything is a no-op) whenever the rows fit.
+	// lastMouseX/Y is the most recent pointer position, used to route wheel
+	// scrolling to the sidebar when the pointer is over it.
+	sideScrollY   int
+	sideMaxScroll int
+	sideBandTop   int
+	sideBandBot   int
+	lastMouseX    int
+	lastMouseY    int
 
 	// groupExpanded records which Usenet post groups (keyed by release base) are
 	// expanded in the feed; it survives re-renders and scrolling. Absent/false =
@@ -689,7 +709,10 @@ func (s *Scene) GroupExpanded(base string) bool { return s.groupExpanded[base] }
 // its content height.
 func (s *Scene) Scroll(dy int) {
 	if s.mode == ModeSettings {
-		return // the settings editor fits the surface; nothing to scroll
+		s.settingsScrollY += dy
+		s.layoutSettings() // self-clamps settingsScrollY against the content height
+		s.touch()
+		return
 	}
 	if s.mode == ModeDetail {
 		s.detailScrollY += dy
@@ -716,6 +739,15 @@ func (s *Scene) Scroll(dy int) {
 		s.browseScrollY += dy
 		s.layoutBrowse()
 		s.browseScrollY = clampScroll(s.browseScrollY, s.browseContentH-(s.H-s.m.topbarH))
+		s.touch()
+		return
+	}
+	// Feed view: a wheel over the sidebar scrolls its (overflowing) subscription
+	// list; anywhere else scrolls the feed. sideMaxScroll is 0 when the sub list
+	// fits, so this only diverts the wheel when there is actually overflow.
+	if !s.sidebarCollapsed && s.lastMouseX < s.m.sidebarW && s.sideMaxScroll > 0 {
+		s.sideScrollY = clampScroll(s.sideScrollY+dy, s.sideMaxScroll)
+		s.layout()
 		s.touch()
 		return
 	}

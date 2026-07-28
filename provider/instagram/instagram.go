@@ -104,7 +104,7 @@ func mapPost(username string, p goig.Post) source.Item {
 		Permalink: p.Permalink,
 		Score:     p.Likes,
 		Comments:  p.Comments,
-		Created:   p.Timestamp.Unix(),
+		Created:   source.UnixOrZero(p.Timestamp),
 	}
 	if p.DisplayURL != "" {
 		it.Media = append(it.Media, source.Media{URL: p.DisplayURL, Kind: source.MediaImage})

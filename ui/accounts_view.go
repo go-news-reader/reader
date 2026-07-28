@@ -80,6 +80,7 @@ func (s *Scene) OpenAccounts() {
 		s.accSel = source.Reddit
 	}
 	s.accFocus = ""
+	s.accScrollY = 0 // a fresh open starts at the top, like the other views
 	s.touch()
 }
 
@@ -87,7 +88,12 @@ func (s *Scene) OpenAccounts() {
 func (s *Scene) CloseAccounts() { s.mode = ModeFeed; s.touch() }
 
 // SelectAccount picks which provider the editor operates on.
-func (s *Scene) SelectAccount(k source.Kind) { s.accSel = k; s.accFocus = ""; s.touch() }
+func (s *Scene) SelectAccount(k source.Kind) {
+	s.accSel = k
+	s.accFocus = ""
+	s.accScrollY = 0 // the new provider has a different field set; start at the top
+	s.touch()
+}
 
 // SelectedAccount reports which provider the accounts editor is operating on.
 func (s *Scene) SelectedAccount() source.Kind { return s.accSel }
@@ -225,10 +231,7 @@ func (s *Scene) drawAccounts(buf []byte) {
 	p := painter.NewPixelPainter(buf, s.W, s.H)
 	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, s.H)}
 	th := s.theme
-	onAccent := th.Background
-	if v, ok := th.Extra["OnAccent"]; ok {
-		onAccent = v
-	}
+	onAccent := themeOnAccent(th)
 	muteS := mute(th.OnSurface, th.Surface)
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
@@ -283,6 +286,11 @@ func (s *Scene) accountsHitTest(x, y int) Hit {
 	s.layoutAccounts()
 	if inRect(s.accBackR, x, y) || inRect(s.accDoneR, x, y) {
 		return Hit{Kind: HitCloseAccounts}
+	}
+	// Rows/pills scroll under the topbar, which is painted over them; a click in
+	// that band must not select a provider or field through the chrome.
+	if y < s.m.topbarH {
+		return Hit{Kind: HitNone}
 	}
 	for _, b := range s.accProvBtns {
 		if inRect(b.rect, x, y) {

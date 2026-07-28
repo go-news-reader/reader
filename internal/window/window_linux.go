@@ -214,7 +214,7 @@ func (x *x11) handleEvent(ev xgb.Event) {
 		if x.handler == nil {
 			return
 		}
-		name, r := x11KeyDecode(x.keysyms.lookup(xproto.Keycode(e.Detail)))
+		name, r := x11KeyDecodeState(x.keysyms.lookup(xproto.Keycode(e.Detail)), uint32(e.State))
 		if name != "" || r != 0 {
 			x.handler.Key(name, r)
 			x.present()
