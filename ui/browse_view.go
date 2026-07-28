@@ -43,6 +43,7 @@ func (s *Scene) SetBrowseGroups(groups []source.GroupInfo) {
 	s.browseGroups = groups
 	s.browseGroupsRev++
 	s.browseScrollY = 0
+	s.browseSel = 0
 	s.touch()
 }
 
@@ -71,7 +72,7 @@ func (s *Scene) BrowseEntry() *toolkit.SearchEntry { return s.browseEntry }
 
 // InvalidateBrowse bumps the damage sequence after the filter binder writes
 // BrowseEntry.Text directly; passed as mvvm.BindField's invalidate hook.
-func (s *Scene) InvalidateBrowse() { s.browseScrollY = 0; s.touch() }
+func (s *Scene) InvalidateBrowse() { s.browseScrollY = 0; s.browseSel = 0; s.touch() }
 
 // BrowseFocused reports whether the filter field holds keyboard focus.
 func (s *Scene) BrowseFocused() bool { return s.browseFocused }
@@ -83,8 +84,49 @@ func (s *Scene) FocusBrowseFilter(v bool) { s.browseFocused = v; s.touch() }
 func (s *Scene) OpenBrowse() {
 	s.mode = ModeBrowse
 	s.browseScrollY = 0
+	s.browseSel = 0
 	s.browseFocused = false
 	s.touch()
+}
+
+// NavBrowse moves the keyboard selection dir rows through the visible tree
+// (dir<0 up, dir>0 down), clamped to the current rows, and scrolls it into view.
+func (s *Scene) NavBrowse(dir int) {
+	s.layoutBrowse()
+	n := len(s.browseRows)
+	if n == 0 {
+		return
+	}
+	s.browseSel += dir
+	if s.browseSel < 0 {
+		s.browseSel = 0
+	}
+	if s.browseSel >= n {
+		s.browseSel = n - 1
+	}
+	row := s.browseRows[s.browseSel]
+	viewH := s.H - s.browseTreeTop
+	switch {
+	case row.top < s.browseScrollY:
+		s.browseScrollY = row.top
+	case row.top+s.m.sideItemH > s.browseScrollY+viewH:
+		s.browseScrollY = row.top + s.m.sideItemH - viewH
+	}
+	s.browseScrollY = clampScroll(s.browseScrollY, s.browseContentH-(s.H-s.m.topbarH))
+	s.touch()
+}
+
+// BrowseSelectedNode reports the keyboard-selected tree node: its full name,
+// whether it has children (an expandable hierarchy), whether a real group exists
+// at it, and whether that group is already subscribed. ok is false when there is
+// no selectable row.
+func (s *Scene) BrowseSelectedNode() (name string, hasChildren, isGroup, subscribed, ok bool) {
+	s.layoutBrowse()
+	if s.browseSel < 0 || s.browseSel >= len(s.browseRows) {
+		return "", false, false, false, false
+	}
+	n := s.browseRows[s.browseSel].node
+	return n.Name, len(n.Children) > 0, n.IsGroup, s.IsSubscribed(source.Usenet, n.Name), true
 }
 
 // CloseBrowse returns to the feed view.
@@ -333,22 +375,26 @@ func (s *Scene) drawBrowseTree(p *painter.PixelPainter, img *image.RGBA, muteS t
 
 	// Tree rows (scrolled), clipped to the tree viewport.
 	feedW := s.W - 2*m.pad
-	for _, r := range s.browseRows {
+	for i, r := range s.browseRows {
 		y := s.browseTreeTop + r.top - s.browseScrollY
 		if y+m.sideItemH < s.browseTreeTop || y >= s.H {
 			continue
 		}
-		s.drawBrowseRow(p, img, r, m.pad, y, feedW, muteS)
+		s.drawBrowseRow(p, img, r, m.pad, y, feedW, muteS, i == s.browseSel)
 	}
 }
 
 // drawBrowseRow paints one tree row at screen y: indent, optional chevron with
 // child count, the node segment, and — for a real group — a Subscribe (＋) or
 // subscribed (✓) marker.
-func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browseRowLayout, x, y, w int, muteS toolkit.RGBA) {
+func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browseRowLayout, x, y, w int, muteS toolkit.RGBA, selected bool) {
 	m := s.m
 	th := s.theme
 	n := r.node
+	if selected {
+		// Keyboard-selected row: a full-width tint so the cursor position is clear.
+		p.FillRect(painter.Rect{X: 0, Y: y, W: s.W, H: m.sideItemH}, th.SurfaceAlt)
+	}
 	chev := s.browseChevronRect(x, y, r.depth)
 	textX := chev.X + chev.W + rpxOf(s, 4)
 	if len(n.Children) > 0 {

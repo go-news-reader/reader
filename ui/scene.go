@@ -306,6 +306,7 @@ type Scene struct {
 	browseScrollY  int
 	browseContentH int
 	browseRows     []browseRowLayout
+	browseSel      int // keyboard-selected row index into browseRows
 	browseBackR    toolkit.Rect
 	browseRefreshR toolkit.Rect
 	browseFilterR  toolkit.Rect
