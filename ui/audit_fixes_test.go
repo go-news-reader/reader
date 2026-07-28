@@ -15,9 +15,9 @@ import (
 func TestBrowseHitTestClampsChrome(t *testing.T) {
 	s := New(760, 460, ThemeFor(OSMac, false))
 	s.SetUsenetServer("news.free.fr:119")
-	var g []string
+	var g []source.GroupInfo
 	for i := 0; i < 300; i++ {
-		g = append(g, fmt.Sprintf("grp%03d", i)) // flat, distinct top-level rows
+		g = append(g, source.GroupInfo{Name: fmt.Sprintf("grp%03d", i)}) // flat, distinct top-level rows
 	}
 	s.SetBrowseGroups(g)
 	s.OpenBrowse()
@@ -47,7 +47,7 @@ func TestBrowseHitTestClampsChrome(t *testing.T) {
 func TestBrowseHitTestSubscribeRect(t *testing.T) {
 	s := New(760, 460, ThemeFor(OSMac, false))
 	s.SetUsenetServer("news.free.fr:119")
-	s.SetBrowseGroups([]string{"control", "junk"}) // flat top-level leaves, no nesting
+	s.SetBrowseGroups(gis("control", "junk")) // flat top-level leaves, no nesting
 	s.OpenBrowse()
 	s.layoutBrowse()
 	r := s.browseRows[0]

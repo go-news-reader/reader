@@ -3,7 +3,18 @@ package ui
 import (
 	"regexp"
 	"testing"
+
+	"github.com/go-news-reader/reader/source"
 )
+
+// gis builds a group list from bare names (zero counts) for tests.
+func gis(names ...string) []source.GroupInfo {
+	out := make([]source.GroupInfo, len(names))
+	for i, n := range names {
+		out[i] = source.GroupInfo{Name: n}
+	}
+	return out
+}
 
 // findChild returns the child of n with the given segment (nil if absent).
 func findChild(n *groupNode, seg string) *groupNode {
@@ -15,15 +26,15 @@ func findChild(n *groupNode, seg string) *groupNode {
 	return nil
 }
 
-func sampleGroups() []string {
-	return []string{
+func sampleGroups() []source.GroupInfo {
+	return gis(
 		"alt.binaries.cd.image",
 		"alt.binaries.test",
 		"alt.test",
 		"comp.lang.go",
 		"fr.test",
 		"", // blank names are ignored
-	}
+	)
 }
 
 func TestBuildGroupTreeStructureAndCounts(t *testing.T) {
@@ -61,7 +72,7 @@ func TestBuildGroupTreeStructureAndCounts(t *testing.T) {
 
 func TestBuildGroupTreeGroupAndInternal(t *testing.T) {
 	// "alt.test" is both a real group AND an internal node (alt.test.foo exists).
-	root := buildGroupTree([]string{"alt.test", "alt.test.foo"})
+	root := buildGroupTree(gis("alt.test", "alt.test.foo"))
 	altTest := findChild(findChild(root, "alt"), "test")
 	if !altTest.IsGroup {
 		t.Fatal("alt.test should be a group")
@@ -135,7 +146,7 @@ func TestFilterGroupTree(t *testing.T) {
 func TestFilterGroupTreeSelfMatchWithChildren(t *testing.T) {
 	// A node that is BOTH a matching group and has a matching descendant keeps
 	// IsGroup true and its children.
-	root := buildGroupTree([]string{"a.b", "a.b.c"})
+	root := buildGroupTree(gis("a.b", "a.b.c"))
 	re := regexp.MustCompile(`(?i)a\.b`)
 	f := filterGroupTree(root, re)
 	ab := findChild(findChild(f, "a"), "b")

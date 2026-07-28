@@ -240,10 +240,10 @@ func TestFeedAuthError(t *testing.T) {
 
 func TestGroupsCachesAndSorts(t *testing.T) {
 	fc := &fakeConn{list: []gonntp.NewsgroupInfo{
-		{Name: "comp.lang.go"},
-		{Name: "alt.binaries.test"},
+		{Name: "comp.lang.go", High: 100, Low: 1}, // count = 100
+		{Name: "alt.binaries.test", High: 50, Low: 41},
 		{Name: ""}, // blank names are dropped
-		{Name: "alt.test"},
+		{Name: "alt.test", High: 5, Low: 10}, // high<low → count clamps to 0
 	}}
 	p := NewWithDial(dialing(fc, nil))
 
@@ -251,13 +251,17 @@ func TestGroupsCachesAndSorts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"alt.binaries.test", "alt.test", "comp.lang.go"}
+	want := []source.GroupInfo{
+		{Name: "alt.binaries.test", Count: 10},
+		{Name: "alt.test", Count: 0},
+		{Name: "comp.lang.go", Count: 100},
+	}
 	if len(got) != len(want) {
 		t.Fatalf("groups = %v, want %v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("groups[%d] = %q, want %q", i, got[i], want[i])
+			t.Fatalf("groups[%d] = %+v, want %+v", i, got[i], want[i])
 		}
 	}
 	if fc.listArg != "*" {
@@ -287,7 +291,7 @@ func TestRefreshGroupsBypassesCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0] != "alt.new" || got[1] != "alt.test" {
+	if len(got) != 2 || got[0].Name != "alt.new" || got[1].Name != "alt.test" {
 		t.Fatalf("refreshed groups = %v", got)
 	}
 	if fc.listCalls != 2 {

@@ -10,8 +10,8 @@ import (
 // fetches the server's carried group list (cached) and can force a re-fetch. The
 // registered usenet.Provider satisfies it structurally.
 type grouper interface {
-	Groups(ctx context.Context) ([]string, error)
-	RefreshGroups(ctx context.Context) ([]string, error)
+	Groups(ctx context.Context) ([]source.GroupInfo, error)
+	RefreshGroups(ctx context.Context) ([]source.GroupInfo, error)
 }
 
 // SetLoadGroupsHook overrides the asynchronous group-list fetch trigger (tests
@@ -37,8 +37,8 @@ func (a *App) doLoadGroups(ctx context.Context, force bool) {
 	// Serve the persisted list instantly unless the user asked to refresh, so
 	// opening the browser does not re-download tens of thousands of groups.
 	if !force {
-		if names, ok := loadGroupCache(server); ok {
-			a.post(func() { a.scene.SetBrowseGroups(names) })
+		if groups, ok := loadGroupCache(server); ok {
+			a.post(func() { a.scene.SetBrowseGroups(groups) })
 			a.vmStatus("")
 			return
 		}
@@ -59,7 +59,7 @@ func (a *App) doLoadGroups(ctx context.Context, force bool) {
 	if force {
 		fetch = g.RefreshGroups
 	}
-	names, err := fetch(ctx)
+	groups, err := fetch(ctx)
 	a.vmLoad(false, 1, 1)
 	if err != nil {
 		if ae, ok := source.AsAuthError(err); ok {
@@ -69,8 +69,8 @@ func (a *App) doLoadGroups(ctx context.Context, force bool) {
 		a.vmStatus("Group list failed: " + err.Error())
 		return
 	}
-	saveGroupCache(server, names) // persist so the next open is instant
-	a.post(func() { a.scene.SetBrowseGroups(names) })
+	saveGroupCache(server, groups) // persist so the next open is instant
+	a.post(func() { a.scene.SetBrowseGroups(groups) })
 	a.vmStatus("")
 }
 

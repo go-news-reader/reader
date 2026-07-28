@@ -515,7 +515,7 @@ func TestMouseDownUnsubscribeGroup(t *testing.T) {
 	a := app.New(app.Config{Registry: source.NewRegistry(), Settings: set, Width: 900, Height: 600})
 	a.SetRefreshHook(func() {})
 	a.Scene().SetUsenetServer("news.free.fr:119")
-	a.Scene().SetBrowseGroups([]string{"control"})
+	a.Scene().SetBrowseGroups([]source.GroupInfo{{Name: "control"}})
 	a.Scene().OpenBrowse()
 	s := a.Scene()
 	// Click the subscribed "control" leaf's ✓ marker → unsubscribe.
