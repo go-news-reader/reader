@@ -9,12 +9,62 @@ package ui
 
 import (
 	"image"
+	"strings"
 
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/source"
 )
+
+// PrefetchRequest names a shown Usenet image post to prefetch: an id (the feed
+// item id or a group's release base) and the member articles to fetch.
+type PrefetchRequest struct {
+	ID    string
+	Parts []ReconstructPart
+}
+
+// ImagePrefetch returns a request for every shown Usenet post likely to carry an
+// image — a multipart group (binary post) and a standalone article whose subject
+// names an image file — so the app can download their thumbnails in parallel.
+func (s *Scene) ImagePrefetch() []PrefetchRequest {
+	var out []PrefetchRequest
+	for _, e := range groupItems(s.filtered()) {
+		switch {
+		case e.group != nil:
+			parts := make([]ReconstructPart, 0, len(e.group.Members))
+			for _, mem := range e.group.Members {
+				if id := bareMessageID(mem.Item.Permalink); id != "" {
+					parts = append(parts, ReconstructPart{MessageID: id, Filename: mem.Info.Filename})
+				}
+			}
+			if len(parts) > 0 {
+				out = append(out, PrefetchRequest{ID: e.group.Base, Parts: parts})
+			}
+		case e.item.Source == source.Usenet && isImageSubject(e.item.Title):
+			if id := bareMessageID(e.item.Permalink); id != "" {
+				out = append(out, PrefetchRequest{ID: e.item.ID, Parts: []ReconstructPart{{MessageID: id, Filename: e.item.Title}}})
+			}
+		}
+	}
+	return out
+}
+
+// bareMessageID strips the "news:" scheme and angle brackets off a permalink.
+func bareMessageID(permalink string) string {
+	return strings.Trim(strings.TrimPrefix(permalink, "news:"), "<>")
+}
+
+// isImageSubject reports whether a subject/filename names a common image format.
+func isImageSubject(s string) bool {
+	s = strings.ToLower(s)
+	for _, ext := range []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"} {
+		if strings.Contains(s, ext) {
+			return true
+		}
+	}
+	return false
+}
 
 // Preview-pane sizing, in logical (unscaled) pixels.
 const (
@@ -30,15 +80,29 @@ func (s *Scene) previewWidth() int {
 	if s.mode != ModeFeed {
 		return 0
 	}
+	lo := rpxOf(s, previewMinW)
+	avail := s.W - s.m.sidebarW - rpxOf(s, feedKeepW)
+	if avail < lo {
+		return 0 // window too narrow to keep both a usable feed and pane
+	}
 	w := rpxOf(s, previewPaneW)
-	if avail := s.W - s.m.sidebarW - rpxOf(s, feedKeepW); w > avail {
+	if s.previewUserW > 0 {
+		w = s.previewUserW // user-dragged width, clamped below
+	}
+	if w > avail {
 		w = avail
 	}
-	if w < rpxOf(s, previewMinW) {
-		return 0
+	if w < lo {
+		w = lo
 	}
 	return w
 }
+
+// BeginPreviewResize / EndPreviewResize / DraggingPreview drive the preview
+// pane's left-edge divider drag, mirroring the sidebar divider.
+func (s *Scene) BeginPreviewResize()   { s.draggingPreview = true }
+func (s *Scene) EndPreviewResize()     { s.draggingPreview = false }
+func (s *Scene) DraggingPreview() bool { return s.draggingPreview }
 
 // feedGeom returns the feed list's left origin and width, accounting for the
 // sidebar on the left and the preview pane on the right. Every feed layout /
@@ -147,11 +211,19 @@ func (s *Scene) previewContent() previewBody {
 		bodyLines:  wrapText(bodyFace, stripHTML(it.Body), w),
 		meta:       metaLine(it),
 	}
-	// Reserve a fixed image box whenever the item declares media (or one is
-	// already decoded). The toolkit Image widget fits the picture inside this box
-	// (aspect-preserved, centred), so no per-image height math is needed here.
+	// Reserve the image box whenever the item declares media (or one is already
+	// decoded). Once the picture is decoded the box grows to its fitted height
+	// (aspect-preserved within the pane width, capped) via toolkit.FitBounds, so a
+	// wide image wastes no vertical space; before it loads, a placeholder box hosts
+	// the spinner / label.
 	if len(it.Media) > 0 || s.hasThumb(it.ID) {
-		d.imgH = rpxOf(s, 240)
+		if t := s.thumb(it.ID); t != nil {
+			b := t.Bounds()
+			fit := toolkit.FitBounds(b.Dx(), b.Dy(), toolkit.Rect{W: w, H: rpxOf(s, 400)})
+			d.imgH = fit.H
+		} else {
+			d.imgH = rpxOf(s, 160)
+		}
 	}
 	gap := rpxOf(s, 8)
 	h := m.pad + m.badgeH + gap

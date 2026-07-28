@@ -642,6 +642,13 @@ func (s *Scene) HitTest(x, y int) Hit {
 		}
 		return Hit{Kind: HitNone}
 	}
+	// A thin grip at the preview pane's left edge starts a pane-resize drag.
+	if s.previewR.W > 0 {
+		grip := rpxOf(s, 3)
+		if x >= s.previewR.X-grip && x <= s.previewR.X+grip {
+			return Hit{Kind: HitPreviewDivider}
+		}
+	}
 	// The right preview pane is drawn over the feed; a click inside it resolves
 	// here (its Open button or nothing) and never falls through to a feed card.
 	if h, ok := s.previewHitTest(x, y); ok {

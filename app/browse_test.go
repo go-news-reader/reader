@@ -123,6 +123,19 @@ func TestSubscribeGroupAddsAndPersists(t *testing.T) {
 	if refreshed != 1 {
 		t.Fatalf("duplicate subscribe re-aggregated: %d", refreshed)
 	}
+	// Unsubscribing removes it and re-aggregates once more.
+	a.UnsubscribeGroup("alt.binaries.test")
+	if a.Scene().IsSubscribed(source.Usenet, "alt.binaries.test") {
+		t.Fatal("group still subscribed after unsubscribe")
+	}
+	if refreshed != 2 {
+		t.Fatalf("expected re-aggregate on unsubscribe, got %d", refreshed)
+	}
+	// Unsubscribing an absent group is a no-op.
+	a.UnsubscribeGroup("alt.binaries.test")
+	if refreshed != 2 {
+		t.Fatalf("absent unsubscribe re-aggregated: %d", refreshed)
+	}
 }
 
 func TestNewAppliesUsenetServer(t *testing.T) {

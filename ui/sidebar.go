@@ -39,10 +39,14 @@ func (s *Scene) DraggingSidebar() bool { return s.draggingSidebar }
 // can forward every pointer move unconditionally.
 func (s *Scene) MouseMove(x, y int) {
 	s.lastMouseX, s.lastMouseY = x, y
-	if !s.draggingSidebar {
+	switch {
+	case s.draggingSidebar:
+		s.sidebarUserW = x // pointer x becomes the sidebar width
+	case s.draggingPreview:
+		s.previewUserW = s.W - x // pointer distance from the right edge is the pane width
+	default:
 		return
 	}
-	s.sidebarUserW = x
 	s.invalidateCards()
 	s.touch()
 }
