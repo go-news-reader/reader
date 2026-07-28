@@ -87,6 +87,9 @@ type Item struct {
 	// GroupCount is the number of posts in the item's source group/newsgroup (the
 	// NNTP GROUP article estimate), for a status-bar count. 0 when unknown.
 	GroupCount int
+	// GroupHigh is the highest article number in the group (the NNTP GROUP high
+	// water mark), a monotonic marker used to count unseen/new posts. 0 unknown.
+	GroupHigh int
 }
 
 // Query selects what a provider should fetch.
