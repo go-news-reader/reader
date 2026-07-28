@@ -451,7 +451,13 @@ func decodeKey(event objc.ID) (name string, r rune) {
 	}
 	s := goString(event.Send(selCharsIgnoringMods))
 	rs := []rune(s)
-	if len(rs) == 1 && rs[0] >= 0x20 {
+	// Only accept a genuine printable rune. AppKit reports the arrow keys and
+	// other function keys (F1-F35, Home/End, Page Up/Down, ...) through
+	// charactersIgnoringModifiers as code points in the NSFunctionKey private-use
+	// range U+F700..U+F8FF — all >= 0x20 — so without this upper bound an arrow
+	// press leaks in as a "printable" glyph and gets inserted into the search
+	// field (garbage char + a mis-positioned caret). DEL (0x7f) is excluded too.
+	if len(rs) == 1 && rs[0] >= 0x20 && rs[0] != 0x7f && (rs[0] < 0xF700 || rs[0] > 0xF8FF) {
 		return "", rs[0]
 	}
 	return "", 0
