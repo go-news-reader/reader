@@ -92,6 +92,13 @@ type Item struct {
 	GroupHigh int
 }
 
+// GroupInfo is one entry of a Usenet server's carried-group list: the full
+// newsgroup name and its estimated post count (the NNTP LIST high−low+1 range).
+type GroupInfo struct {
+	Name  string
+	Count int
+}
+
 // Query selects what a provider should fetch.
 type Query struct {
 	// Channel scopes the fetch: a subreddit, feed URL, newsgroup name, account

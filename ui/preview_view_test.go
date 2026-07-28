@@ -39,7 +39,7 @@ func TestBrowseUnsubscribeHit(t *testing.T) {
 		{Source: source.Usenet, Channel: "control"},
 	}}}, 0)
 	s.SetUsenetServer("news.free.fr:119")
-	s.SetBrowseGroups([]string{"control", "junk"})
+	s.SetBrowseGroups(gis("control", "junk"))
 	s.OpenBrowse()
 	s.layoutBrowse()
 	// The subscribed "control" leaf's ✓ marker unsubscribes; the unsubscribed

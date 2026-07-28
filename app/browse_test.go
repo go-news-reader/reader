@@ -24,13 +24,25 @@ func (f *fakeGrouper) Kind() source.Kind { return source.Usenet }
 func (f *fakeGrouper) Feed(context.Context, source.Query) (source.Result, error) {
 	return source.Result{}, nil
 }
-func (f *fakeGrouper) Groups(context.Context) ([]string, error) {
+func (f *fakeGrouper) Groups(context.Context) ([]source.GroupInfo, error) {
 	f.groupsCalls++
-	return f.names, f.err
+	return fakeInfos(f.names), f.err
 }
-func (f *fakeGrouper) RefreshGroups(context.Context) ([]string, error) {
+func (f *fakeGrouper) RefreshGroups(context.Context) ([]source.GroupInfo, error) {
 	f.refreshCall++
-	return f.names, f.err
+	return fakeInfos(f.names), f.err
+}
+
+// fakeInfos wraps bare names as GroupInfo (zero counts) for the fake grouper.
+func fakeInfos(names []string) []source.GroupInfo {
+	if names == nil {
+		return nil
+	}
+	out := make([]source.GroupInfo, len(names))
+	for i, n := range names {
+		out[i] = source.GroupInfo{Name: n}
+	}
+	return out
 }
 
 // syncGroups wires a synchronous group-load hook for determinism.
@@ -47,7 +59,7 @@ func TestLoadGroupsSuccess(t *testing.T) {
 	if fg.groupsCalls != 1 || fg.refreshCall != 0 {
 		t.Fatalf("Groups=%d Refresh=%d, want 1/0", fg.groupsCalls, fg.refreshCall)
 	}
-	if got := a.Scene().BrowseGroups(); len(got) != 2 || got[0] != "alt.test" {
+	if got := a.Scene().BrowseGroups(); len(got) != 2 || got[0].Name != "alt.test" {
 		t.Fatalf("browse groups = %v", got)
 	}
 

@@ -79,7 +79,7 @@ type Provider struct {
 	// and re-fetches. Guarded by gmu because the browse window loads it on a
 	// background goroutine.
 	gmu    sync.Mutex
-	groups []string
+	groups []source.GroupInfo
 }
 
 // WithAuth attaches AUTHINFO credentials used when connecting to modern servers
@@ -207,7 +207,7 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 // fetches it once. Use RefreshGroups to bypass the cache. An authentication or
 // permission failure is mapped to a typed source.AuthError so the UI can prompt
 // for credentials.
-func (p *Provider) Groups(ctx context.Context) ([]string, error) {
+func (p *Provider) Groups(ctx context.Context) ([]source.GroupInfo, error) {
 	p.gmu.Lock()
 	cached := p.groups
 	p.gmu.Unlock()
@@ -219,7 +219,7 @@ func (p *Provider) Groups(ctx context.Context) ([]string, error) {
 
 // RefreshGroups discards any cached list and re-fetches the server's full active
 // group list, so the browse window's Refresh control shows newly-carried groups.
-func (p *Provider) RefreshGroups(ctx context.Context) ([]string, error) {
+func (p *Provider) RefreshGroups(ctx context.Context) ([]source.GroupInfo, error) {
 	p.gmu.Lock()
 	p.groups = nil
 	p.gmu.Unlock()
@@ -228,7 +228,7 @@ func (p *Provider) RefreshGroups(ctx context.Context) ([]string, error) {
 
 // fetchGroups connects, issues LIST ACTIVE "*" (every carried group), closes,
 // sorts the names and stores them in the cache.
-func (p *Provider) fetchGroups(ctx context.Context) ([]string, error) {
+func (p *Provider) fetchGroups(ctx context.Context) ([]source.GroupInfo, error) {
 	c, err := p.connect(ctx)
 	if err != nil {
 		return nil, mapErr(err)
@@ -239,18 +239,24 @@ func (p *Provider) fetchGroups(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	names := make([]string, 0, len(infos))
+	groups := make([]source.GroupInfo, 0, len(infos))
 	for _, in := range infos {
-		if in.Name != "" {
-			names = append(names, in.Name)
+		if in.Name == "" {
+			continue
 		}
+		// The NNTP LIST high−low+1 range is the server's own post-count estimate.
+		n := in.High - in.Low + 1
+		if n < 0 {
+			n = 0
+		}
+		groups = append(groups, source.GroupInfo{Name: in.Name, Count: n})
 	}
-	sort.Strings(names)
+	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
 
 	p.gmu.Lock()
-	p.groups = names
+	p.groups = groups
 	p.gmu.Unlock()
-	return names, nil
+	return groups, nil
 }
 
 // nntpAuthCodes are the NNTP response codes that mean the server needs (or

@@ -297,7 +297,7 @@ type Scene struct {
 	// the filtered tree auto-expands so this only applies to the unfiltered view.
 	// usenetAddr is non-empty when a Usenet server is configured, which is what
 	// gates the sidebar "Browse newsgroups" entry.
-	browseGroups   []string
+	browseGroups   []source.GroupInfo
 	browseServer   string
 	usenetAddr     string
 	browseEntry    *toolkit.SearchEntry

@@ -22,7 +22,7 @@ func browseHandler(t *testing.T) *Handler {
 	a.SetRefreshHook(func() {})
 	a.SetLoadGroupsHook(func(bool) {}) // no-op; individual tests override to observe
 	a.Scene().SetUsenetServer("news.free.fr:119")
-	a.Scene().SetBrowseGroups([]string{"alt.test", "alt.binaries.test", "comp.lang.go"})
+	a.Scene().SetBrowseGroups([]source.GroupInfo{{Name: "alt.test"}, {Name: "alt.binaries.test"}, {Name: "comp.lang.go"}})
 	return New(a)
 }
 
