@@ -211,13 +211,20 @@ func (s *Scene) layoutAccounts() {
 
 	labelW := rpxOf(s, 150)
 	for _, f := range pc.Fields {
-		label(pad, y+(btnH-m.side.height)/2, f.Label)
-		r := toolkit.Rect{X: pad + labelW, Y: y, W: s.W - 2*pad - labelW, H: btnH}
+		fieldW := s.W - 2*pad - labelW
 		if f.Bool {
-			r.W = rpxOf(s, 90)
+			fieldW = rpxOf(s, 90)
 		}
+		// Each field row is an HBox: caption column (fixed) | input/toggle.
+		row := toolkit.NewHBox()
+		row.Spacing = -1
+		capSlot, fldSlot := toolkit.NewLabel(""), toolkit.NewLabel("")
+		row.AddFixed(capSlot, labelW)
+		row.AddFixed(fldSlot, fieldW)
+		row.SetBounds(toolkit.Rect{X: pad, Y: y, W: s.W - 2*pad, H: btnH})
+		label(capSlot.Bounds().X, y+(btnH-m.side.height)/2, f.Label)
 		s.accRows = append(s.accRows, accFieldRow{
-			rect: r, key: f.Key, secret: f.Secret, isBool: f.Bool, focused: s.accFocus == f.Key,
+			rect: fldSlot.Bounds(), key: f.Key, secret: f.Secret, isBool: f.Bool, focused: s.accFocus == f.Key,
 		})
 		y += btnH + gap
 	}
@@ -236,40 +243,36 @@ func (s *Scene) drawAccounts(buf []byte) {
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
 
-	// Section labels + field captions.
+	// Every element is drawn as a widget positioned at its box-computed rect,
+	// reusing the settings editor's pill/field widgets.
 	for _, l := range s.accLabels {
-		m.side.draw(img, l.x, l.y, l.text, muteS)
+		lbl := &textLine{face: m.side, text: l.text, ink: muteS, img: img}
+		lbl.SetBounds(toolkit.Rect{X: l.x, Y: l.y, W: s.W, H: m.side.height})
+		lbl.Draw(p, th)
 	}
-
-	// Provider selector pills.
 	for _, b := range s.accProvBtns {
-		fill, txt := th.Surface, th.OnSurface
-		if b.active {
-			fill, txt = th.Accent, onAccent
-		}
-		p.FillRoundRect(painter.Rect(b.rect), rpxOf(s, 6), fill)
-		p.StrokeRoundRect(painter.Rect(b.rect), rpxOf(s, 6), th.Border, 1)
-		m.tab.draw(img, b.rect.X+rpxOf(s, 10), b.rect.Y+(b.rect.H-m.tab.height)/2, b.label, txt)
+		w := &settingsButton{s: s, label: b.label, active: b.active, p: p, img: img}
+		w.SetBounds(b.rect)
+		w.Draw(p, th)
 	}
-
-	// Credential fields.
 	for _, f := range s.accRows {
 		if f.isBool {
-			on := s.accFieldValue(s.accSel, f.key) == "true"
-			lbl, fill, txt := "Off", th.Surface, th.OnSurface
-			if on {
-				lbl, fill, txt = "On", th.Accent, onAccent
+			lbl := "Off"
+			if s.accFieldValue(s.accSel, f.key) == "true" {
+				lbl = "On"
 			}
-			p.FillRoundRect(painter.Rect(f.rect), rpxOf(s, 6), fill)
-			p.StrokeRoundRect(painter.Rect(f.rect), rpxOf(s, 6), th.Border, 1)
-			m.tab.draw(img, f.rect.X+rpxOf(s, 10), f.rect.Y+(f.rect.H-m.tab.height)/2, lbl, txt)
+			w := &settingsButton{s: s, label: lbl, active: lbl == "On", p: p, img: img}
+			w.SetBounds(f.rect)
+			w.Draw(p, th)
 			continue
 		}
 		val := s.accFieldValue(s.accSel, f.key)
 		if f.secret {
 			val = mask(val)
 		}
-		s.drawInput(p, img, f.rect, val, "…", f.focused, onAccent, muteS)
+		w := &settingsField{s: s, text: val, placeholder: "…", focused: f.focused, p: p, img: img}
+		w.SetBounds(f.rect)
+		w.Draw(p, th)
 	}
 
 	// Topbar (accent) with Back, title and Done, over any scroll overflow.
