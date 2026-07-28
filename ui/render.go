@@ -229,10 +229,13 @@ func (s *Scene) Draw(buf []byte) {
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
 
+	// Lay out the right-hand preview pane so the feed geometry (which subtracts the
+	// pane width) and drawPreview agree this frame.
+	s.layoutPreview()
+
 	// --- feed (drawn first; chrome overpaints scroll overflow) ---
 	feedTop := m.topbarH
-	feedX := m.sidebarW + m.pad
-	feedW := s.W - m.sidebarW - 2*m.pad
+	feedX, feedW := s.feedGeom()
 	// Progress strip (loading + some items): drawn above the banners, scrolling
 	// with the feed content.
 	if s.showStrip {
@@ -284,6 +287,9 @@ func (s *Scene) Draw(buf []byte) {
 	if s.Status != "" {
 		m.meta.draw(img, m.sidebarW+m.pad, s.H-m.meta.height-rpxOf(s, 4), s.Status, muteS)
 	}
+
+	// --- right preview/details pane (over the feed, docked right) ---
+	s.drawPreview(p, img)
 }
 
 // sidebarKey / topbarKey identify the single-slot chrome sprite caches. The
@@ -625,6 +631,7 @@ func (s *Scene) HitTest(x, y int) Hit {
 		return s.browseHitTest(x, y)
 	}
 	s.layout()
+	s.layoutPreview()
 	m := s.m
 	if y < m.topbarH {
 		if inRect(s.burgerR, x, y) {
@@ -634,6 +641,11 @@ func (s *Scene) HitTest(x, y int) Hit {
 			return Hit{Kind: HitSearch}
 		}
 		return Hit{Kind: HitNone}
+	}
+	// The right preview pane is drawn over the feed; a click inside it resolves
+	// here (its Open button or nothing) and never falls through to a feed card.
+	if h, ok := s.previewHitTest(x, y); ok {
+		return h
 	}
 	// A thin grip at the sidebar's right edge starts a divider drag (feed only,
 	// and only when the sidebar is shown).
@@ -675,8 +687,7 @@ func (s *Scene) HitTest(x, y int) Hit {
 		return Hit{Kind: HitNone}
 	}
 	// Feed.
-	feedX := m.sidebarW + m.pad
-	feedW := s.W - m.sidebarW - 2*m.pad
+	feedX, feedW := s.feedGeom()
 	contentY := y - m.topbarH + s.ScrollY
 	for _, a := range s.authRows {
 		if contentY >= a.top && contentY < a.top+m.bannerH {
@@ -706,7 +717,12 @@ func (s *Scene) hitGroup(r feedRow, feedX, feedW, x, contentY int) Hit {
 		return Hit{Kind: HitReconstruct, Value: g.Base}
 	}
 	if contentY < r.top+s.m.groupHeadH {
-		return Hit{Kind: HitToggleGroup, Value: g.Base}
+		// The chevron toggles expand/collapse; the rest of the header previews the
+		// post (reconstructs its image into the pane), like clicking a card.
+		if inRect(s.chevronRect(feedX, r.top), x, contentY) {
+			return Hit{Kind: HitToggleGroup, Value: g.Base}
+		}
+		return Hit{Kind: HitPreviewGroup, Value: g.Base}
 	}
 	if s.GroupExpanded(g.Base) {
 		for i, mem := range g.Members {
