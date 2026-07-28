@@ -195,7 +195,7 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 
 	items := make([]source.Item, 0, len(overviews))
 	for _, ov := range overviews {
-		items = append(items, mapOverview(group, ov))
+		items = append(items, mapOverview(group, g.Count, ov))
 	}
 	return source.Result{Items: items}, nil
 }
@@ -275,17 +275,18 @@ func mapErr(err error) error {
 	return err
 }
 
-func mapOverview(group string, ov gonntp.Overview) source.Item {
+func mapOverview(group string, count int, ov gonntp.Overview) source.Item {
 	return source.Item{
-		ID:        ov.MessageID,
-		Source:    source.Usenet,
-		Channel:   group,
-		Title:     ov.Subject,
-		Author:    ov.From,
-		Permalink: "news:" + strings.Trim(ov.MessageID, "<>"),
-		Score:     -1,
-		Comments:  -1,
-		Created:   source.UnixOrZero(ov.Date),
+		ID:         ov.MessageID,
+		Source:     source.Usenet,
+		Channel:    group,
+		Title:      ov.Subject,
+		Author:     ov.From,
+		Permalink:  "news:" + strings.Trim(ov.MessageID, "<>"),
+		Score:      -1,
+		Comments:   -1,
+		Created:    source.UnixOrZero(ov.Date),
+		GroupCount: count,
 	}
 }
 
