@@ -149,6 +149,10 @@ func (d *fileDownloader) publish() {
 	d.a.post(func() { d.a.scene.SetDownloads(snap) })
 }
 
+// SetDownloadSync makes the file-download manager reconstruct inline instead of
+// in a goroutine — a determinism seam for tests (mirrors SetPreviewFetchHook).
+func (a *App) SetDownloadSync() { a.fdl.async = false }
+
 // ToggleDownload queues (or cancels) the download of the complete Usenet post
 // with the given release base. Parts + the cache dir are captured here on the UI
 // thread so the worker never reads the scene.

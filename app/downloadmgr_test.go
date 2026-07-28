@@ -17,7 +17,7 @@ func TestFileDownloadToggleSavesAndClears(t *testing.T) {
 
 	fu := &fakeUsenet{files: map[string][]byte{"release.tar.zst": []byte("payload")}}
 	a := New(Config{Registry: newReg(fu)})
-	a.fdl.async = false // run synchronously
+	a.SetDownloadSync() // run synchronously
 	a.scene.SetSubs(nil)
 	a.scene.SetItems(usenetPost()) // groupable base "release"
 	a.scene.SetCachePath("/tmp/dl")

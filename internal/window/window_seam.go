@@ -75,6 +75,10 @@ const (
 	vkBack   = 0x08
 	vkReturn = 0x0D
 	vkEscape = 0x1B
+	vkLeft   = 0x25
+	vkUp     = 0x26
+	vkRight  = 0x27
+	vkDown   = 0x28
 )
 
 // winKeyName maps a WM_KEYDOWN virtual-key code to a symbolic editing-key name,
@@ -87,6 +91,14 @@ func winKeyName(vk uint32) string {
 		return "Escape"
 	case vkReturn:
 		return "Enter"
+	case vkUp:
+		return "Up"
+	case vkDown:
+		return "Down"
+	case vkLeft:
+		return "Left"
+	case vkRight:
+		return "Right"
 	}
 	return ""
 }
@@ -148,6 +160,10 @@ const (
 	ksReturn      = 0xff0d
 	ksKPEnter     = 0xff8d
 	ksEscape      = 0xff1b
+	ksLeft        = 0xff51
+	ksUp          = 0xff52
+	ksRight       = 0xff53
+	ksDown        = 0xff54
 	ksUnicodeBase = 0x01000000
 	ksUnicodeMin  = 0x01000020
 	ksUnicodeMax  = 0x0110ffff
@@ -164,6 +180,14 @@ func x11KeyDecode(ks uint32) (name string, r rune) {
 		return "Escape", 0
 	case ksReturn, ksKPEnter:
 		return "Enter", 0
+	case ksUp:
+		return "Up", 0
+	case ksDown:
+		return "Down", 0
+	case ksLeft:
+		return "Left", 0
+	case ksRight:
+		return "Right", 0
 	}
 	if ks >= 0x20 && ks <= 0x7e {
 		return "", rune(ks)

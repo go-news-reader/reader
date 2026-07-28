@@ -83,6 +83,10 @@ func TestWinKeyName(t *testing.T) {
 		vkBack:   "Backspace",
 		vkEscape: "Escape",
 		vkReturn: "Enter",
+		vkUp:     "Up",
+		vkDown:   "Down",
+		vkLeft:   "Left",
+		vkRight:  "Right",
 		0x41:     "", // 'A' arrives via WM_CHAR instead
 	}
 	for vk, want := range cases {
@@ -194,6 +198,10 @@ func TestX11KeyDecode(t *testing.T) {
 		ksEscape:    {"Escape", 0},
 		ksReturn:    {"Enter", 0},
 		ksKPEnter:   {"Enter", 0},
+		ksUp:        {"Up", 0},
+		ksDown:      {"Down", 0},
+		ksLeft:      {"Left", 0},
+		ksRight:     {"Right", 0},
 		'a':         {"", 'a'},         // Latin-1
 		0x010001f4:  {"", rune(0x1f4)}, // Unicode-block keysym
 		0xffff:      {"", 0},           // unmapped function key

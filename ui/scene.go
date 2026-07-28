@@ -804,6 +804,63 @@ func (s *Scene) Scroll(dy int) {
 	s.touch()
 }
 
+// NavItem moves the feed selection by dir card rows (dir<0 up, dir>0 down),
+// skipping Usenet post groups, scrolls the chosen row into view, and returns the
+// newly selected item. With no current selection it picks the first card (down)
+// or the last (up). ok is false when the feed has no selectable cards.
+func (s *Scene) NavItem(dir int) (it source.Item, ok bool) {
+	cards := make([]int, 0, len(s.rows))
+	for i, r := range s.rows {
+		if r.group == nil {
+			cards = append(cards, i)
+		}
+	}
+	if len(cards) == 0 {
+		return source.Item{}, false
+	}
+	cur := -1
+	if s.previewHas {
+		for ci, ri := range cards {
+			if sameItem(s.rows[ri].item, s.previewItem) {
+				cur = ci
+				break
+			}
+		}
+	}
+	var next int
+	switch {
+	case cur < 0 && dir < 0:
+		next = len(cards) - 1
+	case cur < 0:
+		next = 0
+	default:
+		next = cur + dir
+	}
+	if next < 0 {
+		next = 0
+	}
+	if next >= len(cards) {
+		next = len(cards) - 1
+	}
+	row := s.rows[cards[next]]
+	s.ensureRowVisible(row)
+	return row.item, true
+}
+
+// ensureRowVisible scrolls the feed the minimum amount so row is fully inside the
+// feed viewport (between the topbar and the download panel/status bar).
+func (s *Scene) ensureRowVisible(row feedRow) {
+	viewH := s.feedBottom() - s.m.topbarH
+	switch {
+	case row.top < s.ScrollY:
+		s.ScrollY = row.top
+	case row.top+row.height > s.ScrollY+viewH:
+		s.ScrollY = row.top + row.height - viewH
+	}
+	s.ScrollY = clampScroll(s.ScrollY, s.contentH-viewH)
+	s.touch()
+}
+
 // clampScroll bounds v to [0, max] (max<0 => 0).
 func clampScroll(v, max int) int {
 	if max < 0 {
