@@ -27,7 +27,8 @@ func groupRow(s *Scene) (feedRow, int, int) {
 	s.layout()
 	for _, r := range s.rows {
 		if r.group != nil {
-			return r, s.m.sidebarW + s.m.pad, s.W - s.m.sidebarW - 2*s.m.pad
+			fx, fw := s.feedGeom()
+			return r, fx, fw
 		}
 	}
 	return feedRow{}, 0, 0

@@ -74,6 +74,14 @@ type App struct {
 	// front-ends/tests can substitute a synchronous variant.
 	loadGroups func(force bool)
 
+	// previewFetch triggers the asynchronous reconstruct+decode of a Usenet post's
+	// image into the preview pane, keyed by id. A field so tests can substitute a
+	// synchronous variant.
+	previewFetch func(id string, parts []usenet.ReconstructPart)
+
+	// dl is the parallel image download manager (feed-wide thumbnail prefetch).
+	dl *downloader
+
 	// Double-buffered present state (see Frame): two framebuffers plus the
 	// last-presented damage sequence, so a window/canvas front-end only redraws
 	// and uploads when the scene actually changed.
@@ -193,6 +201,10 @@ func New(cfg Config) *App {
 	a.refresh = func() { go a.Refresh(context.Background()) }
 	a.reconstruct = func(base string) { go a.doReconstruct(context.Background(), base) }
 	a.loadGroups = func(force bool) { go a.doLoadGroups(context.Background(), force) }
+	a.previewFetch = func(id string, parts []usenet.ReconstructPart) {
+		go a.loadPreviewImage(context.Background(), id, parts)
+	}
+	a.dl = newDownloader(a)
 	a.applyUsenetServer()
 
 	// The view-model is the single source of truth for the core state flow; the
@@ -439,6 +451,7 @@ func (a *App) Refresh(ctx context.Context) []error {
 		a.vm.SetAuthPrompts(authPrompts(errs))
 		a.vm.SetStatus(firstNonAuthError(errs))
 	})
+	a.post(a.PrefetchImages) // prefetch shown Usenet images in parallel (UI thread)
 	return errs
 }
 
@@ -474,6 +487,7 @@ func (a *App) RefreshStreaming(ctx context.Context) []error {
 			a.vm.SetLoad(u.Done < u.Total, u.Done, u.Total)
 		})
 	})
+	a.post(a.PrefetchImages) // prefetch shown Usenet images in parallel (UI thread)
 	return compactErrs(byIndex)
 }
 

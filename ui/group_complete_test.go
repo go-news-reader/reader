@@ -119,8 +119,10 @@ func TestIncompleteGroupHidesReconstruct(t *testing.T) {
 	if h.Kind == HitReconstruct {
 		t.Fatal("incomplete post must not offer Reconstruct")
 	}
-	if h.Kind != HitToggleGroup {
-		t.Fatalf("expected header toggle, got %v", h.Kind)
+	// The header body (where the pill would be, but the post is incomplete) now
+	// previews the post rather than being a dead slot.
+	if h.Kind != HitPreviewGroup {
+		t.Fatalf("expected header preview, got %v", h.Kind)
 	}
 }
 
