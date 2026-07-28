@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image"
+	"strconv"
 	"strings"
 	"time"
 
@@ -382,17 +383,32 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		}
 		ty := ly + (m.sideItemH-m.side.height)/2
 		if e.index >= 0 {
-			s.drawDot(p, m.pad, ly+m.sideItemH/2, sourceColor(s.Subs[e.index].Source))
-			m.side.draw(img, m.pad+rpxOf(s, 14), ty, label, col)
-			// A source that has not returned yet shows a small toolkit.Spinner at
-			// the row's right edge; it clears once its items or error land. The
-			// sprite cache keys on the animation frame while any source is pending
-			// (see sidebarSprite), so the spinner actually rotates.
-			if s.IsPendingSub(s.Subs[e.index].Source, s.Subs[e.index].Channel) {
+			sub := s.Subs[e.index]
+			s.drawDot(p, m.pad, ly+m.sideItemH/2, sourceColor(sub.Source))
+			labelX := m.pad + rpxOf(s, 14)
+			rightX := m.sidebarW - m.pad
+			labelW := rightX - labelX
+			// Right of the row: a spinner while the source is still fetching, else a
+			// "<unseen>/<total>" post count (unseen in accent, total muted).
+			if s.IsPendingSub(sub.Source, sub.Channel) {
 				d := rpxOf(s, 14)
 				rr := toolkit.Rect{X: m.sidebarW - m.pad - d, Y: ly + (m.sideItemH-d)/2, W: d, H: d}
 				s.spinnerAt(rr).Draw(p, th)
+				labelW = rr.X - labelX - rpxOf(s, 4)
+			} else if total, unseen := s.subCounts(sub); total > 0 {
+				cty := ly + (m.sideItemH-m.meta.height)/2
+				totalStr := strconv.Itoa(total)
+				tw := m.meta.width(totalStr)
+				m.meta.draw(img, rightX-tw, cty, totalStr, mute(th.OnSurface, th.SurfaceAlt))
+				countLeft := rightX - tw
+				if unseen > 0 {
+					us := strconv.Itoa(unseen) + "/"
+					countLeft -= m.meta.width(us)
+					m.meta.draw(img, countLeft, cty, us, th.Accent)
+				}
+				labelW = countLeft - labelX - rpxOf(s, 4)
 			}
+			m.side.draw(img, labelX, ty, truncate(m.side, label, labelW), col)
 		} else {
 			m.side.draw(img, m.pad, ty, label, col)
 		}

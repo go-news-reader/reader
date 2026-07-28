@@ -84,6 +84,10 @@ type App struct {
 	dl  *downloader
 	fdl *fileDownloader
 
+	// seen is the persisted per-subscription last-seen marker driving the sidebar
+	// unseen/new counts (UI-thread only).
+	seen map[string]int
+
 	// Double-buffered present state (see Frame): two framebuffers plus the
 	// last-presented damage sequence, so a window/canvas front-end only redraws
 	// and uploads when the scene actually changed.
@@ -208,6 +212,8 @@ func New(cfg Config) *App {
 	}
 	a.dl = newDownloader(a)
 	a.fdl = newFileDownloader(a)
+	a.seen = loadSeen()
+	a.scene.SetSeen(a.seen) // per-group unseen counts survive restarts
 	a.applyUsenetServer()
 
 	// The view-model is the single source of truth for the core state flow; the
