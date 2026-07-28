@@ -217,28 +217,31 @@ func (s *Scene) previewContent() previewBody {
 		bodyLines:  wrapText(bodyFace, stripHTML(it.Body), w),
 		meta:       metaLine(it),
 	}
+	gap := rpxOf(s, 8)
+	// Height consumed by the header above the image (badge + title + meta).
+	headerH := m.pad + m.badgeH + gap
+	headerH += len(d.titleLines) * (titleFace.height + rpxOf(s, 2))
+	headerH += gap + m.meta.height + gap
 	// Reserve the image box whenever the item declares media (or one is already
-	// decoded). Once the picture is decoded the box grows to its fitted height
-	// (aspect-preserved within the pane width, capped) via toolkit.FitBounds, so a
-	// wide image wastes no vertical space; before it loads, a placeholder box hosts
-	// the spinner / label.
+	// decoded). Once decoded, the image grows to fill the LARGEST space available
+	// in the pane — bound by the full remaining height OR the pane width, whichever
+	// the aspect ratio reaches first (toolkit.FitBounds) — so a portrait image
+	// fills the height and a landscape fills the width, each as big as it fits.
+	// Before it loads, a placeholder box hosts the spinner / label.
 	if len(it.Media) > 0 || s.hasThumb(it.ID) {
 		if t := s.thumb(it.ID); t != nil {
-			// Fit within the pane width and a share of its height, so the image
-			// grows/shrinks as the pane is resized (a landscape image is width-bound
-			// and fills the pane).
-			capH := s.previewR.H * 3 / 5
+			availH := s.previewR.H - headerH - gap - m.pad
+			if lo := rpxOf(s, 160); availH < lo {
+				availH = lo // keep a usable box in a very short pane
+			}
 			b := t.Bounds()
-			fit := toolkit.FitBounds(b.Dx(), b.Dy(), toolkit.Rect{W: w, H: capH})
+			fit := toolkit.FitBounds(b.Dx(), b.Dy(), toolkit.Rect{W: w, H: availH})
 			d.imgH = fit.H
 		} else {
 			d.imgH = rpxOf(s, 160)
 		}
 	}
-	gap := rpxOf(s, 8)
-	h := m.pad + m.badgeH + gap
-	h += len(d.titleLines) * (titleFace.height + rpxOf(s, 2))
-	h += gap + m.meta.height + gap
+	h := headerH
 	if d.imgH > 0 {
 		h += d.imgH + gap
 	}

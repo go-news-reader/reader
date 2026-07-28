@@ -40,6 +40,45 @@ func TestPreviewImageGrowsWithWindow(t *testing.T) {
 	}
 }
 
+// TestPreviewPortraitFillsHeight guards that a tall image now fills the pane
+// height (bound by the larger available dimension) instead of the old fixed
+// 3/5-of-height cap.
+func TestPreviewPortraitFillsHeight(t *testing.T) {
+	s := New(1400, 900, ThemeFor(OSLinux, false))
+	s.SetSubs(nil)
+	it := source.Item{ID: "q", Source: source.Usenet, Title: "tall", Media: []source.Media{{Kind: source.MediaImage}}}
+	s.SetItems([]source.Item{it})
+	s.SetThumb("q", image.NewRGBA(image.Rect(0, 0, 400, 1600))) // portrait → height-bound
+	s.SelectPreview(it)
+	s.Draw(make([]byte, s.W*s.H*4))
+
+	// A portrait image should use well over the old 3/5 cap of the pane height.
+	if s.previewImgR.H <= s.previewR.H*3/5 {
+		t.Fatalf("portrait image %d should exceed the old 3/5 cap %d of pane %d",
+			s.previewImgR.H, s.previewR.H*3/5, s.previewR.H)
+	}
+}
+
+// TestPreviewImageFloorInShortPane covers the minimum-box floor: in a very
+// short pane the available height collapses, but the image box keeps a usable
+// minimum instead of vanishing.
+func TestPreviewImageFloorInShortPane(t *testing.T) {
+	s := New(1200, MinH, ThemeFor(OSLinux, false))
+	s.SetSubs(nil)
+	longTitle := ""
+	for i := 0; i < 40; i++ {
+		longTitle += "a very long title segment that wraps across many lines "
+	}
+	it := source.Item{ID: "z", Source: source.Usenet, Title: longTitle, Media: []source.Media{{Kind: source.MediaImage}}}
+	s.SetItems([]source.Item{it})
+	s.SetThumb("z", image.NewRGBA(image.Rect(0, 0, 1200, 700)))
+	s.SelectPreview(it)
+	s.Draw(make([]byte, s.W*s.H*4))
+	if s.previewImgR.H <= 0 {
+		t.Fatal("image box should keep a usable minimum height in a short pane")
+	}
+}
+
 // TestPreviewUserWidthPinsPane confirms an explicit drag still overrides the
 // window-proportional default (so a user-chosen width is honoured).
 func TestPreviewUserWidthPinsPane(t *testing.T) {
