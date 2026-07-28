@@ -111,6 +111,10 @@ func (h *Handler) MouseDown(x, y int) {
 		s.ToggleGroup(hit.Value) // expand/collapse a Usenet post group
 	case ui.HitReconstruct:
 		h.a.ReconstructGroup(hit.Value) // download parts + reassemble + PAR2 verify/repair
+	case ui.HitToggleDownload:
+		h.a.ToggleDownload(hit.Value) // queue/cancel a complete post in the download panel
+	case ui.HitClearDownloads:
+		h.a.ClearDownloads() // drop finished rows from the download panel
 	case ui.HitBrowse:
 		vm.OpenBrowse.Execute() // open the newsgroup browser
 		h.a.LoadGroups()        // fetch the server's full group list (cached)

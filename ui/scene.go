@@ -78,6 +78,8 @@ const (
 	HitPreviewGroup           // a Usenet group card's body (preview it in the pane) — Value = release base
 	HitOpenPreview            // the preview pane's "Open" button (full reading view) — Item set
 	HitPreviewDivider         // the preview pane's left-edge resize grip (start a drag)
+	HitToggleDownload         // a complete post's download checkbox — Value = release base
+	HitClearDownloads         // the download panel's "Clear" button
 
 	// Newsgroup browser (Mode == ModeBrowse):
 	HitBrowse           // the sidebar "＋ Browse newsgroups" entry (open the browser)
@@ -237,6 +239,12 @@ type Scene struct {
 	// clamped at read time; draggingPreview is set while its divider is dragged.
 	previewUserW    int
 	draggingPreview bool
+
+	// Download manager: a docked panel across the bottom of the feed/preview area
+	// showing queued/active/finished downloads. Populated by the app via
+	// SetDownloads; the feed and preview shrink vertically to make room (feedBottom).
+	downloads []DownloadItem
+	dlClearR  toolkit.Rect // the panel's "Clear" button
 
 	// Network-log (ModeLog) view: a scrollable, newest-first list of the HTTP
 	// exchanges the providers made, fed live from an injected source so the app
@@ -783,7 +791,7 @@ func (s *Scene) Scroll(dy int) {
 	}
 	s.ScrollY += dy
 	s.layout()
-	s.ScrollY = clampScroll(s.ScrollY, s.contentH-(s.H-s.m.topbarH))
+	s.ScrollY = clampScroll(s.ScrollY, s.contentH-(s.feedBottom()-s.m.topbarH))
 	s.touch()
 }
 
