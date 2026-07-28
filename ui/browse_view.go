@@ -298,16 +298,16 @@ func (s *Scene) drawBrowseTree(p *painter.PixelPainter, img *image.RGBA, muteS t
 	m := s.m
 	th := s.theme
 
-	// Filter field: the browse SearchEntry widget with a focus ring + caret.
+	// Filter field: the browse SearchEntry widget (it draws its own aligned caret
+	// when focused) with a focus ring.
 	se := s.browseEntry
 	se.SetBounds(toolkit.Rect(s.browseFilterR))
 	se.Font = ttFont(false, rpxOf(s, 13))
+	se.Focused = s.browseFocused
 	p.FillRoundRect(painter.Rect(s.browseFilterR), rpxOf(s, 6), th.Surface)
 	se.Draw(p, th)
 	if s.browseFocused {
 		p.StrokeRoundRect(painter.Rect(s.browseFilterR), rpxOf(s, 6), th.Accent, rpxOf(s, 2))
-		caretX := s.browseFilterR.X + toolkit.SearchEntryPadX + toolkit.SearchEntryIconW + m.search.width(se.Text)
-		m.search.draw(img, caretX, s.browseFilterR.Y+(s.browseFilterR.H-m.search.height)/2, "|", th.OnSurface)
 	}
 
 	// Count / hint line.

@@ -70,39 +70,36 @@ func (s *Scene) drawGroup(p *painter.PixelPainter, img *image.RGBA, g *itemGroup
 	chev := s.chevronRect(x, y)
 	drawChevron(p, chev, th.OnSurface, expanded)
 
-	// Source badge (toolkit.Badge, Usenet colour), then the base name.
+	// Top row: source badge (Usenet colour) then the green/red completeness
+	// bubble — a coloured toolkit.Badge with white text saying "complete" or
+	// "incomplete" (replacing the old bare dot).
 	nameX := chev.X + chev.W + m.pad/2
+	badgeY := y + m.pad
 	label := sourceLabel(source.Usenet)
 	bw := m.badge.width(label) + m.pad
-	badgeY := y + m.pad
 	s.drawSourceBadge(p, toolkit.Rect{X: nameX, Y: badgeY, W: bw, H: m.badgeH}, source.Usenet)
 
-	// Right-aligned action, in the reconstruct pill's slot: a "Reconstruct" pill
-	// when the post is complete (all files+parts present, so reassembly can run),
-	// or a muted "incomplete" label when it is not (the pill is hidden and
-	// hitGroup makes it non-clickable, since an incomplete post cannot be rebuilt).
 	complete := g.Complete()
+	statusText, statusFill := "incomplete", errorColor(th)
+	if complete {
+		statusText, statusFill = "complete", successColor(th)
+	}
+	stW := m.badge.width(statusText) + m.pad
+	s.drawStatusBadge(p, toolkit.Rect{X: nameX + bw + m.pad/2, Y: badgeY, W: stW, H: m.badgeH}, statusText, statusFill)
+
+	// Right-aligned "Reconstruct" pill when the post is complete (all files+parts
+	// present, so reassembly can run); hidden otherwise, and hitGroup makes that
+	// slot non-clickable since an incomplete post cannot be rebuilt.
 	rr := s.reconstructRect(x, y, w)
 	if complete {
 		p.FillRoundRect(painter.Rect(rr), rr.H/2, th.Accent)
 		m.badge.draw(img, rr.X+(rr.W-m.badge.width("Reconstruct"))/2, rr.Y+(rr.H-m.badge.height)/2, "Reconstruct", onAccent)
-	} else {
-		lbl := "incomplete"
-		m.badge.draw(img, rr.X+rr.W-m.badge.width(lbl), rr.Y+(rr.H-m.badge.height)/2, lbl, errorColor(th))
 	}
 
-	// Base name (title) below the badge, preceded by a small green/red
-	// completeness badge (green when every declared file+part is present).
+	// Base name (title) below the badges.
 	titleY := badgeY + m.badgeH + rpxOf(s, 4)
-	dotCol := errorColor(th)
-	if complete {
-		dotCol = successColor(th)
-	}
-	dotD := rpxOf(s, 10)
-	p.FillRoundRect(painter.Rect{X: nameX, Y: titleY + (m.title.height-dotD)/2, W: dotD, H: dotD}, rpxOf(s, 3), dotCol)
-	textX := nameX + dotD + m.pad/2
-	nameW := rr.X - textX - m.pad
-	m.title.draw(img, textX, titleY, truncate(m.title, g.Base, nameW), th.OnSurface)
+	nameW := rr.X - nameX - m.pad
+	m.title.draw(img, nameX, titleY, truncate(m.title, g.Base, nameW), th.OnSurface)
 
 	// Meta line "N parts · M files · SIZE".
 	m.meta.draw(img, nameX, titleY+m.title.height+rpxOf(s, 2), truncate(m.meta, groupMeta(g), w-nameX-m.pad), muteS)
@@ -117,6 +114,16 @@ func (s *Scene) drawGroup(p *painter.PixelPainter, img *image.RGBA, g *itemGroup
 		txt := memberLine(mem)
 		m.meta.draw(img, mr.X+m.pad, mr.Y+(mr.H-m.meta.height)/2, truncate(m.meta, txt, mr.W-2*m.pad), th.OnSurface)
 	}
+}
+
+// drawStatusBadge paints a coloured pill (toolkit.Badge) with text — the
+// complete/incomplete completeness bubble. The ink is luminance-derived from the
+// fill (white on the dark green/red), so the text stays legible.
+func (s *Scene) drawStatusBadge(p *painter.PixelPainter, r toolkit.Rect, text string, fill toolkit.RGBA) {
+	b := &toolkit.Badge{Text: text, Fill: fill, Ink: onAccentFor(fill)}
+	b.Font = ttFont(true, rpxOf(s, 10))
+	b.SetBounds(r)
+	b.Draw(p, s.theme)
 }
 
 // memberLine renders one expanded member row's text.

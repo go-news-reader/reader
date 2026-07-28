@@ -40,8 +40,12 @@ github.com/go-opentype/opentype v0.1.0 h1:ok3QZb2t1xjIOhDaqtvOhZ/rCvY62ng927ckyg
 github.com/go-opentype/opentype v0.1.0/go.mod h1:AOixevJf7XQaH7+WG+OMIOZEbYPXfMqklVk26Y6YTUU=
 github.com/go-opentype/opentype v0.3.3 h1:pc8YcQDZzBa+IoX/sypcCtnQziMMKS1UQd8crxhSd+M=
 github.com/go-opentype/opentype v0.3.3/go.mod h1:AOixevJf7XQaH7+WG+OMIOZEbYPXfMqklVk26Y6YTUU=
+github.com/go-opentype/opentype v0.3.4 h1:g9iTtCjSRblTIZ472lVCh2sXyDI9Ibo6KQhIcmHG+B4=
+github.com/go-opentype/opentype v0.3.4/go.mod h1:AOixevJf7XQaH7+WG+OMIOZEbYPXfMqklVk26Y6YTUU=
 github.com/go-opentype/shape v0.1.0 h1:UyuMPx+MLX+96fPyT6ZUSzIRrO/ClOqGxUoCn/wUaTs=
 github.com/go-opentype/shape v0.1.0/go.mod h1:+o1Np/CeJjwbZonjk/s44oV9l1MIZ2O7BUpowOuBadg=
+github.com/go-opentype/shape v0.2.0 h1:l7pdGMPaU9+YUTcttKV92r7K4I8E2xUxisQ8tmp82tQ=
+github.com/go-opentype/shape v0.2.0/go.mod h1:+o1Np/CeJjwbZonjk/s44oV9l1MIZ2O7BUpowOuBadg=
 github.com/go-reddit/reddit v0.1.0 h1:/b6+4BKEBSnSIVAuWEYaLU4d01tjfcsu+LQea3OFSw4=
 github.com/go-reddit/reddit v0.1.0/go.mod h1:/zGZliQ8lN+iGyVAiGzeGGkY+rQBZNlF4JwAnRaYEGI=
 github.com/go-syndication/feed v0.1.1 h1:nB//8Cp9K3HQvZBqN1jsir8jVqmnxU5SPk14MYwmlvw=
@@ -58,6 +62,8 @@ github.com/go-widgets/toolkit v0.45.0 h1:vs9DHirnAP4GMlGGrG92AcQvSFy10HlNpvuxzEt
 github.com/go-widgets/toolkit v0.45.0/go.mod h1:B5nFm2YPogSpfMe+eVR+V+tdTXr2YhP9pk8ND0VIclg=
 github.com/go-widgets/toolkit v0.46.0 h1:dIgwE6+o0nKffXJXEuI9cl1qCcXEZrfgk8SogHznqoY=
 github.com/go-widgets/toolkit v0.46.0/go.mod h1:B5nFm2YPogSpfMe+eVR+V+tdTXr2YhP9pk8ND0VIclg=
+github.com/go-widgets/toolkit v0.48.0 h1:t6KqnKsOs61lOnwtBMiM1gO/gszKss1A/9P2aVglxNU=
+github.com/go-widgets/toolkit v0.48.0/go.mod h1:+w2xbylmYZXRibmoxcnrjte37FnRGG3Hc3GMAk9gOk8=
 github.com/jezek/xgb v1.3.0 h1:Wa1pn4GVtcmNVAVB6/pnQVJ7xPFZVZ/W1Tc27msDhgI=
 github.com/jezek/xgb v1.3.0/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
 github.com/klauspost/compress v1.17.4 h1:Ej5ixsIri7BrIjBkRZLTo6ghwrEtHFk7ijlczPW4fZ4=
