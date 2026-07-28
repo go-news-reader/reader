@@ -250,6 +250,10 @@ type Scene struct {
 	// each layout from the feed's newsgroup article counts.
 	statusSegs []string
 
+	// seen is the per-subscription last-seen high-water marker (set by the app from
+	// disk), used to derive the unseen/new count shown next to each sidebar group.
+	seen map[string]int
+
 	// Network-log (ModeLog) view: a scrollable, newest-first list of the HTTP
 	// exchanges the providers made, fed live from an injected source so the app
 	// need not push updates. logSource is nil when no recorder is wired.
@@ -393,6 +397,7 @@ func (s *Scene) SetTheme(t *toolkit.Theme) {
 func (s *Scene) SetItems(items []source.Item) {
 	s.Items = items
 	s.ScrollY = 0
+	s.subsRev++ // the sidebar shows per-group post counts derived from the items
 	s.invalidateCards()
 	s.touch()
 }

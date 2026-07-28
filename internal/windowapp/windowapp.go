@@ -85,7 +85,7 @@ func (h *Handler) MouseDown(x, y int) {
 		}
 		_ = openURL(url)
 	case ui.HitSub:
-		s.SetActive(hit.Sub) // the sub filter is a pure view concern
+		h.a.ViewSub(hit.Sub) // switch the group filter + mark it seen (unseen count → 0)
 		vm.FocusSearch(false)
 	case ui.HitSearch:
 		vm.FocusSearch(true)
