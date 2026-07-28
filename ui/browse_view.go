@@ -416,18 +416,25 @@ func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browse
 			drawPlusIcon(p, sr, themeOnAccent(th), s.iconStroke())
 		}
 	}
-	ty := y + (m.sideItemH-m.side.height)/2
-	// A real group shows its estimated post count, right-aligned before the
-	// Subscribe marker, so the browser conveys how busy each newsgroup is.
-	labelRight := right
+	// Label + optional post count, composed as an HBox between the chevron and the
+	// Subscribe marker: the label flexes, and a real group's estimated count is a
+	// fixed right-aligned column (so the browser conveys how busy each group is).
+	content := toolkit.NewHBox()
+	content.Spacing = rpxOf(s, 6)
+	labelW := right - textX - m.pad
+	var cnt string
+	var cw int
 	if n.IsGroup && n.Count > 0 {
-		cnt := strconv.Itoa(n.Count)
-		cw := m.side.width(cnt)
-		cx := right - m.pad - cw
-		m.side.draw(img, cx, ty, cnt, muteS)
-		labelRight = cx - rpxOf(s, 6)
+		cnt = strconv.Itoa(n.Count)
+		cw = m.side.width(cnt)
+		labelW -= cw + rpxOf(s, 6)
 	}
-	m.side.draw(img, textX, ty, truncate(m.side, label, labelRight-textX-m.pad), th.OnSurface)
+	content.AddFlex(&textLine{face: m.side, text: truncate(m.side, label, labelW), ink: th.OnSurface, img: img}, 1)
+	if cnt != "" {
+		content.AddFixed(&textLine{face: m.side, text: cnt, ink: muteS, img: img, alignRight: true}, cw)
+	}
+	content.SetBounds(toolkit.Rect{X: textX, Y: y, W: right - textX - m.pad, H: m.sideItemH})
+	content.Draw(p, th)
 }
 
 // browseHitTest maps a click in the newsgroup browser to an action.
