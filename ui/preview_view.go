@@ -218,8 +218,12 @@ func (s *Scene) previewContent() previewBody {
 	// the spinner / label.
 	if len(it.Media) > 0 || s.hasThumb(it.ID) {
 		if t := s.thumb(it.ID); t != nil {
+			// Fit within the pane width and a share of its height, so the image
+			// grows/shrinks as the pane is resized (a landscape image is width-bound
+			// and fills the pane).
+			capH := s.previewR.H * 3 / 5
 			b := t.Bounds()
-			fit := toolkit.FitBounds(b.Dx(), b.Dy(), toolkit.Rect{W: w, H: rpxOf(s, 400)})
+			fit := toolkit.FitBounds(b.Dx(), b.Dy(), toolkit.Rect{W: w, H: capH})
 			d.imgH = fit.H
 		} else {
 			d.imgH = rpxOf(s, 160)
@@ -281,6 +285,7 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	r := s.previewR
 	p.FillRect(painter.Rect(r), th.Surface)
 	p.FillRect(painter.Rect{X: r.X, Y: r.Y, W: 1, H: r.H}, th.Border) // left divider
+	s.drawGripHandle(p, r.X)                                          // resize grab handle
 
 	if !s.previewHas {
 		msg := "Select an item to preview"

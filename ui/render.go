@@ -278,8 +278,10 @@ func (s *Scene) Draw(buf []byte) {
 	// --- chrome (cached sprites; static across scroll like Evas smart objects) ---
 	if m.sidebarW > 0 {
 		blitAt(img, s.sidebarSprite(), 0, m.topbarH)
-		// A subtle 1px divider at the sidebar's right edge hints it is draggable.
+		// A 1px divider at the sidebar's right edge plus a centred grab handle so
+		// the resize affordance is visible and easy to hit.
 		p.FillRect(painter.Rect{X: m.sidebarW - 1, Y: m.topbarH, W: 1, H: s.H - m.topbarH}, th.Border)
+		s.drawGripHandle(p, m.sidebarW)
 	}
 	blitAt(img, s.topbarSprite(onAccent), 0, 0)
 
@@ -594,6 +596,16 @@ func (s *Scene) drawThumb(p *painter.PixelPainter, img *image.RGBA, it source.It
 	s.m.meta.draw(img, r.X+(r.W-s.m.meta.width(lbl))/2, r.Y+(r.H-s.m.meta.height)/2, lbl, muteS)
 }
 
+// drawGripHandle paints a short, centred vertical pill on a resizable divider at
+// column cx, so the drag affordance is visible and easy to grab.
+func (s *Scene) drawGripHandle(p *painter.PixelPainter, cx int) {
+	m := s.m
+	gw := rpxOf(s, 4)
+	gh := rpxOf(s, 36)
+	gy := m.topbarH + (s.H-m.topbarH-gh)/2
+	p.FillRoundRect(painter.Rect{X: cx - gw/2, Y: gy, W: gw, H: gh}, gw/2, mute(s.theme.OnSurface, s.theme.Surface))
+}
+
 // drawDot paints a small filled circle-ish marker (a rounded square) for a
 // source colour in the sidebar.
 func (s *Scene) drawDot(p *painter.PixelPainter, x, cy int, col toolkit.RGBA) {
@@ -643,7 +655,7 @@ func (s *Scene) HitTest(x, y int) Hit {
 	}
 	// A thin grip at the preview pane's left edge starts a pane-resize drag.
 	if s.previewR.W > 0 {
-		grip := rpxOf(s, 3)
+		grip := rpxOf(s, 7)
 		if x >= s.previewR.X-grip && x <= s.previewR.X+grip {
 			return Hit{Kind: HitPreviewDivider}
 		}
@@ -656,7 +668,7 @@ func (s *Scene) HitTest(x, y int) Hit {
 	// A thin grip at the sidebar's right edge starts a divider drag (feed only,
 	// and only when the sidebar is shown).
 	if m.sidebarW > 0 {
-		grip := rpxOf(s, 3)
+		grip := rpxOf(s, 7)
 		if x >= m.sidebarW-grip && x <= m.sidebarW+grip {
 			return Hit{Kind: HitSidebarDivider}
 		}
