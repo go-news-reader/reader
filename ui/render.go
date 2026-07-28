@@ -438,11 +438,10 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	se := s.searchEntry
 	se.SetBounds(toolkit.Rect(s.searchR))
 	se.Font = ttFont(false, rpxOf(s, 13))
+	se.Focused = s.searchFocused // the widget draws its own aligned caret
 	se.Draw(p, th)
 	if s.searchFocused {
 		p.StrokeRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Accent, rpxOf(s, 2))
-		caretX := s.searchR.X + toolkit.SearchEntryPadX + toolkit.SearchEntryIconW + m.search.width(se.Text)
-		m.search.draw(img, caretX, s.searchR.Y+(s.searchR.H-m.search.height)/2, "|", th.OnSurface)
 	}
 	s.topbarKey, s.topbarSpr = k, img
 	return img
