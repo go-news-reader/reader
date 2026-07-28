@@ -6,6 +6,8 @@ import (
 
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
+
+	"github.com/go-news-reader/reader/source"
 )
 
 // detailURL is the external link for the open item (Link preferred, else the
@@ -74,6 +76,29 @@ func (s *Scene) detailContent() detailBody {
 	return d
 }
 
+// detailImage is the reading view's image cell as a toolkit widget so the box
+// layout positions it: it blits the decoded thumbnail (stretched to the box) or
+// draws a kind placeholder.
+type detailImage struct {
+	toolkit.Base
+	s   *Scene
+	it  source.Item
+	p   *painter.PixelPainter
+	img *image.RGBA
+}
+
+func (w *detailImage) Draw(_ painter.Painter, th *toolkit.Theme) {
+	b := w.Bounds()
+	w.p.FillRect(painter.Rect(b), th.SurfaceAlt)
+	if t, ok := w.s.Thumbs[w.it.ID]; ok && t != nil {
+		blit(w.img, t, b.X, b.Y, b.W, b.H)
+		return
+	}
+	lbl := string(w.it.Media[0].Kind)
+	m := w.s.m
+	m.meta.draw(w.img, b.X+(b.W-m.meta.width(lbl))/2, b.Y+b.H/2-m.meta.height/2, lbl, mute(th.OnSurface, th.Surface))
+}
+
 // drawDetail renders the in-app reading view for the open item.
 func (s *Scene) drawDetail(buf []byte) {
 	s.layoutDetail()
@@ -88,46 +113,36 @@ func (s *Scene) drawDetail(buf []byte) {
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
 
-	// --- content (scrolled, below the topbar) ---
+	// --- content (scrolled, below the topbar), composed as a Sencha VBox ---
 	x := d.x
-	y := m.topbarH + m.pad - s.detailScrollY
 	label := sourceLabel(it.Source)
+	badge := &toolkit.Badge{Text: label, Fill: sourceColor(it.Source), Ink: onAccentFor(sourceColor(it.Source))}
+	badge.Font = ttFont(true, rpxOf(s, 10))
 	bw := m.badge.width(label) + m.pad
-	p.FillRoundRect(painter.Rect{X: x, Y: y, W: bw, H: m.badgeH}, m.badgeH/2, sourceColor(it.Source))
-	m.badge.draw(img, x+m.pad/2, y+(m.badgeH-m.badge.height)/2, label, rgb(0xFFFFFF))
-	if it.Channel != "" {
-		m.meta.draw(img, x+bw+m.pad/2, y+(m.badgeH-m.meta.height)/2, it.Channel, muteS)
-	}
-	y += m.badgeH + gap
+	badgeRow := toolkit.NewHBox()
+	badgeRow.Spacing = rpxOf(s, 6)
+	badgeRow.AddFixed(badge, bw)
+	badgeRow.AddFlex(&textLine{face: m.meta, text: truncate(m.meta, it.Channel, d.w-bw-rpxOf(s, 6)), ink: muteS, img: img}, 1)
 
-	tlh := d.titleFace.height + rpxOf(s, 2)
+	col := toolkit.NewVBox()
+	col.Spacing = -1
+	col.AddFixed(badgeRow, m.badgeH)
+	col.AddFixed(toolkit.NewLabel(""), gap)
 	for _, ln := range d.titleLines {
-		d.titleFace.draw(img, x, y, ln, th.OnSurface)
-		y += tlh
+		col.AddFixed(&textLine{face: d.titleFace, text: ln, ink: th.OnSurface, img: img}, d.titleFace.height+rpxOf(s, 2))
 	}
-	y += gap
-	m.meta.draw(img, x, y, d.meta, muteS)
-	y += m.meta.height + gap
-
+	col.AddFixed(toolkit.NewLabel(""), gap)
+	col.AddFixed(&textLine{face: m.meta, text: d.meta, ink: muteS, img: img}, m.meta.height)
+	col.AddFixed(toolkit.NewLabel(""), gap)
 	if len(it.Media) > 0 {
-		r := toolkit.Rect{X: x, Y: y, W: d.w, H: m.thumbH * 2}
-		p.FillRect(painter.Rect(r), th.SurfaceAlt)
-		if t, ok := s.Thumbs[it.ID]; ok && t != nil {
-			blit(img, t, r.X, r.Y, r.W, r.H)
-		} else {
-			lbl := string(it.Media[0].Kind)
-			m.meta.draw(img, x+(d.w-m.meta.width(lbl))/2, y+m.thumbH-m.meta.height/2, lbl, muteS)
-		}
-		y += m.thumbH*2 + gap
+		col.AddFixed(&detailImage{s: s, it: it, p: p, img: img}, m.thumbH*2)
+		col.AddFixed(toolkit.NewLabel(""), gap)
 	}
-
-	blh := d.bodyFace.height + rpxOf(s, 3)
 	for _, ln := range d.bodyLines {
-		if y+blh >= m.topbarH && y < s.H {
-			d.bodyFace.draw(img, x, y, ln, th.OnSurface)
-		}
-		y += blh
+		col.AddFixed(&textLine{face: d.bodyFace, text: ln, ink: th.OnSurface, img: img}, d.bodyFace.height+rpxOf(s, 3))
 	}
+	col.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.detailScrollY, W: d.w, H: d.height})
+	col.Draw(p, th)
 
 	// Scrollbar down the right edge when the article overflows the viewport.
 	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, s.detailContentH, s.detailScrollY)
