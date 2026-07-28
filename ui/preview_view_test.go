@@ -4,8 +4,130 @@ import (
 	"image"
 	"testing"
 
+	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
 )
+
+func TestUnsubscribeActive(t *testing.T) {
+	s := New(1200, 700, ThemeFor(OSMac, false))
+	s.SetProfiles([]settings.Profile{{Name: "Home", Subs: []source.Subscription{
+		{Source: source.Usenet, Channel: "control"},
+		{Source: source.Reddit, Channel: "golang"},
+	}}}, 0)
+	if !s.IsSubscribed(source.Usenet, "CONTROL") { // case-insensitive
+		t.Fatal("expected control subscribed")
+	}
+	if !s.UnsubscribeActive(source.Usenet, "control") {
+		t.Fatal("unsubscribe should report removed")
+	}
+	if s.IsSubscribed(source.Usenet, "control") {
+		t.Fatal("control still subscribed after removal")
+	}
+	if s.UnsubscribeActive(source.Usenet, "control") {
+		t.Fatal("removing an absent sub should report false")
+	}
+	// No active profile → false.
+	s2 := New(1200, 700, ThemeFor(OSMac, false))
+	if s2.UnsubscribeActive(source.Usenet, "x") {
+		t.Fatal("no active profile should report false")
+	}
+}
+
+func TestBrowseUnsubscribeHit(t *testing.T) {
+	s := New(760, 460, ThemeFor(OSMac, false))
+	s.SetProfiles([]settings.Profile{{Name: "Home", Subs: []source.Subscription{
+		{Source: source.Usenet, Channel: "control"},
+	}}}, 0)
+	s.SetUsenetServer("news.free.fr:119")
+	s.SetBrowseGroups([]string{"control", "junk"})
+	s.OpenBrowse()
+	s.layoutBrowse()
+	// The subscribed "control" leaf's ✓ marker unsubscribes; the unsubscribed
+	// "junk" leaf's ＋ subscribes.
+	for _, r := range s.browseRows {
+		top := s.browseTreeTop + r.top - s.browseScrollY
+		sr := s.browseSubscribeRect(s.m.pad, top, s.W-2*s.m.pad)
+		h := s.browseHitTest(sr.X+sr.W/2, sr.Y+sr.H/2)
+		switch r.node.Name {
+		case "control":
+			if h.Kind != HitUnsubscribeGroup || h.Value != "control" {
+				t.Fatalf("subscribed leaf = %+v, want HitUnsubscribeGroup", h)
+			}
+		case "junk":
+			if h.Kind != HitSubscribeGroup || h.Value != "junk" {
+				t.Fatalf("unsubscribed leaf = %+v, want HitSubscribeGroup", h)
+			}
+		}
+	}
+	// A childless subscribed leaf row (not on the marker) also unsubscribes.
+	r := s.browseRows[0] // "control"
+	top := s.browseTreeTop + r.top - s.browseScrollY
+	if h := s.browseHitTest(s.m.pad+2, top+s.m.sideItemH/2); h.Kind != HitUnsubscribeGroup {
+		t.Fatalf("subscribed leaf row = %+v, want HitUnsubscribeGroup", h)
+	}
+}
+
+func TestImagePrefetch(t *testing.T) {
+	s := New(1200, 700, ThemeFor(OSMac, false))
+	s.SetSubs(nil)
+	s.SetItems([]source.Item{
+		usenetItem("d1", `[1/2] - "release.tar.zst" yEnc (1/1) 10`), // groups → base "release"
+		usenetItem("d2", `[2/2] - "release.tar.zst.par2" yEnc (1/1) 10`),
+		{ID: "img", Source: source.Usenet, Permalink: "news:<imgid>", Title: `"photo.jpg" yEnc (1/1)`},
+		{ID: "txt", Source: source.Usenet, Permalink: "news:txtid", Title: "just a discussion"},
+		{ID: "r", Source: source.Reddit, Title: "pic.jpg"},
+	})
+	ids := map[string][]ReconstructPart{}
+	for _, r := range s.ImagePrefetch() {
+		ids[r.ID] = r.Parts
+	}
+	if len(ids["release"]) != 2 {
+		t.Fatalf("group prefetch parts = %d, want 2", len(ids["release"]))
+	}
+	if len(ids["img"]) != 1 || ids["img"][0].MessageID != "imgid" {
+		t.Fatalf("standalone image prefetch = %+v", ids["img"])
+	}
+	if _, ok := ids["txt"]; ok {
+		t.Fatal("a text Usenet post must not be prefetched")
+	}
+	if _, ok := ids["r"]; ok {
+		t.Fatal("a non-Usenet item must not be prefetched")
+	}
+}
+
+func TestPreviewDividerResize(t *testing.T) {
+	s := previewScene()
+	s.layout()
+	s.layoutPreview()
+	// The grip at the pane's left edge starts a resize drag.
+	if h := s.HitTest(s.previewR.X, s.previewR.Y+20); h.Kind != HitPreviewDivider {
+		t.Fatalf("pane grip hit = %+v, want HitPreviewDivider", h)
+	}
+	before := s.previewWidth()
+	s.BeginPreviewResize()
+	if !s.DraggingPreview() {
+		t.Fatal("should be dragging the pane")
+	}
+	s.MouseMove(s.previewR.X-60, s.previewR.Y+20) // drag left => wider pane
+	s.EndPreviewResize()
+	if s.DraggingPreview() {
+		t.Fatal("drag should have ended")
+	}
+	if s.previewWidth() <= before {
+		t.Fatalf("pane did not widen: %d -> %d", before, s.previewWidth())
+	}
+	// Over-wide drag clamps to the available width; too-narrow clamps to the min.
+	s.previewUserW = 100000
+	s.layout()
+	wideAvail := s.W - s.m.sidebarW - rpxOf(s, feedKeepW)
+	if s.previewWidth() != wideAvail {
+		t.Fatalf("over-wide pane = %d, want avail %d", s.previewWidth(), wideAvail)
+	}
+	s.previewUserW = 1
+	if s.previewWidth() != rpxOf(s, previewMinW) {
+		t.Fatalf("too-narrow pane = %d, want min %d", s.previewWidth(), rpxOf(s, previewMinW))
+	}
+}
 
 func previewScene() *Scene {
 	s := New(1200, 700, ThemeFor(OSMac, false))

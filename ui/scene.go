@@ -77,6 +77,7 @@ const (
 	HitReconstruct            // a Usenet group card's "Reconstruct" affordance — Value = release base
 	HitPreviewGroup           // a Usenet group card's body (preview it in the pane) — Value = release base
 	HitOpenPreview            // the preview pane's "Open" button (full reading view) — Item set
+	HitPreviewDivider         // the preview pane's left-edge resize grip (start a drag)
 
 	// Newsgroup browser (Mode == ModeBrowse):
 	HitBrowse           // the sidebar "＋ Browse newsgroups" entry (open the browser)
@@ -85,6 +86,7 @@ const (
 	HitBrowseFilter     // the browser's regexp filter field (focus it)
 	HitToggleBrowseNode // a tree node's chevron/row (expand/collapse) — Value = node name
 	HitSubscribeGroup   // a tree leaf's Subscribe affordance — Value = full group name
+	HitUnsubscribeGroup // a subscribed tree leaf's ✓ (unsubscribe) — Value = full group name
 
 	// Settings-view actions (Mode == ModeSettings):
 	HitSelectProfile // Profile = index being edited
@@ -231,6 +233,10 @@ type Scene struct {
 	previewR          toolkit.Rect // the whole pane
 	previewOpenR      toolkit.Rect // "Open" (full detail) button
 	previewImgR       toolkit.Rect // image area (for hit-testing / geometry)
+	// previewUserW is the user-dragged pane width in device px (0 => default),
+	// clamped at read time; draggingPreview is set while its divider is dragged.
+	previewUserW    int
+	draggingPreview bool
 
 	// Network-log (ModeLog) view: a scrollable, newest-first list of the HTTP
 	// exchanges the providers made, fed live from an injected source so the app

@@ -480,6 +480,64 @@ func TestSidebarDividerDrag(t *testing.T) {
 	}
 }
 
+func TestPreviewDividerDrag(t *testing.T) {
+	a := newApp(t)
+	a.Scene().SetItems([]source.Item{{ID: "1", Source: source.Reddit, Title: "hi", Score: -1, Comments: -1}})
+	h := New(a)
+	s := a.Scene()
+	s.HitTest(0, 0) // lay out the pane
+	// The grip sits at the pane's left edge; find it by scanning right-to-left.
+	gripX := -1
+	for x := s.W - 1; x >= 0; x-- {
+		if s.HitTest(x, s.H/2).Kind == ui.HitPreviewDivider {
+			gripX = x
+			break
+		}
+	}
+	if gripX < 0 {
+		t.Fatal("no preview divider hit region")
+	}
+	h.MouseDown(gripX, s.H/2)
+	if !s.DraggingPreview() {
+		t.Fatal("MouseDown on the pane grip should begin a resize")
+	}
+	h.MouseMove(gripX-120, s.H/2) // drag left => wider pane
+	h.MouseUp(gripX-120, s.H/2)
+	if s.DraggingPreview() {
+		t.Fatal("MouseUp should end the preview resize")
+	}
+}
+
+func TestMouseDownUnsubscribeGroup(t *testing.T) {
+	set := &settings.Settings{Profiles: []settings.Profile{{Name: "Home", Subs: []source.Subscription{
+		{Source: source.Usenet, Channel: "control"},
+	}}}, Active: 0, Theme: settings.ThemeSystem}
+	a := app.New(app.Config{Registry: source.NewRegistry(), Settings: set, Width: 900, Height: 600})
+	a.SetRefreshHook(func() {})
+	a.Scene().SetUsenetServer("news.free.fr:119")
+	a.Scene().SetBrowseGroups([]string{"control"})
+	a.Scene().OpenBrowse()
+	s := a.Scene()
+	// Click the subscribed "control" leaf's ✓ marker → unsubscribe.
+	s.HitTest(0, 0)
+	var hit bool
+	for x := 0; x < s.W && !hit; x++ {
+		for y := 0; y < s.H; y++ {
+			if s.HitTest(x, y).Kind == ui.HitUnsubscribeGroup {
+				New(a).MouseDown(x, y)
+				hit = true
+				break
+			}
+		}
+	}
+	if !hit {
+		t.Fatal("no HitUnsubscribeGroup region found")
+	}
+	if s.IsSubscribed(source.Usenet, "control") {
+		t.Fatal("control should be unsubscribed after clicking its ✓")
+	}
+}
+
 func TestBrowserCommand(t *testing.T) {
 	cases := []struct {
 		goos, wantCmd string

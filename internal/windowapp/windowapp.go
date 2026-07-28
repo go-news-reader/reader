@@ -101,6 +101,8 @@ func (h *Handler) MouseDown(x, y int) {
 		vm.ToggleSidebar.Execute()
 	case ui.HitSidebarDivider:
 		s.BeginSidebarResize()
+	case ui.HitPreviewDivider:
+		s.BeginPreviewResize()
 	case ui.HitFixAuth:
 		// A click on an in-feed "needs sign-in" banner opens the Accounts editor
 		// pre-selected on the provider that needs fixing.
@@ -126,6 +128,9 @@ func (h *Handler) MouseDown(x, y int) {
 	case ui.HitSubscribeGroup:
 		s.FocusBrowseFilter(false)
 		h.a.SubscribeGroup(hit.Value) // add usenet:<group> to the active profile
+	case ui.HitUnsubscribeGroup:
+		s.FocusBrowseFilter(false)
+		h.a.UnsubscribeGroup(hit.Value) // remove usenet:<group> from the active profile
 	case ui.HitCloseSettings:
 		s.CommitRename()
 		s.CommitCache()
@@ -175,7 +180,11 @@ func (h *Handler) MouseDown(x, y int) {
 func (h *Handler) MouseMove(x, y int) { h.a.Scene().MouseMove(x, y) }
 
 // MouseUp ends any in-progress sidebar-divider drag.
-func (h *Handler) MouseUp(x, y int) { h.a.Scene().EndSidebarResize() }
+func (h *Handler) MouseUp(x, y int) {
+	s := h.a.Scene()
+	s.EndSidebarResize()
+	s.EndPreviewResize()
+}
 
 // Scroll scrolls the feed by a device-pixel wheel delta.
 func (h *Handler) Scroll(dy int) { h.a.Scene().Scroll(dy) }
