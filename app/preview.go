@@ -33,6 +33,27 @@ func (a *App) SelectPreview(it source.Item) {
 	a.previewFetch(it.ID, singleArticleParts(it))
 }
 
+// SelectAdjacent moves the feed selection one card up (dir<0) or down (dir>0)
+// and previews the newly selected post — the keyboard equivalent of clicking it,
+// so its image is fetched and it scrolls into view. A no-op when the feed has no
+// selectable cards.
+func (a *App) SelectAdjacent(dir int) {
+	it, ok := a.scene.NavItem(dir)
+	if !ok {
+		return
+	}
+	a.SelectPreview(it)
+}
+
+// OpenSelected opens the currently previewed post in the full reading view (the
+// keyboard equivalent of the pane's Open button). A no-op when nothing is
+// selected.
+func (a *App) OpenSelected() {
+	if it, ok := a.scene.PreviewItem(); ok {
+		a.vm.OpenDetail(it)
+	}
+}
+
 // SetPreviewFetchHook overrides the async image fetch (tests use a synchronous
 // variant for determinism).
 func (a *App) SetPreviewFetchHook(f func(id string, parts []usenet.ReconstructPart)) {

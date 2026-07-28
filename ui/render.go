@@ -268,6 +268,11 @@ func (s *Scene) Draw(buf []byte) {
 			continue
 		}
 		blitAt(img, s.cardSprite(r.item, feedW, onAccent, muteS), feedX, y)
+		if s.previewHas && sameItem(r.item, s.previewItem) {
+			// Selected card: an accent outline so the current post is visibly
+			// picked out, mirroring the sidebar's selected-group affordance.
+			p.StrokeRoundRect(painter.Rect{X: feedX, Y: y, W: feedW, H: r.height}, rpxOf(s, 6), th.Accent, rpxOf(s, 2))
+		}
 	}
 	if len(s.rows) == 0 {
 		if s.loading {
@@ -547,6 +552,13 @@ func (s *Scene) drawAuthBanner(p *painter.PixelPainter, img *image.RGBA, ap Auth
 // some feeds), so a HackerNews and a Lemmy post both keyed "1" — or two empty-ID
 // RSS items — would collide and blit the wrong card. Including Source + Title
 // disambiguates without hashing the whole item.
+// sameItem reports whether two items are the same post. it.ID is only unique
+// within a Source (and empty for some feeds), so identity is Source+ID+Title —
+// exactly what cardKey uses to avoid sprite collisions.
+func sameItem(a, b source.Item) bool {
+	return a.Source == b.Source && a.ID == b.ID && a.Title == b.Title
+}
+
 type cardKey struct {
 	id    string
 	src   source.Kind

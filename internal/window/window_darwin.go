@@ -449,6 +449,14 @@ func decodeKey(event objc.ID) (name string, r rune) {
 		return "Escape", 0
 	case 36, 76: // Return, Keypad Enter
 		return "Enter", 0
+	case 126: // Up arrow
+		return "Up", 0
+	case 125: // Down arrow
+		return "Down", 0
+	case 123: // Left arrow
+		return "Left", 0
+	case 124: // Right arrow
+		return "Right", 0
 	}
 	s := goString(event.Send(selCharsIgnoringMods))
 	rs := []rune(s)
