@@ -33,6 +33,16 @@ func (a *App) RefreshGroups() { a.loadGroups(true) }
 // incapable provider, or a fetch failure, is surfaced in the status line; an
 // authentication failure becomes an in-feed sign-in prompt.
 func (a *App) doLoadGroups(ctx context.Context, force bool) {
+	server := AccountsToOptions(a.baseOpts, a.set.Accounts).UsenetAddr
+	// Serve the persisted list instantly unless the user asked to refresh, so
+	// opening the browser does not re-download tens of thousands of groups.
+	if !force {
+		if names, ok := loadGroupCache(server); ok {
+			a.post(func() { a.scene.SetBrowseGroups(names) })
+			a.vmStatus("")
+			return
+		}
+	}
 	prov, ok := a.reg.Get(source.Usenet)
 	if !ok {
 		a.vmStatus("Usenet server not configured")
@@ -59,6 +69,7 @@ func (a *App) doLoadGroups(ctx context.Context, force bool) {
 		a.vmStatus("Group list failed: " + err.Error())
 		return
 	}
+	saveGroupCache(server, names) // persist so the next open is instant
 	a.post(func() { a.scene.SetBrowseGroups(names) })
 	a.vmStatus("")
 }
