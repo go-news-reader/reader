@@ -274,6 +274,9 @@ func (s *Scene) Draw(buf []byte) {
 			p.StrokeRoundRect(painter.Rect{X: feedX, Y: y, W: feedW, H: r.height}, rpxOf(s, 6), th.Accent, rpxOf(s, 2))
 		}
 	}
+	// Scrollbar down the feed's right edge when the content overflows the viewport
+	// (the shared indicator; the trees/detail/log reuse the same widget).
+	s.drawVScrollbar(p, toolkit.Rect{X: feedX, Y: feedTop, W: feedW, H: feedBot - feedTop}, s.contentH, s.ScrollY)
 	if len(s.rows) == 0 {
 		if s.loading {
 			// A refresh is running but nothing has arrived yet: show the animated

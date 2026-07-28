@@ -129,6 +129,9 @@ func (s *Scene) drawDetail(buf []byte) {
 		y += blh
 	}
 
+	// Scrollbar down the right edge when the article overflows the viewport.
+	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, s.detailContentH, s.detailScrollY)
+
 	// --- topbar chrome (over content) ---
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
 	p.FillRoundRect(painter.Rect(s.backR), rpxOf(s, 6), th.Surface)

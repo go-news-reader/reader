@@ -355,6 +355,9 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		y += blh
 	}
 
+	// Scrollbar down the pane's right edge when the preview overflows.
+	s.drawVScrollbar(p, r, s.previewContentH, s.previewScrollY)
+
 	// "Open" pill (fixed, over the content).
 	if s.previewOpenR.W > 0 {
 		p.FillRoundRect(painter.Rect(s.previewOpenR), rpxOf(s, 6), th.Accent)
