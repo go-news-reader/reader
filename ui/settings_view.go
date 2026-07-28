@@ -60,6 +60,90 @@ var settingsKinds = []source.Kind{
 	source.Bluesky, source.Lemmy, source.Mastodon, source.Usenet,
 }
 
+// --- settings widgets (Sencha-style composition; the layout below positions
+// them with toolkit boxes, and drawSettings renders each as a widget rather than
+// hand-drawing pills/labels/fields) ---
+
+// settingsButton is a settings pill (active = accent fill, danger = red text).
+// It captures the pixel painter + buffer at construction, like the feed card's
+// widgets, since getFace draws into an *image.RGBA.
+type settingsButton struct {
+	toolkit.Base
+	s      *Scene
+	label  string
+	active bool
+	danger bool
+	p      *painter.PixelPainter
+	img    *image.RGBA
+}
+
+func (w *settingsButton) Draw(_ painter.Painter, th *toolkit.Theme) {
+	s, b, m := w.s, w.Bounds(), w.s.m
+	fill, txt := th.Surface, th.OnSurface
+	if w.active {
+		fill, txt = th.Accent, themeOnAccent(th)
+	}
+	w.p.FillRoundRect(painter.Rect(b), rpxOf(s, 6), fill)
+	border := th.Border
+	if w.danger {
+		border, txt = rgb(0xD03030), rgb(0xD03030)
+	}
+	w.p.StrokeRoundRect(painter.Rect(b), rpxOf(s, 6), border, 1)
+	m.tab.draw(w.img, b.X+rpxOf(s, 10), b.Y+(b.H-m.tab.height)/2, w.label, txt)
+}
+
+// settingsChip is a removable subscription chip (source dot + "source · channel  ×").
+type settingsChip struct {
+	toolkit.Base
+	s      *Scene
+	label  string
+	source source.Kind
+	p      *painter.PixelPainter
+	img    *image.RGBA
+}
+
+func (w *settingsChip) Draw(_ painter.Painter, th *toolkit.Theme) {
+	s, b, m := w.s, w.Bounds(), w.s.m
+	w.p.FillRoundRect(painter.Rect(b), rpxOf(s, 6), th.Surface)
+	w.p.StrokeRoundRect(painter.Rect(b), rpxOf(s, 6), th.Border, 1)
+	s.drawDot(w.p, b.X+rpxOf(s, 8), b.Y+b.H/2, sourceColor(w.source))
+	m.tab.draw(w.img, b.X+rpxOf(s, 18), b.Y+(b.H-m.tab.height)/2, w.label, th.OnSurface)
+}
+
+// settingsField is a text input with placeholder + caret (the old drawInput).
+type settingsField struct {
+	toolkit.Base
+	s           *Scene
+	text        string
+	placeholder string
+	focused     bool
+	p           *painter.PixelPainter
+	img         *image.RGBA
+}
+
+func (w *settingsField) Draw(_ painter.Painter, th *toolkit.Theme) {
+	w.s.drawInput(w.p, w.img, w.Bounds(), w.text, w.placeholder, w.focused, themeOnAccent(th), mute(th.OnSurface, th.Surface))
+}
+
+// layoutBtnRow lays specs left-to-right in a toolkit HBox at (x, y) and appends
+// the resulting sButtons (with their box-computed rects) for drawing + hit-test.
+// AddFixed(content width) reproduces the previous manual flow's positions.
+func (s *Scene) layoutBtnRow(x, y int, specs []sButton) {
+	m := s.m
+	row := toolkit.NewHBox()
+	row.Spacing = rpxOf(s, 6)
+	ws := make([]*settingsButton, len(specs))
+	for i := range specs {
+		ws[i] = &settingsButton{s: s, label: specs[i].label, active: specs[i].active, danger: specs[i].danger}
+		row.AddFixed(ws[i], m.tab.width(specs[i].label)+rpxOf(s, 20))
+	}
+	row.SetBounds(toolkit.Rect{X: x, Y: y, W: s.W, H: m.btnH})
+	for i := range specs {
+		specs[i].rect = ws[i].Bounds()
+		s.sButtons = append(s.sButtons, specs[i])
+	}
+}
+
 // OpenSettings enters the preferences view, editing the active profile.
 func (s *Scene) OpenSettings() {
 	s.mode = ModeSettings
@@ -200,14 +284,6 @@ func (s *Scene) layoutSettings() {
 	gap := rpxOf(s, 6)
 	btnH := m.btnH
 
-	addBtn := func(x, y int, label string, kind HitKind, value string, prof, sub int, active, danger bool) int {
-		w := m.tab.width(label) + rpxOf(s, 20)
-		s.sButtons = append(s.sButtons, sButton{
-			rect: toolkit.Rect{X: x, Y: y, W: w, H: btnH}, label: label,
-			kind: kind, value: value, prof: prof, sub: sub, active: active, danger: danger,
-		})
-		return x + w + gap
-	}
 	label := func(x, y int, text string) { s.sLabels = append(s.sLabels, sLabel{x: x, y: y, text: text}) }
 
 	y := m.topbarH + pad
@@ -216,27 +292,29 @@ func (s *Scene) layoutSettings() {
 	dw := m.tab.width("Done") + rpxOf(s, 24)
 	s.sDoneR = toolkit.Rect{X: s.W - pad - dw, Y: (m.topbarH - btnH) / 2, W: dw, H: btnH}
 
-	// PROFILES switcher.
+	// PROFILES switcher — a button row laid out by an HBox.
 	label(pad, y, "PROFILES")
 	y += m.side.height + gap
-	x := pad
+	profSpecs := make([]sButton, 0, len(s.Profiles)+1)
 	for i, p := range s.Profiles {
-		x = addBtn(x, y, p.Name, HitSelectProfile, "", i, 0, i == s.selEdit, false)
+		profSpecs = append(profSpecs, sButton{label: p.Name, kind: HitSelectProfile, prof: i, active: i == s.selEdit})
 	}
-	addBtn(x, y, "+ New", HitNewProfile, "", 0, 0, false, false)
+	profSpecs = append(profSpecs, sButton{label: "+ New", kind: HitNewProfile})
+	s.layoutBtnRow(pad, y, profSpecs)
 	y += btnH + pad
 
-	// Rename field + Delete-profile.
+	// Rename field + Delete-profile (buttons flow after the docked input).
 	s.sRenameR = toolkit.Rect{X: pad, Y: y, W: rpxOf(s, 200), H: btnH}
-	bx := pad + s.sRenameR.W + gap
-	bx = addBtn(bx, y, "Rename", HitRenameProfile, "", s.selEdit, 0, s.sf == FocusRename, false)
-	addBtn(bx, y, "Delete profile", HitDeleteProfile, "", s.selEdit, 0, false, true)
+	s.layoutBtnRow(pad+s.sRenameR.W+gap, y, []sButton{
+		{label: "Rename", kind: HitRenameProfile, prof: s.selEdit, active: s.sf == FocusRename},
+		{label: "Delete profile", kind: HitDeleteProfile, prof: s.selEdit, danger: true},
+	})
 	y += btnH + pad
 
-	// SUBSCRIPTIONS of the edited profile (removable chips).
+	// SUBSCRIPTIONS of the edited profile (removable chips, a wrapping flow).
 	label(pad, y, "SUBSCRIPTIONS")
 	y += m.side.height + gap
-	x = pad
+	x := pad
 	if s.selEdit >= 0 && s.selEdit < len(s.Profiles) {
 		for j, su := range s.Profiles[s.selEdit].Subs {
 			text := sourceLabel(su.Source)
@@ -260,22 +338,24 @@ func (s *Scene) layoutSettings() {
 	// ADD SUBSCRIPTION: source palette + channel field + Add.
 	label(pad, y, "ADD SUBSCRIPTION")
 	y += m.side.height + gap
-	x = pad
+	kindSpecs := make([]sButton, 0, len(settingsKinds))
 	for _, k := range settingsKinds {
-		x = addBtn(x, y, sourceLabel(k), HitSelectKind, string(k), 0, 0, s.newKind == k, false)
+		kindSpecs = append(kindSpecs, sButton{label: sourceLabel(k), kind: HitSelectKind, value: string(k), active: s.newKind == k})
 	}
+	s.layoutBtnRow(pad, y, kindSpecs)
 	y += btnH + gap
 	s.sChannelR = toolkit.Rect{X: pad, Y: y, W: rpxOf(s, 220), H: btnH}
-	addBtn(pad+s.sChannelR.W+gap, y, "Add", HitAddSub, "", 0, 0, false, false)
+	s.layoutBtnRow(pad+s.sChannelR.W+gap, y, []sButton{{label: "Add", kind: HitAddSub}})
 	y += btnH + pad
 
 	// APPEARANCE: theme picker.
 	label(pad, y, "APPEARANCE")
 	y += m.side.height + gap
-	x = pad
+	themeSpecs := make([]sButton, 0, 3)
 	for _, tn := range []string{settings.ThemeSystem, settings.ThemeLight, settings.ThemeDark} {
-		x = addBtn(x, y, titleCase(tn), HitTheme, tn, 0, 0, s.themeName == tn, false)
+		themeSpecs = append(themeSpecs, sButton{label: titleCase(tn), kind: HitTheme, value: tn, active: s.themeName == tn})
 	}
+	s.layoutBtnRow(pad, y, themeSpecs)
 	y += btnH + pad
 
 	// MEDIA CACHE: editable path.
@@ -319,38 +399,36 @@ func (s *Scene) drawSettings(buf []byte) {
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
 
-	// Section labels.
+	// Every element is drawn as a widget positioned at its box-computed rect.
 	for _, l := range s.sLabels {
-		m.side.draw(img, l.x, l.y, l.text, muteS)
+		lbl := &textLine{face: m.side, text: l.text, ink: muteS, img: img}
+		lbl.SetBounds(toolkit.Rect{X: l.x, Y: l.y, W: s.W, H: m.side.height})
+		lbl.Draw(p, th)
 	}
-
-	// Buttons.
 	for _, b := range s.sButtons {
-		fill, txt := th.Surface, th.OnSurface
-		if b.active {
-			fill, txt = th.Accent, onAccent
-		}
-		p.FillRoundRect(painter.Rect(b.rect), rpxOf(s, 6), fill)
-		border := th.Border
-		if b.danger {
-			border, txt = rgb(0xD03030), rgb(0xD03030)
-		}
-		p.StrokeRoundRect(painter.Rect(b.rect), rpxOf(s, 6), border, 1)
-		m.tab.draw(img, b.rect.X+rpxOf(s, 10), b.rect.Y+(b.rect.H-m.tab.height)/2, b.label, txt)
+		w := &settingsButton{s: s, label: b.label, active: b.active, danger: b.danger, p: p, img: img}
+		w.SetBounds(b.rect)
+		w.Draw(p, th)
 	}
-
-	// Subscription chips.
 	for _, c := range s.sChips {
-		p.FillRoundRect(painter.Rect(c.rect), rpxOf(s, 6), th.Surface)
-		p.StrokeRoundRect(painter.Rect(c.rect), rpxOf(s, 6), th.Border, 1)
-		s.drawDot(p, c.rect.X+rpxOf(s, 8), c.rect.Y+c.rect.H/2, sourceColor(c.source))
-		m.tab.draw(img, c.rect.X+rpxOf(s, 18), c.rect.Y+(c.rect.H-m.tab.height)/2, c.label, th.OnSurface)
+		w := &settingsChip{s: s, label: c.label, source: c.source, p: p, img: img}
+		w.SetBounds(c.rect)
+		w.Draw(p, th)
 	}
-
-	// Text inputs.
-	s.drawInput(p, img, s.sRenameR, s.renameInput, "profile name", s.sf == FocusRename, onAccent, muteS)
-	s.drawInput(p, img, s.sChannelR, s.channelInput, "channel…", s.sf == FocusChannel, onAccent, muteS)
-	s.drawInput(p, img, s.sCacheR, s.cacheInput, "media cache path", s.sf == FocusCache, onAccent, muteS)
+	for _, f := range []struct {
+		r    toolkit.Rect
+		text string
+		ph   string
+		foc  bool
+	}{
+		{s.sRenameR, s.renameInput, "profile name", s.sf == FocusRename},
+		{s.sChannelR, s.channelInput, "channel…", s.sf == FocusChannel},
+		{s.sCacheR, s.cacheInput, "media cache path", s.sf == FocusCache},
+	} {
+		w := &settingsField{s: s, text: f.text, placeholder: f.ph, focused: f.foc, p: p, img: img}
+		w.SetBounds(f.r)
+		w.Draw(p, th)
+	}
 
 	// Topbar (accent) with title + Done, over any overflow.
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
