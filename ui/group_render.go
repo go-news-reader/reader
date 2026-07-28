@@ -46,6 +46,22 @@ func (s *Scene) reconstructRect(x, yTop, w int) toolkit.Rect {
 	return toolkit.Rect{X: x + w - m.pad - bw, Y: yTop + (m.groupHeadH-bh)/2, W: bw, H: bh}
 }
 
+// downloadCheckRect is the download checkbox, left of the Reconstruct pill (same
+// coordinate space as reconstructRect: x/yTop are the card's top-left).
+func (s *Scene) downloadCheckRect(x, yTop, w int) toolkit.Rect {
+	rr := s.reconstructRect(x, yTop, w)
+	cb := rpxOf(s, 18)
+	return toolkit.Rect{X: rr.X - cb - s.m.pad, Y: rr.Y + (rr.H-cb)/2, W: cb, H: cb}
+}
+
+// drawDownloadCheck paints the toolkit CheckButton (sized to r) for the download
+// queue state.
+func (s *Scene) drawDownloadCheck(p *painter.PixelPainter, r toolkit.Rect, checked bool) {
+	cb := &toolkit.CheckButton{Checked: checked, Size: r.W}
+	cb.SetBounds(r)
+	cb.Draw(p, s.theme)
+}
+
 // memberRect is the i-th member part row within an expanded group.
 func (s *Scene) memberRect(x, yTop, w, i int) toolkit.Rect {
 	m := s.m
@@ -94,6 +110,8 @@ func (s *Scene) drawGroup(p *painter.PixelPainter, img *image.RGBA, g *itemGroup
 	if complete {
 		p.FillRoundRect(painter.Rect(rr), rr.H/2, th.Accent)
 		m.badge.draw(img, rr.X+(rr.W-m.badge.width("Reconstruct"))/2, rr.Y+(rr.H-m.badge.height)/2, "Reconstruct", onAccent)
+		// A download checkbox, left of the pill: ticking it queues the post.
+		s.drawDownloadCheck(p, s.downloadCheckRect(x, y, w), s.IsDownloadQueued(g.Base))
 	}
 
 	// Base name (title) below the badges.

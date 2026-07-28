@@ -238,23 +238,24 @@ func (s *Scene) Draw(buf []byte) {
 	feedX, feedW := s.feedGeom()
 	// Progress strip (loading + some items): drawn above the banners, scrolling
 	// with the feed content.
+	feedBot := s.feedBottom() // content stops above the download panel
 	if s.showStrip {
 		y := feedTop + s.loadStripTop - s.ScrollY
-		if y+m.loadStripH >= feedTop && y < s.H {
+		if y+m.loadStripH >= feedTop && y < feedBot {
 			s.drawLoadStrip(p, img, feedX, y, feedW, muteS)
 		}
 	}
 	// "Needs sign-in" banners (drawn above the cards, scrolling with the feed).
 	for _, a := range s.authRows {
 		y := feedTop + a.top - s.ScrollY
-		if y+m.bannerH < feedTop || y >= s.H {
+		if y+m.bannerH < feedTop || y >= feedBot {
 			continue
 		}
 		s.drawAuthBanner(p, img, s.authPrompts[a.idx], feedX, y, feedW, onAccent)
 	}
 	for _, r := range s.rows {
 		y := feedTop + r.top - s.ScrollY
-		if y+r.height < feedTop || y >= s.H {
+		if y+r.height < feedTop || y >= feedBot {
 			continue
 		}
 		if r.group != nil {
@@ -292,6 +293,9 @@ func (s *Scene) Draw(buf []byte) {
 
 	// --- right preview/details pane (over the feed, docked right) ---
 	s.drawPreview(p, img)
+
+	// --- download-manager panel (docked bottom, over the feed/preview) ---
+	s.drawDownloadPanel(p, img)
 }
 
 // sidebarKey / topbarKey identify the single-slot chrome sprite caches. The
@@ -653,8 +657,9 @@ func (s *Scene) HitTest(x, y int) Hit {
 		}
 		return Hit{Kind: HitNone}
 	}
-	// A thin grip at the preview pane's left edge starts a pane-resize drag.
-	if s.previewR.W > 0 {
+	// A thin grip at the preview pane's left edge starts a pane-resize drag (only
+	// within the pane's vertical extent, not down in the download panel).
+	if s.previewR.W > 0 && y < s.feedBottom() {
 		grip := rpxOf(s, 7)
 		if x >= s.previewR.X-grip && x <= s.previewR.X+grip {
 			return Hit{Kind: HitPreviewDivider}
@@ -704,6 +709,14 @@ func (s *Scene) HitTest(x, y int) Hit {
 		}
 		return Hit{Kind: HitNone}
 	}
+	// Download panel (docked bottom, over the feed): the Clear button, else inert.
+	if s.downloadPanelH() > 0 && y >= s.feedBottom() {
+		s.layoutDownloadPanel()
+		if inRect(s.dlClearR, x, y) {
+			return Hit{Kind: HitClearDownloads}
+		}
+		return Hit{Kind: HitNone}
+	}
 	// Feed.
 	feedX, feedW := s.feedGeom()
 	contentY := y - m.topbarH + s.ScrollY
@@ -729,10 +742,15 @@ func (s *Scene) HitTest(x, y int) Hit {
 // expanded — one of the listed member parts (open its detail, like a card).
 func (s *Scene) hitGroup(r feedRow, feedX, feedW, x, contentY int) Hit {
 	g := r.group
-	// Reconstruct is only offered for a complete post (all files+parts present);
-	// an incomplete post's slot shows a non-clickable "incomplete" label instead.
-	if g.Complete() && inRect(s.reconstructRect(feedX, r.top, feedW), x, contentY) {
-		return Hit{Kind: HitReconstruct, Value: g.Base}
+	// A complete post offers a download checkbox (queue) and the Reconstruct pill,
+	// both in the header's right slot; the checkbox takes precedence where drawn.
+	if g.Complete() {
+		if inRect(s.downloadCheckRect(feedX, r.top, feedW), x, contentY) {
+			return Hit{Kind: HitToggleDownload, Value: g.Base}
+		}
+		if inRect(s.reconstructRect(feedX, r.top, feedW), x, contentY) {
+			return Hit{Kind: HitReconstruct, Value: g.Base}
+		}
 	}
 	if contentY < r.top+s.m.groupHeadH {
 		// The chevron toggles expand/collapse; the rest of the header previews the

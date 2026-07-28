@@ -254,7 +254,7 @@ func (s *Scene) layoutPreview() {
 		s.previewContentH = 0
 		return
 	}
-	s.previewR = toolkit.Rect{X: s.W - pw, Y: m.topbarH, W: pw, H: s.H - m.topbarH}
+	s.previewR = toolkit.Rect{X: s.W - pw, Y: m.topbarH, W: pw, H: s.feedBottom() - m.topbarH}
 	// "Open" pill, top-right of the pane (fixed, over the scrolling content), shown
 	// only when an item is selected and it has a full-view target.
 	if s.previewHas {
