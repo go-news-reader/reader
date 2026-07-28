@@ -116,6 +116,15 @@ func (s *Scene) layout() {
 		y += m.sideItemH
 	}
 
+	// "＋ Browse newsgroups" entry, shown below the subscriptions only when a
+	// Usenet server is configured (else it is a discovery dead-end).
+	if s.usenetAddr != "" {
+		s.browseR = toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}
+		y += m.sideItemH
+	} else {
+		s.browseR = toolkit.Rect{}
+	}
+
 	// Pinned entries at the bottom of the sidebar, top-to-bottom: 👤 Accounts,
 	// 📡 Network log, ⚙ Settings.
 	s.settingsR = toolkit.Rect{X: 0, Y: s.H - m.sideItemH, W: m.sidebarW, H: m.sideItemH}
@@ -184,6 +193,9 @@ func (s *Scene) Draw(buf []byte) {
 		return
 	case ModeAccounts:
 		s.drawAccounts(buf)
+		return
+	case ModeBrowse:
+		s.drawBrowse(buf)
 		return
 	}
 	s.layout()
@@ -344,6 +356,15 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		} else {
 			m.side.draw(img, m.pad, ty, label, col)
 		}
+	}
+
+	// "＋ Browse newsgroups" entry (sidebar-local coords), shown below the subs
+	// when a Usenet server is configured.
+	if s.usenetAddr != "" && s.browseR.W > 0 {
+		ly := s.browseR.Y - m.topbarH
+		ir := toolkit.Rect{X: m.pad, Y: ly + (m.sideItemH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
+		drawPlusIcon(p, ir, th.Accent, s.iconStroke())
+		m.side.draw(img, m.pad+rpxOf(s, 14), ly+(m.sideItemH-m.side.height)/2, "Browse newsgroups", th.Accent)
 	}
 
 	// Pinned entries at the bottom: Accounts, Network log, Settings. Each icon is
@@ -568,6 +589,8 @@ func (s *Scene) HitTest(x, y int) Hit {
 		return s.logHitTest(x, y)
 	case ModeAccounts:
 		return s.accountsHitTest(x, y)
+	case ModeBrowse:
+		return s.browseHitTest(x, y)
 	}
 	s.layout()
 	m := s.m
@@ -603,6 +626,9 @@ func (s *Scene) HitTest(x, y int) Hit {
 		if inRect(s.accountsR, x, y) {
 			return Hit{Kind: HitAccounts}
 		}
+		if s.usenetAddr != "" && s.browseR.W > 0 && inRect(s.browseR, x, y) {
+			return Hit{Kind: HitBrowse}
+		}
 		for _, e := range s.subs {
 			if inRect(e.rect, x, y) {
 				return Hit{Kind: HitSub, Sub: e.index}
@@ -636,7 +662,9 @@ func (s *Scene) HitTest(x, y int) Hit {
 // expanded — one of the listed member parts (open its detail, like a card).
 func (s *Scene) hitGroup(r feedRow, feedX, feedW, x, contentY int) Hit {
 	g := r.group
-	if inRect(s.reconstructRect(feedX, r.top, feedW), x, contentY) {
+	// Reconstruct is only offered for a complete post (all files+parts present);
+	// an incomplete post's slot shows a non-clickable "incomplete" label instead.
+	if g.Complete() && inRect(s.reconstructRect(feedX, r.top, feedW), x, contentY) {
 		return Hit{Kind: HitReconstruct, Value: g.Base}
 	}
 	if contentY < r.top+s.m.groupHeadH {

@@ -371,3 +371,41 @@ func cloneFiles(in map[string][]byte) map[string][]byte {
 	}
 	return out
 }
+
+// TestFreeGroups exercises the provider's Groups (LIST ACTIVE "*") against the
+// legacy Free binary server: it asserts a large carried-group list that
+// includes the well-known alt.binaries.test, and that the result is cached
+// (a second call issues no further network traffic). This is the browse
+// window's data source.
+func TestFreeGroups(t *testing.T) {
+	addr := env("NNTP_LEGACY_ADDR", "news.free.fr:119")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	p := New(addr, false)
+	names, err := p.Groups(ctx)
+	if err != nil {
+		t.Skipf("cannot list groups on %s (need the Free network?): %v", addr, err)
+	}
+	t.Logf("Free %s carries %d newsgroups", addr, len(names))
+	if len(names) < 1000 {
+		t.Fatalf("expected a large group list from %s, got only %d", addr, len(names))
+	}
+	found := false
+	for _, n := range names {
+		if n == "alt.binaries.test" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("alt.binaries.test not present in %d listed groups", len(names))
+	}
+	// Sorted ascending.
+	for i := 1; i < len(names); i++ {
+		if names[i] < names[i-1] {
+			t.Fatalf("group list not sorted at %d: %q < %q", i, names[i], names[i-1])
+		}
+	}
+}

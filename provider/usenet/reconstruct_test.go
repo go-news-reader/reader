@@ -56,6 +56,9 @@ func (c *reconFakeConn) Group(string) (*gonntp.Group, error)      { return nil, 
 func (c *reconFakeConn) Over(int, int) ([]gonntp.Overview, error) { return nil, nil }
 func (c *reconFakeConn) ModeReader() error                        { return nil }
 func (c *reconFakeConn) Authenticate(string, string) error        { return c.authErr }
+func (c *reconFakeConn) List(string) ([]gonntp.NewsgroupInfo, error) {
+	return nil, nil
+}
 func (c *reconFakeConn) Article(id string) (*gonntp.Article, error) {
 	if c.artErr != nil {
 		return nil, c.artErr

@@ -90,6 +90,24 @@ func onAccentFor(c toolkit.RGBA) toolkit.RGBA {
 	return toolkit.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
 }
 
+// successColor / errorColor return the theme's success (green) / error (red)
+// accent, taken from the GTK-source Extra map when the loaded theme provides one
+// (success_color / error_color) and otherwise a clear built-in green / red. Used
+// for the multipart group card's complete / incomplete badge.
+func successColor(t *toolkit.Theme) toolkit.RGBA {
+	if v, ok := t.Extra["success_color"]; ok {
+		return v
+	}
+	return rgb(0x2FA84F)
+}
+
+func errorColor(t *toolkit.Theme) toolkit.RGBA {
+	if v, ok := t.Extra["error_color"]; ok {
+		return v
+	}
+	return rgb(0xD03030)
+}
+
 // adwaitaLight / adwaitaDark approximate GNOME's libadwaita default palette.
 func adwaitaLight() *toolkit.Theme {
 	return withOnAccent(&toolkit.Theme{

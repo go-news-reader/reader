@@ -76,6 +76,14 @@ const (
 	HitToggleGroup            // a Usenet group card's header/chevron — Value = release base
 	HitReconstruct            // a Usenet group card's "Reconstruct" affordance — Value = release base
 
+	// Newsgroup browser (Mode == ModeBrowse):
+	HitBrowse           // the sidebar "＋ Browse newsgroups" entry (open the browser)
+	HitCloseBrowse      // the browser's "‹ Back" button (return to the feed)
+	HitBrowseRefresh    // the browser's Refresh button (re-fetch the full group list)
+	HitBrowseFilter     // the browser's regexp filter field (focus it)
+	HitToggleBrowseNode // a tree node's chevron/row (expand/collapse) — Value = node name
+	HitSubscribeGroup   // a tree leaf's Subscribe affordance — Value = full group name
+
 	// Settings-view actions (Mode == ModeSettings):
 	HitSelectProfile // Profile = index being edited
 	HitNewProfile
@@ -106,6 +114,7 @@ const (
 	ModeSettings             // the in-canvas preferences editor
 	ModeLog                  // the in-canvas HTTP-exchange (Network) log
 	ModeAccounts             // the in-canvas per-provider credentials editor
+	ModeBrowse               // the in-canvas newsgroup browser / subscribe view
 )
 
 // Hit is the result of [Scene.HitTest].
@@ -220,6 +229,42 @@ type Scene struct {
 	// collapsed (the default).
 	groupExpanded map[string]bool
 
+	// Newsgroup browser (ModeBrowse) state. browseGroups is the server's full
+	// active group list (set by the app after a fetch); browseServer names the
+	// server for the title. browseEntry is the regexp filter field (a real
+	// toolkit.SearchEntry, so it can be mvvm-bound like the topbar search).
+	// browseExpanded records which tree nodes are open (keyed by full node name);
+	// the filtered tree auto-expands so this only applies to the unfiltered view.
+	// usenetAddr is non-empty when a Usenet server is configured, which is what
+	// gates the sidebar "Browse newsgroups" entry.
+	browseGroups   []string
+	browseServer   string
+	usenetAddr     string
+	browseEntry    *toolkit.SearchEntry
+	browseFocused  bool
+	browseExpanded map[string]bool
+	browseScrollY  int
+	browseContentH int
+	browseRows     []browseRowLayout
+	browseBackR    toolkit.Rect
+	browseRefreshR toolkit.Rect
+	browseFilterR  toolkit.Rect
+	browseR        toolkit.Rect // sidebar "Browse newsgroups" entry
+	browseCountY   int
+	browseTreeTop  int
+
+	// Cached tree materialisation (built once per group-list change, re-filtered
+	// per filter-text change) so layoutBrowse — called on both Draw and HitTest —
+	// does not rebuild the (tens-of-thousands-of-node) tree every frame.
+	browseGroupsRev  int
+	browseTree       *groupNode // full tree
+	browseTreeRev    int        // browseGroupsRev the full tree was built from
+	browseView       *groupNode // full or filtered tree currently shown
+	browseViewKey    browseViewKey
+	browseFiltered   bool
+	browseFilterErr  string
+	browseMatchCount int
+
 	m         metrics
 	subs      []subHit
 	profTabs  []profTabHit
@@ -269,10 +314,12 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	}
 	s := &Scene{W: w, H: h, theme: theme, Active: AllFilter, Scale: 1,
 		themeName: settings.ThemeSystem, newKind: source.Reddit,
-		searchEntry: toolkit.NewSearchEntry("")}
+		searchEntry: toolkit.NewSearchEntry(""),
+		browseEntry: toolkit.NewSearchEntry("")}
 	// The topbar SearchEntry paints its left prefix with a real Iconoir
 	// magnifier instead of the toolkit's "?" bitmap-font stand-in.
 	s.searchEntry.Icon = drawSearchIcon
+	s.browseEntry.Icon = drawSearchIcon
 	s.clampSize()
 	return s
 }
@@ -533,6 +580,14 @@ func (s *Scene) TypeRune(r rune) {
 		}
 		return
 	}
+	if s.mode == ModeBrowse {
+		if s.browseFocused {
+			s.browseEntry.OnEvent(toolkit.Event{Kind: toolkit.EventChar, Code: string(r)})
+			s.browseScrollY = 0
+			s.touch()
+		}
+		return
+	}
 	if s.searchFocused {
 		// Feed the printable rune through the SearchEntry widget itself, so the
 		// widget's OnChange (bound to vm.Search) fires exactly as a real widget
@@ -554,6 +609,14 @@ func (s *Scene) Backspace() {
 	if s.mode == ModeAccounts {
 		if cur := s.accFieldValue(s.accSel, s.accFocus); s.accFocus != "" && cur != "" {
 			s.accSetField(s.accFocus, trimLastRune(cur))
+			s.touch()
+		}
+		return
+	}
+	if s.mode == ModeBrowse {
+		if s.browseFocused && s.browseEntry.Text != "" {
+			s.browseEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
+			s.browseScrollY = 0
 			s.touch()
 		}
 		return
@@ -646,6 +709,13 @@ func (s *Scene) Scroll(dy int) {
 		s.accScrollY += dy
 		s.layoutAccounts()
 		s.accScrollY = clampScroll(s.accScrollY, s.accContentH-(s.H-s.m.topbarH))
+		s.touch()
+		return
+	}
+	if s.mode == ModeBrowse {
+		s.browseScrollY += dy
+		s.layoutBrowse()
+		s.browseScrollY = clampScroll(s.browseScrollY, s.browseContentH-(s.H-s.m.topbarH))
 		s.touch()
 		return
 	}

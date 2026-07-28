@@ -10,7 +10,9 @@ import (
 	"errors"
 	"net/http"
 	"net/textproto"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/go-newsgroups/newznab"
 	gonntp "github.com/go-newsgroups/nntp"
@@ -39,6 +41,7 @@ type conn interface {
 	Group(name string) (*gonntp.Group, error)
 	Over(low, high int) ([]gonntp.Overview, error)
 	Article(msgIDorNum string) (*gonntp.Article, error)
+	List(wildmat string) ([]gonntp.NewsgroupInfo, error)
 	Authenticate(user, pass string) error
 	ModeReader() error
 	Close() error
@@ -70,6 +73,13 @@ type Provider struct {
 	search searcher // nil when no indexer configured
 	user   string   // AUTHINFO USER; "" means connect anonymously (legacy Free)
 	pass   string   // AUTHINFO PASS
+
+	// groups caches the server's full active group list (tens of thousands of
+	// names). Groups fetches it once and memoises it here; RefreshGroups clears it
+	// and re-fetches. Guarded by gmu because the browse window loads it on a
+	// background goroutine.
+	gmu    sync.Mutex
+	groups []string
 }
 
 // WithAuth attaches AUTHINFO credentials used when connecting to modern servers
@@ -188,6 +198,59 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		items = append(items, mapOverview(group, ov))
 	}
 	return source.Result{Items: items}, nil
+}
+
+// Groups returns the newsgroups the configured server carries (LIST ACTIVE),
+// sorted by name. The first call dials the server, fetches the full active list
+// and memoises it; later calls return the cached slice without touching the
+// network — the list runs to tens of thousands of names, so the browse window
+// fetches it once. Use RefreshGroups to bypass the cache. An authentication or
+// permission failure is mapped to a typed source.AuthError so the UI can prompt
+// for credentials.
+func (p *Provider) Groups(ctx context.Context) ([]string, error) {
+	p.gmu.Lock()
+	cached := p.groups
+	p.gmu.Unlock()
+	if cached != nil {
+		return cached, nil
+	}
+	return p.fetchGroups(ctx)
+}
+
+// RefreshGroups discards any cached list and re-fetches the server's full active
+// group list, so the browse window's Refresh control shows newly-carried groups.
+func (p *Provider) RefreshGroups(ctx context.Context) ([]string, error) {
+	p.gmu.Lock()
+	p.groups = nil
+	p.gmu.Unlock()
+	return p.fetchGroups(ctx)
+}
+
+// fetchGroups connects, issues LIST ACTIVE "*" (every carried group), closes,
+// sorts the names and stores them in the cache.
+func (p *Provider) fetchGroups(ctx context.Context) ([]string, error) {
+	c, err := p.connect(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer c.Close()
+
+	infos, err := c.List("*")
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	names := make([]string, 0, len(infos))
+	for _, in := range infos {
+		if in.Name != "" {
+			names = append(names, in.Name)
+		}
+	}
+	sort.Strings(names)
+
+	p.gmu.Lock()
+	p.groups = names
+	p.gmu.Unlock()
+	return names, nil
 }
 
 // nntpAuthCodes are the NNTP response codes that mean the server needs (or
