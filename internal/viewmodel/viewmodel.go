@@ -59,6 +59,9 @@ type ViewModel struct {
 	// [toolkit.SearchEntry] widget (see the app's search binder), so typing in the
 	// widget flows here and a programmatic Set flows back to the widget.
 	Search *mvvm.Observable[string]
+	// BrowseFilter is the newsgroup browser's regexp filter text, two-way bound to
+	// the scene's browse [toolkit.SearchEntry] widget exactly like Search.
+	BrowseFilter *mvvm.Observable[string]
 	// SearchFocus is whether the topbar search field holds keyboard focus. Input
 	// drives it; the binder reflects it onto the scene's focus state.
 	SearchFocus *mvvm.Observable[bool]
@@ -83,10 +86,12 @@ type ViewModel struct {
 	Refresh *mvvm.Command
 	// ToggleSidebar collapses/expands the sidebar.
 	ToggleSidebar *mvvm.Command
-	// OpenSettings / OpenAccounts / OpenLog switch Mode into the matching view.
+	// OpenSettings / OpenAccounts / OpenLog / OpenBrowse switch Mode into the
+	// matching view.
 	OpenSettings *mvvm.Command
 	OpenAccounts *mvvm.Command
 	OpenLog      *mvvm.Command
+	OpenBrowse   *mvvm.Command
 	// CloseView returns to the feed.
 	CloseView *mvvm.Command
 }
@@ -97,17 +102,18 @@ type ViewModel struct {
 // re-greys itself while an aggregation is in flight.
 func New(act Actions) *ViewModel {
 	vm := &ViewModel{
-		Items:       mvvm.NewObservableList[source.Item](),
-		Load:        mvvm.NewObservable(LoadState{}),
-		Pending:     mvvm.NewObservableList[source.Subscription](),
-		Search:      mvvm.NewObservable(""),
-		SearchFocus: mvvm.NewObservable(false),
-		Mode:        mvvm.NewObservable(ui.ModeFeed),
-		Detail:      mvvm.NewObservableEq(source.Item{}, sameItem),
-		Account:     mvvm.NewObservable(source.Kind("")),
-		Profile:     mvvm.NewObservable(0),
-		Status:      mvvm.NewObservable(""),
-		AuthPrompts: mvvm.NewObservableList[ui.AuthPrompt](),
+		Items:        mvvm.NewObservableList[source.Item](),
+		Load:         mvvm.NewObservable(LoadState{}),
+		Pending:      mvvm.NewObservableList[source.Subscription](),
+		Search:       mvvm.NewObservable(""),
+		BrowseFilter: mvvm.NewObservable(""),
+		SearchFocus:  mvvm.NewObservable(false),
+		Mode:         mvvm.NewObservable(ui.ModeFeed),
+		Detail:       mvvm.NewObservableEq(source.Item{}, sameItem),
+		Account:      mvvm.NewObservable(source.Kind("")),
+		Profile:      mvvm.NewObservable(0),
+		Status:       mvvm.NewObservable(""),
+		AuthPrompts:  mvvm.NewObservableList[ui.AuthPrompt](),
 	}
 	vm.Refresh = mvvm.NewCommand(act.Refresh, func() bool { return !vm.Load.Get().Active })
 	mvvm.BindCanExecute(vm.Refresh, vm.Load)
@@ -115,6 +121,7 @@ func New(act Actions) *ViewModel {
 	vm.OpenSettings = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeSettings) }, nil)
 	vm.OpenAccounts = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeAccounts) }, nil)
 	vm.OpenLog = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeLog) }, nil)
+	vm.OpenBrowse = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeBrowse) }, nil)
 	vm.CloseView = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeFeed) }, nil)
 	return vm
 }

@@ -28,12 +28,22 @@ type fakeConn struct {
 	authPass   string
 	authCalled bool
 	authErr    error
+
+	list      []gonntp.NewsgroupInfo
+	listErr   error
+	listCalls int
+	listArg   string
 }
 
 func (f *fakeConn) Group(string) (*gonntp.Group, error) { return f.group, f.groupErr }
 func (f *fakeConn) Over(low, high int) ([]gonntp.Overview, error) {
 	f.gotLow, f.gotHigh = low, high
 	return f.over, f.overErr
+}
+func (f *fakeConn) List(wildmat string) ([]gonntp.NewsgroupInfo, error) {
+	f.listCalls++
+	f.listArg = wildmat
+	return f.list, f.listErr
 }
 func (f *fakeConn) Article(string) (*gonntp.Article, error) { return nil, nil }
 func (f *fakeConn) ModeReader() error                       { f.modeCalled = true; return f.modeErr }
@@ -225,5 +235,90 @@ func TestFeedAuthError(t *testing.T) {
 	_, err = NewWithDial(dialing(fc4, nil)).Feed(context.Background(), source.Query{Channel: "x"})
 	if _, ok := source.AsAuthError(err); ok {
 		t.Fatalf("411 misclassified as auth: %v", err)
+	}
+}
+
+func TestGroupsCachesAndSorts(t *testing.T) {
+	fc := &fakeConn{list: []gonntp.NewsgroupInfo{
+		{Name: "comp.lang.go"},
+		{Name: "alt.binaries.test"},
+		{Name: ""}, // blank names are dropped
+		{Name: "alt.test"},
+	}}
+	p := NewWithDial(dialing(fc, nil))
+
+	got, err := p.Groups(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"alt.binaries.test", "alt.test", "comp.lang.go"}
+	if len(got) != len(want) {
+		t.Fatalf("groups = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("groups[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if fc.listArg != "*" {
+		t.Fatalf("List wildmat = %q, want *", fc.listArg)
+	}
+	if !fc.closed {
+		t.Fatal("connection not closed after listing")
+	}
+	// A second call is served from the cache: List is not issued again.
+	if _, err := p.Groups(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if fc.listCalls != 1 {
+		t.Fatalf("List called %d times, want 1 (cached)", fc.listCalls)
+	}
+}
+
+func TestRefreshGroupsBypassesCache(t *testing.T) {
+	fc := &fakeConn{list: []gonntp.NewsgroupInfo{{Name: "alt.test"}}}
+	p := NewWithDial(dialing(fc, nil))
+	if _, err := p.Groups(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The server now carries an extra group; RefreshGroups re-fetches it.
+	fc.list = []gonntp.NewsgroupInfo{{Name: "alt.test"}, {Name: "alt.new"}}
+	got, err := p.RefreshGroups(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "alt.new" || got[1] != "alt.test" {
+		t.Fatalf("refreshed groups = %v", got)
+	}
+	if fc.listCalls != 2 {
+		t.Fatalf("List called %d times, want 2 (refresh bypasses cache)", fc.listCalls)
+	}
+}
+
+func TestGroupsDialError(t *testing.T) {
+	p := NewWithDial(dialing(nil, errors.New("dial")))
+	if _, err := p.Groups(context.Background()); err == nil {
+		t.Fatal("want dial error")
+	}
+}
+
+func TestGroupsListError(t *testing.T) {
+	fc := &fakeConn{listErr: errors.New("503 program error")}
+	p := NewWithDial(dialing(fc, nil))
+	if _, err := p.Groups(context.Background()); err == nil {
+		t.Fatal("want list error")
+	}
+	if !fc.closed {
+		t.Fatal("connection not closed after list error")
+	}
+}
+
+func TestGroupsAuthError(t *testing.T) {
+	// An AUTHINFO rejection while connecting for the list maps to a typed AuthError.
+	fc := &fakeConn{listErr: &textproto.Error{Code: 502, Msg: "permission denied"}}
+	p := NewWithDial(dialing(fc, nil))
+	_, err := p.Groups(context.Background())
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Usenet {
+		t.Fatalf("502 not mapped to Usenet AuthError: %v", err)
 	}
 }
