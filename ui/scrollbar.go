@@ -24,12 +24,15 @@ func (s *Scene) drawVScrollbar(p *painter.PixelPainter, area toolkit.Rect, total
 	}
 	w := s.scrollbarW()
 	inset := rpxOf(s, 2)
+	bar := toolkit.Rect{X: area.X + area.W - w - inset, Y: area.Y + inset, W: w, H: area.H - 2*inset}
 	sb := &toolkit.Scrollbar{Total: total, Viewport: view, Offset: offset}
-	sb.SetBounds(toolkit.Rect{
-		X: area.X + area.W - w - inset,
-		Y: area.Y + inset,
-		W: w,
-		H: area.H - 2*inset,
-	})
-	sb.Draw(p, s.theme)
+	sb.SetBounds(bar)
+	// Draw the track + thumb ourselves (via the widget's ThumbRect geometry) so the
+	// thumb uses a clearly-visible muted grey — the toolkit's default Border thumb
+	// is too faint on the sidebar, whose background is already SurfaceAlt.
+	th := s.theme
+	radius := w / 2
+	p.FillRoundRect(painter.Rect(bar), radius, th.SurfaceAlt)
+	t := sb.ThumbRect()
+	p.FillRoundRect(painter.Rect(t), radius, mute(th.OnSurface, th.SurfaceAlt))
 }
