@@ -71,3 +71,12 @@ func (a *App) SubscribeGroup(group string) {
 		a.ApplySceneSettings()
 	}
 }
+
+// UnsubscribeGroup removes the usenet:<group> subscription from the active
+// profile (when present), then persists and re-aggregates so it leaves the
+// sidebar and feed. Clicking a subscribed group's ✓ in the browser routes here.
+func (a *App) UnsubscribeGroup(group string) {
+	if a.scene.UnsubscribeActive(source.Usenet, group) {
+		a.ApplySceneSettings()
+	}
+}
