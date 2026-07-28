@@ -190,6 +190,9 @@ func (x *x11) handleEvent(ev xgb.Event) {
 			return
 		}
 		if dy, ok := x11ButtonScroll(byte(e.Detail)); ok {
+			// Route the wheel by the pointer's panel: forward the position first
+			// (motion is Button1Motion-masked, so hover never updates it otherwise).
+			x.handler.MouseMove(int(e.EventX), int(e.EventY))
 			x.handler.Scroll(dy)
 			x.present()
 			return

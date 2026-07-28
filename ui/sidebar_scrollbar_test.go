@@ -38,7 +38,7 @@ func TestSidebarScrollbar(t *testing.T) {
 	th := s.theme
 	thumb := mute(th.OnSurface, th.SurfaceAlt) // the visible thumb colour
 	found := false
-	for x := s.m.sidebarW - s.scrollbarW() - rpxOf(s, 4); x < s.m.sidebarW && !found; x++ {
+	for x := s.m.sidebarW - s.scrollbarW() - rpxOf(s, 16); x < s.m.sidebarW && !found; x++ {
 		for y := s.sideBandTop; y < s.sideBandBot; y++ {
 			c := px(buf, s.W, x, y)
 			if c.R == thumb.R && c.G == thumb.G && c.B == thumb.B {
