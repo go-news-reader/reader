@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"strings"
 	"sync"
 
 	"github.com/go-opentype/fonts/notosansarabic"
@@ -73,9 +74,79 @@ func loadFonts() {
 // draw then over-strikes the glyphs one pixel across to fake the weight.
 type textFace struct {
 	face      font.Face
+	faces     []font.Face // primary first, then per-script fallbacks (nil ⇒ primary only)
 	ascent    int
 	height    int
 	synthBold bool
+}
+
+// fallbackSrcs are the per-script Noto faces (parsed once) chained after the
+// primary in the getFace path, mirroring ttFont's toolkit fallback so hand-drawn
+// views render CJK/Arabic/Indic too. loadFallbacks parses them lazily.
+var (
+	fallbackOnce sync.Once
+	fallbackSrcs []*opentype.Font
+)
+
+func loadFallbacks() {
+	fallbackOnce.Do(func() {
+		for _, ttf := range scriptFallbackTTFs {
+			if f, err := opentype.Parse(ttf); err == nil {
+				fallbackSrcs = append(fallbackSrcs, f)
+			}
+		}
+	})
+}
+
+// faceFor returns the first face in the chain that has a glyph for r, or the
+// primary when none does (so an unknown rune lands on the primary's .notdef).
+func (tf textFace) faceFor(r rune) font.Face {
+	for _, f := range tf.faces {
+		if _, ok := f.GlyphAdvance(r); ok {
+			return f
+		}
+	}
+	return tf.face
+}
+
+// primaryCovers reports whether the primary face has a glyph for every rune of
+// s — the fast path that keeps pure-Latin measuring/drawing byte-identical.
+func (tf textFace) primaryCovers(s string) bool {
+	for _, r := range s {
+		if _, ok := tf.face.GlyphAdvance(r); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// faceRun is a maximal slice of s rendered by one face.
+type faceRun struct {
+	text string
+	face font.Face
+}
+
+// splitRuns splits s into maximal runs, each routed to the covering face.
+func (tf textFace) splitRuns(s string) []faceRun {
+	var out []faceRun
+	var cur font.Face
+	var b strings.Builder
+	flush := func() {
+		if b.Len() > 0 {
+			out = append(out, faceRun{text: b.String(), face: cur})
+			b.Reset()
+		}
+	}
+	for _, r := range s {
+		f := tf.faceFor(r)
+		if f != cur {
+			flush()
+			cur = f
+		}
+		b.WriteRune(r)
+	}
+	flush()
+	return out
 }
 
 // ttFonts caches go-widgets TrueType fonts (keyed by size+weight) so toolkit
@@ -159,13 +230,37 @@ func getFace(px int, bold bool) textFace {
 	}
 	face, _ := opentype.NewFace(src, &opentype.FaceOptions{Size: float64(px), DPI: 72, Hinting: font.HintingFull})
 	m := face.Metrics()
-	tf := textFace{face: face, ascent: m.Ascent.Round(), height: m.Height.Round(), synthBold: synth}
+	loadFallbacks()
+	faces := []font.Face{face}
+	for _, fsrc := range fallbackSrcs {
+		if ff, err := opentype.NewFace(fsrc, &opentype.FaceOptions{Size: float64(px), DPI: 72, Hinting: font.HintingFull}); err == nil {
+			faces = append(faces, ff)
+		}
+	}
+	tf := textFace{face: face, faces: faces, ascent: m.Ascent.Round(), height: m.Height.Round(), synthBold: synth}
 	faceCache[k] = tf
 	return tf
 }
 
-// width measures the rendered pixel width of s in this face.
-func (tf textFace) width(s string) int { return font.MeasureString(tf.face, s).Round() }
+// width measures the rendered pixel width of s. Pure-primary strings (the common
+// case) use font.MeasureString on the primary face verbatim (kerning intact);
+// only when a rune falls outside the primary does it sum per-rune advances across
+// the fallback chain.
+func (tf textFace) width(s string) int {
+	if len(tf.faces) <= 1 || tf.primaryCovers(s) {
+		return font.MeasureString(tf.face, s).Round()
+	}
+	total := fixed.Int26_6(0)
+	for _, r := range s {
+		f := tf.faceFor(r)
+		adv, ok := f.GlyphAdvance(r)
+		if !ok {
+			adv, _ = tf.face.GlyphAdvance(r)
+		}
+		total += adv
+	}
+	return total.Round()
+}
 
 // clipRight returns the longest trailing run of s (by whole runes) whose
 // rendered width does not exceed w. A text field uses it to show the END of an
@@ -190,18 +285,31 @@ func (tf textFace) clipRight(s string, w int) string {
 // draw renders s with its top-left at (x, top) in col, into img (which must
 // alias the scene's RGBA buffer).
 func (tf textFace) draw(img *image.RGBA, x, top int, s string, col toolkit.RGBA) {
-	d := &font.Drawer{
-		Dst:  img,
-		Src:  image.NewUniform(color.RGBA{R: col.R, G: col.G, B: col.B, A: 0xFF}),
-		Face: tf.face,
-		Dot:  fixed.P(x, top+tf.ascent),
-	}
-	d.DrawString(s)
-	if tf.synthBold {
-		// Second pass one pixel right thickens every stem — a passable bold for
-		// a font that only offers its Regular instance.
-		d.Dot = fixed.P(x+1, top+tf.ascent)
+	src := image.NewUniform(color.RGBA{R: col.R, G: col.G, B: col.B, A: 0xFF})
+	// Fast path: the primary face covers every rune (all Latin UI text), drawn in
+	// one pass exactly as before.
+	if len(tf.faces) <= 1 || tf.primaryCovers(s) {
+		d := &font.Drawer{Dst: img, Src: src, Face: tf.face, Dot: fixed.P(x, top+tf.ascent)}
 		d.DrawString(s)
+		if tf.synthBold {
+			// Second pass one pixel right thickens every stem — a passable bold for
+			// a font that only offers its Regular instance.
+			d.Dot = fixed.P(x+1, top+tf.ascent)
+			d.DrawString(s)
+		}
+		return
+	}
+	// Mixed-script: draw each run with the face that covers it, advancing the pen.
+	dot := fixed.P(x, top+tf.ascent)
+	for _, run := range tf.splitRuns(s) {
+		d := &font.Drawer{Dst: img, Src: src, Face: run.face, Dot: dot}
+		d.DrawString(run.text)
+		end := d.Dot
+		if tf.synthBold {
+			b := &font.Drawer{Dst: img, Src: src, Face: run.face, Dot: fixed.Point26_6{X: dot.X + fixed.I(1), Y: dot.Y}}
+			b.DrawString(run.text)
+		}
+		dot = end
 	}
 }
 
