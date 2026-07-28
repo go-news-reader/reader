@@ -95,7 +95,7 @@ func mapTweet(tw gotw.Tweet) source.Item {
 		Permalink: tw.Permalink,
 		Score:     tw.Likes,
 		Comments:  tw.Replies,
-		Created:   tw.CreatedAt.Unix(),
+		Created:   source.UnixOrZero(tw.CreatedAt),
 	}
 	for _, m := range tw.Media {
 		it.Media = append(it.Media, source.Media{URL: m.URL, Kind: mediaKind(m.Type)})

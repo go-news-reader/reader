@@ -103,33 +103,54 @@ func (s *Scene) layout() {
 		tx += w + rpxOf(s, 4)
 	}
 
-	// Sidebar entries: "All" then one per subscription, below the tab band.
-	s.subs = s.subs[:0]
-	y := m.topbarH
+	// Pinned entries at the bottom of the sidebar, top-to-bottom: 👤 Accounts,
+	// 📡 Network log, ⚙ Settings. Laid out first so the scrollable list above
+	// knows where the footer starts.
+	s.settingsR = toolkit.Rect{X: 0, Y: s.H - m.sideItemH, W: m.sidebarW, H: m.sideItemH}
+	s.logR = toolkit.Rect{X: 0, Y: s.H - 2*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
+	s.accountsR = toolkit.Rect{X: 0, Y: s.H - 3*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
+
+	// Sidebar entries: "All", one per subscription, then "＋ Browse newsgroups"
+	// (shown only when a Usenet server is configured, else it is a discovery
+	// dead-end). This block scrolls as a unit inside the band between the tab
+	// strip and the pinned footer; sideScrollY offsets every row and is clamped to
+	// the overflow so the rows never invade the footer.
+	sideTop := m.topbarH
 	if len(s.Profiles) > 0 {
-		y += m.profileTabH
+		sideTop += m.profileTabH
 	}
+	nRows := 1 + len(s.Subs) // "All" + subscriptions
+	if s.usenetAddr != "" {
+		nRows++ // Browse entry
+	}
+	s.sideBandTop = sideTop
+	s.sideBandBot = s.accountsR.Y // the pinned footer begins here
+	band := s.sideBandBot - s.sideBandTop
+	if band < 0 {
+		band = 0
+	}
+	s.sideMaxScroll = nRows*m.sideItemH - band
+	if s.sideMaxScroll < 0 {
+		s.sideMaxScroll = 0
+	}
+	if s.sideScrollY > s.sideMaxScroll {
+		s.sideScrollY = s.sideMaxScroll
+	}
+
+	s.subs = s.subs[:0]
+	y := sideTop - s.sideScrollY
 	s.subs = append(s.subs, subHit{index: AllFilter, rect: toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}})
 	y += m.sideItemH
 	for i := range s.Subs {
 		s.subs = append(s.subs, subHit{index: i, rect: toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}})
 		y += m.sideItemH
 	}
-
-	// "＋ Browse newsgroups" entry, shown below the subscriptions only when a
-	// Usenet server is configured (else it is a discovery dead-end).
 	if s.usenetAddr != "" {
 		s.browseR = toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}
 		y += m.sideItemH
 	} else {
 		s.browseR = toolkit.Rect{}
 	}
-
-	// Pinned entries at the bottom of the sidebar, top-to-bottom: 👤 Accounts,
-	// 📡 Network log, ⚙ Settings.
-	s.settingsR = toolkit.Rect{X: 0, Y: s.H - m.sideItemH, W: m.sidebarW, H: m.sideItemH}
-	s.logR = toolkit.Rect{X: 0, Y: s.H - 2*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
-	s.accountsR = toolkit.Rect{X: 0, Y: s.H - 3*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
 
 	// Burger button (left of the topbar) toggles the sidebar. Always present in
 	// the feed view so a collapsed sidebar can be reopened.
@@ -203,10 +224,7 @@ func (s *Scene) Draw(buf []byte) {
 	p := painter.NewPixelPainter(buf, s.W, s.H)
 	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, s.H)}
 	th := s.theme
-	onAccent := th.Background
-	if v, ok := th.Extra["OnAccent"]; ok {
-		onAccent = v
-	}
+	onAccent := themeOnAccent(th)
 	muteS := mute(th.OnSurface, th.Surface)
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
@@ -271,15 +289,16 @@ func (s *Scene) Draw(buf []byte) {
 // sidebarKey / topbarKey identify the single-slot chrome sprite caches. The
 // chrome only re-rasterises when one of its inputs changes — never on scroll.
 type sidebarKey struct {
-	h, sub  int
-	scale   float64
-	theme   *toolkit.Theme
-	active  int
-	activeP int
-	subsRev int
-	profRev int
-	pendRev int
-	anim    int // animation frame, but only while a source is pending
+	h, sub     int
+	scale      float64
+	theme      *toolkit.Theme
+	active     int
+	activeP    int
+	subsRev    int
+	profRev    int
+	pendRev    int
+	anim       int // animation frame, but only while a source is pending
+	sideScroll int // subscription-list scroll offset
 }
 type topbarKey struct {
 	w        int
@@ -303,14 +322,11 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	if s.PendingCount() > 0 {
 		anim = s.animFrame
 	}
-	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim}
+	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim, sideScroll: s.sideScrollY}
 	if s.sidebarSpr != nil && s.sidebarKey == k {
 		return s.sidebarSpr
 	}
-	onAccent := th.Background
-	if v, ok := th.Extra["OnAccent"]; ok {
-		onAccent = v
-	}
+	onAccent := themeOnAccent(th)
 	buf := make([]byte, m.sidebarW*h*4)
 	p := painter.NewPixelPainter(buf, m.sidebarW, h)
 	img := &image.RGBA{Pix: buf, Stride: m.sidebarW * 4, Rect: image.Rect(0, 0, m.sidebarW, h)}
@@ -327,8 +343,13 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		m.tab.draw(img, t.rect.X+m.tabPad, ly+(t.rect.H-m.tab.height)/2, s.Profiles[t.index].Name, col)
 	}
 
-	// Subscription rows.
+	// Subscription rows. When the list overflows it scrolls; skip any row that is
+	// not fully within the band between the tab strip and the pinned footer so a
+	// scrolled row never paints over the footer or up into the tabs.
 	for _, e := range s.subs {
+		if e.rect.Y < s.sideBandTop || e.rect.Y+m.sideItemH > s.sideBandBot {
+			continue
+		}
 		ly := e.rect.Y - m.topbarH // sidebar-local Y
 		label := "All Sources"
 		if e.index >= 0 {
@@ -360,7 +381,8 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 
 	// "＋ Browse newsgroups" entry (sidebar-local coords), shown below the subs
 	// when a Usenet server is configured.
-	if s.usenetAddr != "" && s.browseR.W > 0 {
+	if s.usenetAddr != "" && s.browseR.W > 0 &&
+		s.browseR.Y >= s.sideBandTop && s.browseR.Y+m.sideItemH <= s.sideBandBot {
 		ly := s.browseR.Y - m.topbarH
 		ir := toolkit.Rect{X: m.pad, Y: ly + (m.sideItemH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
 		drawPlusIcon(p, ir, th.Accent, s.iconStroke())
@@ -486,8 +508,15 @@ func (s *Scene) drawAuthBanner(p *painter.PixelPainter, img *image.RGBA, ap Auth
 
 // cardKey identifies a cached card sprite. A card only re-renders when its
 // content, width, scale, theme or thumbnail changes.
+// cardKey must capture enough of the item's identity that two different items
+// never share a sprite. it.ID is only stable *within* a Source (and is "" for
+// some feeds), so a HackerNews and a Lemmy post both keyed "1" — or two empty-ID
+// RSS items — would collide and blit the wrong card. Including Source + Title
+// disambiguates without hashing the whole item.
 type cardKey struct {
 	id    string
+	src   source.Kind
+	title string
 	w     int
 	scale float64
 	theme *toolkit.Theme
@@ -502,7 +531,7 @@ func (s *Scene) cardSprite(it source.Item, w int, onAccent, muteS toolkit.RGBA) 
 	if s.Thumbs != nil {
 		thumb = s.Thumbs[it.ID]
 	}
-	k := cardKey{id: it.ID, w: w, scale: s.Scale, theme: s.theme, thumb: thumb}
+	k := cardKey{id: it.ID, src: it.Source, title: it.Title, w: w, scale: s.Scale, theme: s.theme, thumb: thumb}
 	if s.cardCache == nil {
 		s.cardCache = map[cardKey]*image.RGBA{}
 	}
@@ -572,7 +601,10 @@ func (s *Scene) drawDot(p *painter.PixelPainter, x, cy int, col toolkit.RGBA) {
 // rounded pill only; the caller draws the label on top in the reader's
 // TrueType face. Shared by the item card and the Usenet group header.
 func (s *Scene) drawSourceBadge(p *painter.PixelPainter, r toolkit.Rect, k source.Kind) {
-	b := &toolkit.Badge{Text: sourceLabel(k), Fill: sourceColor(k), Ink: rgb(0xFFFFFF)}
+	// Ink is derived from the fill's luminance, not hard white: bright source
+	// colours (TikTok cyan 0x25F4EE, Lemmy 0x00BC8C) render white text almost
+	// illegibly; onAccentFor picks black on those and white on the dark fills.
+	b := &toolkit.Badge{Text: sourceLabel(k), Fill: sourceColor(k), Ink: onAccentFor(sourceColor(k))}
 	b.Font = ttFont(true, rpxOf(s, 10)) // render its own AA label (no text-on-top)
 	b.SetBounds(r)
 	b.Draw(p, s.theme)
@@ -626,11 +658,17 @@ func (s *Scene) HitTest(x, y int) Hit {
 		if inRect(s.accountsR, x, y) {
 			return Hit{Kind: HitAccounts}
 		}
-		if s.usenetAddr != "" && s.browseR.W > 0 && inRect(s.browseR, x, y) {
+		// The scrollable sub-list rows (subs + Browse) are only hittable inside the
+		// band; a row scrolled under the tabs or the footer must not be clickable
+		// through that chrome (which is drawn on top of it).
+		inBand := func(r toolkit.Rect) bool {
+			return r.Y >= s.sideBandTop && r.Y+m.sideItemH <= s.sideBandBot
+		}
+		if s.usenetAddr != "" && s.browseR.W > 0 && inBand(s.browseR) && inRect(s.browseR, x, y) {
 			return Hit{Kind: HitBrowse}
 		}
 		for _, e := range s.subs {
-			if inRect(e.rect, x, y) {
+			if inBand(e.rect) && inRect(e.rect, x, y) {
 				return Hit{Kind: HitSub, Sub: e.index}
 			}
 		}

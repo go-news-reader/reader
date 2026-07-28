@@ -102,6 +102,74 @@ func TestWinCharRune(t *testing.T) {
 	if r := winCharRune(0x7f); r != 0 { // DEL
 		t.Fatalf("winCharRune(0x7f) = %q want 0", r)
 	}
+	// D3: a lone surrogate half must not become a rune.
+	if r := winCharRune(0xD83D); r != 0 {
+		t.Fatalf("winCharRune(high surrogate) = %q want 0", r)
+	}
+	if r := winCharRune(0xDE00); r != 0 {
+		t.Fatalf("winCharRune(low surrogate) = %q want 0", r)
+	}
+}
+
+// D3: the assembler joins a surrogate pair into one astral rune and passes BMP
+// units straight through; unpaired halves and control units yield 0.
+func TestUTF16Assembler(t *testing.T) {
+	var a utf16Assembler
+	if r := a.next('x'); r != 'x' {
+		t.Fatalf("BMP unit = %q want 'x'", r)
+	}
+	// 😀 U+1F600 = high D83D, low DE00.
+	if r := a.next(0xD83D); r != 0 {
+		t.Fatalf("high surrogate should buffer (0), got %q", r)
+	}
+	if r := a.next(0xDE00); r != 0x1F600 {
+		t.Fatalf("pair = %#x want U+1F600", r)
+	}
+	// Unpaired low surrogate yields nothing.
+	if r := a.next(0xDE00); r != 0 {
+		t.Fatalf("unpaired low surrogate = %q want 0", r)
+	}
+	// A high surrogate followed by a non-surrogate cancels cleanly.
+	a.next(0xD83D)
+	if r := a.next('y'); r != 'y' {
+		t.Fatalf("dangling-high then BMP = %q want 'y'", r)
+	}
+}
+
+// D2: a printable keysym under a command-style modifier is suppressed (a
+// shortcut, not text); Shift alone still types; named keys always resolve.
+func TestX11KeyDecodeState(t *testing.T) {
+	if _, r := x11KeyDecodeState('v', x11Control); r != 0 {
+		t.Fatalf("Ctrl+v leaked rune %q", r)
+	}
+	if _, r := x11KeyDecodeState('f', x11Mod1); r != 0 {
+		t.Fatalf("Alt+f leaked rune %q", r)
+	}
+	if _, r := x11KeyDecodeState('a', 1<<0 /*Shift*/); r != 'a' {
+		t.Fatalf("Shift+a = %q want 'a'", r)
+	}
+	if _, r := x11KeyDecodeState('a', 0); r != 'a' {
+		t.Fatalf("plain a = %q want 'a'", r)
+	}
+	if name, _ := x11KeyDecodeState(ksReturn, x11Control); name != "Enter" {
+		t.Fatalf("Ctrl+Enter name = %q want Enter", name)
+	}
+}
+
+// D2: the Cocoa decoder suppresses a rune under Command/Control/Option but not
+// under Shift or no modifier.
+func TestCocoaSuppressesRune(t *testing.T) {
+	for _, m := range []uint64{nsCommand, nsControl, nsOption} {
+		if !cocoaSuppressesRune(m) {
+			t.Fatalf("modifier %#x should suppress", m)
+		}
+	}
+	if cocoaSuppressesRune(0) {
+		t.Fatal("no modifier should not suppress")
+	}
+	if cocoaSuppressesRune(1 << 17 /*shift*/) {
+		t.Fatal("Shift should not suppress")
+	}
 }
 
 func TestX11ButtonScroll(t *testing.T) {

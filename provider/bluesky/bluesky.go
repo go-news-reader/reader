@@ -92,7 +92,7 @@ func mapPost(channel string, p goat.Post) source.Item {
 		Permalink: "https://bsky.app/profile/" + p.Author.Handle + "/post/" + rkey,
 		Score:     p.LikeCount,
 		Comments:  p.ReplyCount,
-		Created:   p.CreatedAt.Unix(),
+		Created:   source.UnixOrZero(p.CreatedAt),
 	}
 	for _, img := range p.Images {
 		if img.Thumb != "" {

@@ -35,32 +35,32 @@ func (a *App) RefreshGroups() { a.loadGroups(true) }
 func (a *App) doLoadGroups(ctx context.Context, force bool) {
 	prov, ok := a.reg.Get(source.Usenet)
 	if !ok {
-		a.vm.SetStatus("Usenet server not configured")
+		a.vmStatus("Usenet server not configured")
 		return
 	}
 	g, ok := prov.(grouper)
 	if !ok {
-		a.vm.SetStatus("Usenet provider cannot list groups")
+		a.vmStatus("Usenet provider cannot list groups")
 		return
 	}
 
-	a.vm.SetLoad(true, 0, 1)
+	a.vmLoad(true, 0, 1)
 	fetch := g.Groups
 	if force {
 		fetch = g.RefreshGroups
 	}
 	names, err := fetch(ctx)
-	a.vm.SetLoad(false, 1, 1)
+	a.vmLoad(false, 1, 1)
 	if err != nil {
 		if ae, ok := source.AsAuthError(err); ok {
-			a.vm.SetAuthPrompts(authPrompts([]error{ae}))
+			a.vmDo(func() { a.vm.SetAuthPrompts(authPrompts([]error{ae})) })
 			return
 		}
-		a.vm.SetStatus("Group list failed: " + err.Error())
+		a.vmStatus("Group list failed: " + err.Error())
 		return
 	}
 	a.post(func() { a.scene.SetBrowseGroups(names) })
-	a.vm.SetStatus("")
+	a.vmStatus("")
 }
 
 // SubscribeGroup adds a usenet:<group> subscription to the active profile (when

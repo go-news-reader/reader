@@ -115,7 +115,7 @@ func mapVideo(username string, v gott.Video) source.Item {
 		Permalink: v.Permalink,
 		Score:     v.Likes,
 		Comments:  v.Comments,
-		Created:   v.CreateTime.Unix(),
+		Created:   source.UnixOrZero(v.CreateTime),
 	}
 	if v.CoverURL != "" {
 		it.Media = append(it.Media, source.Media{URL: v.CoverURL, Kind: source.MediaThumbnail})
