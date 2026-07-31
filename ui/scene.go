@@ -758,35 +758,31 @@ func (s *Scene) Scroll(dy int) {
 	}
 	if s.mode == ModeDetail {
 		s.detailScrollY += dy
-		s.layoutDetail()
-		s.detailScrollY = clampScroll(s.detailScrollY, s.detailContentH-(s.H-s.m.topbarH))
+		s.layoutDetail() // self-clamps detailScrollY (the refresh-time clamp)
 		s.touch()
 		return
 	}
 	if s.mode == ModeLog {
 		s.logScrollY += dy
-		s.layoutLog()
-		s.logScrollY = clampScroll(s.logScrollY, s.logContentH-(s.H-s.m.topbarH))
+		s.layoutLog() // self-clamps logScrollY
 		s.touch()
 		return
 	}
 	if s.mode == ModeAccounts {
 		s.accScrollY += dy
-		s.layoutAccounts()
-		s.accScrollY = clampScroll(s.accScrollY, s.accContentH-(s.H-s.m.topbarH))
+		s.layoutAccounts() // self-clamps accScrollY
 		s.touch()
 		return
 	}
 	if s.mode == ModeBrowse {
 		s.browseScrollY += dy
-		s.layoutBrowse()
-		s.browseScrollY = clampScroll(s.browseScrollY, s.browseContentH-(s.H-s.m.topbarH))
+		s.layoutBrowse() // self-clamps browseScrollY
 		s.touch()
 		return
 	}
 	// Feed view: a wheel over the preview pane scrolls the pane's content.
 	if s.previewR.W > 0 && s.lastMouseX >= s.previewR.X && s.previewContentH > s.previewR.H {
-		s.previewScrollY = clampScroll(s.previewScrollY+dy, s.previewContentH-s.previewR.H)
+		s.previewScrollY = clampPanelScroll(s.previewScrollY+dy, s.previewContentH, s.previewR.H)
 		s.touch()
 		return
 	}
@@ -801,7 +797,9 @@ func (s *Scene) Scroll(dy int) {
 	}
 	s.ScrollY += dy
 	s.layout()
-	s.ScrollY = clampScroll(s.ScrollY, s.contentH-(s.feedBottom()-s.m.topbarH))
+	// The feed measures contentH in render (its refresh), so clamp here against the
+	// last-known height for an immediate response; render re-clamps on resize.
+	s.ScrollY = clampPanelScroll(s.ScrollY, s.contentH, s.feedBottom()-s.m.topbarH)
 	s.touch()
 }
 
@@ -860,6 +858,17 @@ func (s *Scene) ensureRowVisible(row feedRow) {
 	}
 	s.ScrollY = clampScroll(s.ScrollY, s.contentH-viewH)
 	s.touch()
+}
+
+// clampPanelScroll re-clamps a scrollable panel's offset against its freshly
+// measured content and viewport heights. It is the reader's analog of Sencha's
+// Ext.scroll.Scroller.refresh(): a scroller owns its position and re-constrains it
+// on every (re)layout — tied to the geometry changing, not to the wheel event — so
+// a resize or content change can never leave a stale out-of-range offset. Every
+// layout*() calls it as its last step; the wheel handler then only nudges the
+// offset and relayouts, letting the layout own the clamp (one rule, one place).
+func clampPanelScroll(offset, contentH, viewportH int) int {
+	return clampScroll(offset, contentH-viewportH)
 }
 
 // clampScroll bounds v to [0, max] (max<0 => 0).

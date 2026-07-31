@@ -283,9 +283,11 @@ func (s *Scene) layoutBrowse() {
 		s.browseRows = append(s.browseRows, browseRowLayout{top: top, node: r.node, depth: r.depth})
 		top += m.sideItemH
 	}
-	// browseContentH is expressed relative to the topbar so the generic Scroll
-	// clamp (contentH - (H - topbarH)) yields the tree viewport correctly.
+	// browseContentH is expressed relative to the topbar so the viewport is
+	// (H - topbarH). Clamp here (the refresh-time clamp) so a resize can't leave a
+	// stale offset; the wheel handler then only nudges + relayouts.
 	s.browseContentH = (s.browseTreeTop - m.topbarH) + top
+	s.browseScrollY = clampPanelScroll(s.browseScrollY, s.browseContentH, s.H-m.topbarH)
 }
 
 // drawBrowse paints the newsgroup browser.

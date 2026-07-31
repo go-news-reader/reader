@@ -68,6 +68,7 @@ func (s *Scene) layoutLog() {
 	s.logBackR = toolkit.Rect{X: m.pad, Y: y, W: m.pad*2 + m.side.width("< Back"), H: m.searchH}
 	s.logRowH = rpxOf(s, 44)
 	s.logContentH = len(s.logEntries()) * s.logRowH
+	s.logScrollY = clampPanelScroll(s.logScrollY, s.logContentH, s.H-m.topbarH)
 }
 
 // drawLog paints the Network-log view.

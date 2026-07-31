@@ -177,7 +177,7 @@ func (s *Scene) layoutAccounts() {
 	s.accDoneR = toolkit.Rect{X: s.W - pad - dw, Y: (m.topbarH - btnH) / 2, W: dw, H: btnH}
 
 	top := m.topbarH + pad
-	y := top - s.accScrollY
+	y := top // laid out unscrolled; the scroll shift is applied after clamping
 
 	// Provider selector.
 	label(pad, y, "PROVIDER")
@@ -228,7 +228,22 @@ func (s *Scene) layoutAccounts() {
 		})
 		y += btnH + gap
 	}
-	s.accContentH = (y + s.accScrollY) - m.topbarH
+	// Everything above was laid out unscrolled; clamp the offset (the refresh-time
+	// clamp, robust to a resize) and shift the scrollable body up by it. The topbar
+	// Back/Done live in the fixed band and are not shifted — mirrors layoutSettings.
+	s.accContentH = y - m.topbarH
+	s.accScrollY = clampPanelScroll(s.accScrollY, s.accContentH, s.H-m.topbarH)
+	if dy := -s.accScrollY; dy != 0 {
+		for i := range s.accProvBtns {
+			s.accProvBtns[i].rect.Y += dy
+		}
+		for i := range s.accRows {
+			s.accRows[i].rect.Y += dy
+		}
+		for i := range s.accLabels {
+			s.accLabels[i].y += dy
+		}
+	}
 }
 
 // drawAccounts paints the credentials editor.
