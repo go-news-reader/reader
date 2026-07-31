@@ -129,13 +129,22 @@ func (s *Scene) feedScrollbarShown() bool {
 }
 
 // feedCardW is the feed content width for cards/banners: when the scrollbar is
-// shown it reserves a gutter so cards stop before the bar instead of sitting
-// under it. Draw and hit-test both go through it so they stay aligned.
+// shown it reserves a gutter so cards stop before the bar's left edge instead of
+// sitting under it. It derives the bar's left edge from the same placement rule
+// drawVScrollbar uses (scrollbarRightX with the same grip), so cards and bar stay
+// aligned however the bar is positioned. Draw and hit-test both go through it.
 func (s *Scene) feedCardW(feedW int) int {
-	if s.feedScrollbarShown() {
-		return feedW - s.scrollbarW() - rpxOf(s, 8)
+	if !s.feedScrollbarShown() {
+		return feedW
 	}
-	return feedW
+	// gripX in feed-relative coords: when the preview pane is open its divider grip
+	// sits at the feed's right edge (feedW); otherwise there is no grip (0).
+	gripX := 0
+	if s.previewR.W > 0 {
+		gripX = feedW
+	}
+	barLeft := s.scrollbarRightX(feedW, gripX) - s.scrollbarW()
+	return barLeft - rpxOf(s, 6) // a small gap between the card edge and the bar
 }
 
 // SelectPreview loads it into the preview pane (clicking a feed item), resetting
@@ -388,7 +397,7 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	col.Draw(p, th)
 
 	// Scrollbar down the pane's right edge when the preview overflows.
-	s.drawVScrollbar(p, r, s.previewContentH, s.previewScrollY)
+	s.drawVScrollbar(p, r, 0, s.previewContentH, s.previewScrollY)
 
 	// "Open" pill (fixed, over the content).
 	if s.previewOpenR.W > 0 {

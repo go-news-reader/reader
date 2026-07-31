@@ -312,7 +312,7 @@ func (s *Scene) drawBrowse(buf []byte) {
 
 	// Scrollbar down the right edge when the tree overflows (a large server carries
 	// tens of thousands of groups; expanding hierarchies grows it further).
-	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, s.browseContentH, s.browseScrollY)
+	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.browseContentH, s.browseScrollY)
 
 	// Topbar (accent) with Back, title + server, and the Refresh control, drawn
 	// over any tree overflow.

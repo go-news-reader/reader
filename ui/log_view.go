@@ -148,7 +148,7 @@ func (s *Scene) drawLog(buf []byte) {
 	col.Draw(p, th)
 
 	// Scrollbar down the right edge when the log overflows the viewport.
-	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, s.logContentH, s.logScrollY)
+	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.logContentH, s.logScrollY)
 
 	// Topbar (accent) over any overflow: "< Back" + title.
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
