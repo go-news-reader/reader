@@ -263,10 +263,10 @@ func TestSettingsTypeRuneBackspace(t *testing.T) {
 		t.Fatal("trimLastRune empty")
 	}
 	// Scroll is inert in the settings view.
-	s.ScrollY = 5
+	s.feedScroll.offset = 5
 	s.Scroll(100)
-	if s.ScrollY != 5 {
-		t.Fatalf("settings scroll moved: %d", s.ScrollY)
+	if s.feedScroll.offset != 5 {
+		t.Fatalf("settings scroll moved: %d", s.feedScroll.offset)
 	}
 }
 

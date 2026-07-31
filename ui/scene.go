@@ -144,8 +144,8 @@ type Scene struct {
 
 	// authPrompts drive the in-feed "needs sign-in" banner (one row each).
 	authPrompts []AuthPrompt
-	ScrollY     int
-	Scale       float64 // display scale (zoom × devicePixelRatio); 0 => 1
+	feedScroll  panelScroll // the feed card list's scroll position (see panelScroll)
+	Scale       float64     // display scale (zoom × devicePixelRatio); 0 => 1
 
 	// Live-loading feedback (streaming aggregation). loading is set while a
 	// refresh is in progress; loadDone/loadTotal track how many sources have
@@ -188,8 +188,7 @@ type Scene struct {
 	accBuf      map[source.Kind]map[string]string
 	accSel      source.Kind
 	accFocus    string
-	accScrollY  int
-	accContentH int
+	accScroll   panelScroll
 	accLabels   []sLabel
 	accProvBtns []accProvBtn
 	accRows     []accFieldRow
@@ -208,17 +207,15 @@ type Scene struct {
 	searchFocused bool
 
 	// Detail (reading) view: ModeDetail shows a single opened item in-app.
-	mode           Mode
-	detail         source.Item
-	detailScrollY  int
-	detailContentH int
-	backR, openR   toolkit.Rect
+	mode         Mode
+	detail       source.Item
+	detailScroll panelScroll
+	backR, openR toolkit.Rect
 
 	// Settings (ModeSettings) scroll: the editor can be taller than the surface
 	// (many subscriptions, high zoom, or a short window), so it scrolls like the
-	// other views. settingsContentH is the laid-out height below the topbar.
-	settingsScrollY  int
-	settingsContentH int
+	// other views.
+	settingsScroll panelScroll
 
 	// Right-hand preview/details pane (feed view). It is docked on the right and
 	// shows the item last clicked in the feed — its badge, title, meta, an image
@@ -229,8 +226,7 @@ type Scene struct {
 	// SetThumb lands. previewOpenR/previewImgR are the laid-out button/image rects.
 	previewItem       source.Item
 	previewHas        bool
-	previewScrollY    int
-	previewContentH   int
+	previewScroll     panelScroll
 	previewImgPending bool
 	previewR          toolkit.Rect // the whole pane
 	previewOpenR      toolkit.Rect // "Open" (full detail) button
@@ -257,11 +253,10 @@ type Scene struct {
 	// Network-log (ModeLog) view: a scrollable, newest-first list of the HTTP
 	// exchanges the providers made, fed live from an injected source so the app
 	// need not push updates. logSource is nil when no recorder is wired.
-	logSource   func() []LogEntry
-	logScrollY  int
-	logContentH int
-	logRowH     int
-	logBackR    toolkit.Rect
+	logSource func() []LogEntry
+	logScroll panelScroll
+	logRowH   int
+	logBackR  toolkit.Rect
 
 	// Unified sidebar width model (feed view). The effective sidebar width is 0
 	// when collapsed, else the user-dragged width (device px, clamped) or the
@@ -303,8 +298,7 @@ type Scene struct {
 	browseEntry    *toolkit.SearchEntry
 	browseFocused  bool
 	browseExpanded map[string]bool
-	browseScrollY  int
-	browseContentH int
+	browseScroll   panelScroll
 	browseRows     []browseRowLayout
 	browseSel      int // keyboard-selected row index into browseRows
 	browseBackR    toolkit.Rect
@@ -336,7 +330,6 @@ type Scene struct {
 	searchR   toolkit.Rect
 	rows      []feedRow
 	authRows  []authRowLayout // in-feed sign-in banner rows (above the cards)
-	contentH  int
 
 	// cardCache holds rendered card sprites so scrolling is a memcpy-blit
 	// rather than a re-rasterisation of every glyph. Invalidated whenever the
@@ -397,7 +390,7 @@ func (s *Scene) SetTheme(t *toolkit.Theme) {
 // SetItems replaces the feed (caller merges/sorts newest-first).
 func (s *Scene) SetItems(items []source.Item) {
 	s.Items = items
-	s.ScrollY = 0
+	s.feedScroll.offset = 0
 	s.subsRev++ // the sidebar shows per-group post counts derived from the items
 	s.invalidateCards()
 	s.touch()
@@ -645,7 +638,7 @@ func (s *Scene) TypeRune(r rune) {
 	if s.mode == ModeBrowse {
 		if s.browseFocused {
 			s.browseEntry.OnEvent(toolkit.Event{Kind: toolkit.EventChar, Code: string(r)})
-			s.browseScrollY = 0
+			s.browseScroll.offset = 0
 			s.touch()
 		}
 		return
@@ -678,7 +671,7 @@ func (s *Scene) Backspace() {
 	if s.mode == ModeBrowse {
 		if s.browseFocused && s.browseEntry.Text != "" {
 			s.browseEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
-			s.browseScrollY = 0
+			s.browseScroll.offset = 0
 			s.touch()
 		}
 		return
@@ -723,7 +716,7 @@ func (s *Scene) Detail() source.Item { return s.detail }
 func (s *Scene) OpenDetail(it source.Item) {
 	s.mode = ModeDetail
 	s.detail = it
-	s.detailScrollY = 0
+	s.detailScroll.offset = 0
 	s.touch()
 }
 
@@ -751,38 +744,38 @@ func (s *Scene) GroupExpanded(base string) bool { return s.groupExpanded[base] }
 // its content height.
 func (s *Scene) Scroll(dy int) {
 	if s.mode == ModeSettings {
-		s.settingsScrollY += dy
+		s.settingsScroll.offset += dy
 		s.layoutSettings() // self-clamps settingsScrollY against the content height
 		s.touch()
 		return
 	}
 	if s.mode == ModeDetail {
-		s.detailScrollY += dy
+		s.detailScroll.offset += dy
 		s.layoutDetail() // self-clamps detailScrollY (the refresh-time clamp)
 		s.touch()
 		return
 	}
 	if s.mode == ModeLog {
-		s.logScrollY += dy
+		s.logScroll.offset += dy
 		s.layoutLog() // self-clamps logScrollY
 		s.touch()
 		return
 	}
 	if s.mode == ModeAccounts {
-		s.accScrollY += dy
+		s.accScroll.offset += dy
 		s.layoutAccounts() // self-clamps accScrollY
 		s.touch()
 		return
 	}
 	if s.mode == ModeBrowse {
-		s.browseScrollY += dy
+		s.browseScroll.offset += dy
 		s.layoutBrowse() // self-clamps browseScrollY
 		s.touch()
 		return
 	}
 	// Feed view: a wheel over the preview pane scrolls the pane's content.
-	if s.previewR.W > 0 && s.lastMouseX >= s.previewR.X && s.previewContentH > s.previewR.H {
-		s.previewScrollY = clampPanelScroll(s.previewScrollY+dy, s.previewContentH, s.previewR.H)
+	if s.previewR.W > 0 && s.lastMouseX >= s.previewR.X && s.previewScroll.needsBar() {
+		s.previewScroll.scrollBy(dy)
 		s.touch()
 		return
 	}
@@ -795,11 +788,11 @@ func (s *Scene) Scroll(dy int) {
 		s.touch()
 		return
 	}
-	s.ScrollY += dy
+	// Nudge the offset, then relayout: layout() measures the feed's content height
+	// and calls feedScroll.refresh, which clamps against the fresh sizes (so the dy
+	// must be added before, not clamped against stale sizes).
+	s.feedScroll.offset += dy
 	s.layout()
-	// The feed measures contentH in render (its refresh), so clamp here against the
-	// last-known height for an immediate response; render re-clamps on resize.
-	s.ScrollY = clampPanelScroll(s.ScrollY, s.contentH, s.feedBottom()-s.m.topbarH)
 	s.touch()
 }
 
@@ -851,25 +844,47 @@ func (s *Scene) NavItem(dir int) (it source.Item, ok bool) {
 func (s *Scene) ensureRowVisible(row feedRow) {
 	viewH := s.feedBottom() - s.m.topbarH
 	switch {
-	case row.top < s.ScrollY:
-		s.ScrollY = row.top
-	case row.top+row.height > s.ScrollY+viewH:
-		s.ScrollY = row.top + row.height - viewH
+	case row.top < s.feedScroll.offset:
+		s.feedScroll.offset = row.top
+	case row.top+row.height > s.feedScroll.offset+viewH:
+		s.feedScroll.offset = row.top + row.height - viewH
 	}
-	s.ScrollY = clampScroll(s.ScrollY, s.contentH-viewH)
+	s.feedScroll.offset = clampScroll(s.feedScroll.offset, s.feedScroll.contentH-viewH)
 	s.touch()
 }
 
-// clampPanelScroll re-clamps a scrollable panel's offset against its freshly
-// measured content and viewport heights. It is the reader's analog of Sencha's
-// Ext.scroll.Scroller.refresh(): a scroller owns its position and re-constrains it
-// on every (re)layout — tied to the geometry changing, not to the wheel event — so
-// a resize or content change can never leave a stale out-of-range offset. Every
-// layout*() calls it as its last step; the wheel handler then only nudges the
-// offset and relayouts, letting the layout own the clamp (one rule, one place).
-func clampPanelScroll(offset, contentH, viewportH int) int {
-	return clampScroll(offset, contentH-viewportH)
+// panelScroll owns one scrollable panel's vertical position — the reader's analog
+// of Sencha's Ext.scroll.Scroller. It bundles the offset with the last measured
+// content and viewport heights so the offset is never stored apart from the sizes
+// that bound it. Panels call refresh() at the end of their layout (the
+// Scroller.refresh() analog), and the wheel handler calls scrollBy(); both keep
+// the offset clamped, so a resize or content change can never leave it out of range.
+type panelScroll struct {
+	offset   int // current scroll Y, always within [0, max()]
+	contentH int // total content height, measured at layout
+	viewport int // visible height, measured at layout
 }
+
+// refresh records freshly measured sizes and re-clamps the offset. It is the last
+// step of a panel's layout — clamping is tied to the geometry changing, not to the
+// wheel event, so one rule in one place keeps every panel resize-safe.
+func (ps *panelScroll) refresh(contentH, viewport int) {
+	ps.contentH, ps.viewport = contentH, viewport
+	ps.offset = clampScroll(ps.offset, ps.max())
+}
+
+// max is the largest valid offset — content beyond the viewport (clampScroll
+// floors a negative to 0 when everything fits).
+func (ps *panelScroll) max() int { return ps.contentH - ps.viewport }
+
+// scrollBy nudges the offset by dy and re-clamps against the current sizes.
+func (ps *panelScroll) scrollBy(dy int) { ps.offset = clampScroll(ps.offset+dy, ps.max()) }
+
+// needsBar reports whether the content overflows the viewport (a scrollbar shows).
+func (ps *panelScroll) needsBar() bool { return ps.viewport > 0 && ps.contentH > ps.viewport }
+
+// ScrollY exposes the feed's current scroll offset (used by the window app layer).
+func (s *Scene) ScrollY() int { return s.feedScroll.offset }
 
 // clampScroll bounds v to [0, max] (max<0 => 0).
 func clampScroll(v, max int) int {

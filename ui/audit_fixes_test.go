@@ -25,7 +25,7 @@ func TestBrowseHitTestClampsChrome(t *testing.T) {
 	for i := 0; i < 12; i++ { // scroll so rows leave the viewport top AND bottom
 		s.Scroll(60)
 	}
-	if s.browseScrollY <= 0 {
+	if s.browseScroll.offset <= 0 {
 		t.Fatal("expected the tree to have scrolled")
 	}
 	if s.browseTreeTop <= s.m.topbarH {
@@ -54,7 +54,7 @@ func TestBrowseHitTestSubscribeRect(t *testing.T) {
 	if !r.node.IsGroup {
 		t.Fatalf("first row not a leaf group: %+v", r.node)
 	}
-	top := s.browseTreeTop + r.top - s.browseScrollY
+	top := s.browseTreeTop + r.top - s.browseScroll.offset
 	m := s.m
 	sr := s.browseSubscribeRect(m.pad, top, s.W-2*m.pad)
 	if h := s.browseHitTest(sr.X+sr.W/2, sr.Y+sr.H/2); h.Kind != HitSubscribeGroup || h.Value != "control" {
@@ -125,15 +125,15 @@ func TestAccountsHitTestClampsTopbar(t *testing.T) {
 func TestAccountsScrollResetOnOpen(t *testing.T) {
 	s := New(500, 300, ThemeFor(OSMac, false))
 	s.OpenAccounts()
-	s.accScrollY = 999 // simulate a prior scroll
+	s.accScroll.offset = 999 // simulate a prior scroll
 	s.OpenAccounts()
-	if s.accScrollY != 0 {
-		t.Fatalf("OpenAccounts left accScrollY=%d, want 0", s.accScrollY)
+	if s.accScroll.offset != 0 {
+		t.Fatalf("OpenAccounts left accScrollY=%d, want 0", s.accScroll.offset)
 	}
-	s.accScrollY = 777
+	s.accScroll.offset = 777
 	s.SelectAccount(source.Usenet)
-	if s.accScrollY != 0 {
-		t.Fatalf("SelectAccount left accScrollY=%d, want 0", s.accScrollY)
+	if s.accScroll.offset != 0 {
+		t.Fatalf("SelectAccount left accScrollY=%d, want 0", s.accScroll.offset)
 	}
 }
 
@@ -148,7 +148,7 @@ func TestSettingsScrollReachesBottom(t *testing.T) {
 	s.SetProfiles([]settings.Profile{{Name: "P", Subs: many}}, 0)
 	s.OpenSettings()
 	s.layoutSettings()
-	if s.settingsContentH <= s.H-s.m.topbarH {
+	if s.settingsScroll.contentH <= s.H-s.m.topbarH {
 		t.Skip("content fits; window too tall to exercise overflow")
 	}
 	// Before scrolling, the cache field sits below the viewport (unreachable).

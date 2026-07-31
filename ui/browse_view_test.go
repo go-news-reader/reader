@@ -167,7 +167,7 @@ func TestBrowseSubscribeMarksAndDisables(t *testing.T) {
 	s.layoutBrowse()
 	for _, r := range s.browseRows {
 		if r.node.Name == h.Value {
-			top := s.browseTreeTop + r.top - s.browseScrollY
+			top := s.browseTreeTop + r.top - s.browseScroll.offset
 			sr := s.browseSubscribeRect(s.m.pad, top, s.W-2*s.m.pad)
 			if got := s.browseHitTest(sr.X+sr.W/2, top+2); got.Kind == HitSubscribeGroup {
 				t.Fatal("subscribed leaf must not offer Subscribe again")
@@ -199,18 +199,18 @@ func TestBrowseScrollClamps(t *testing.T) {
 	s.SetBrowseGroups(names)
 	s.OpenBrowse()
 	s.Scroll(100000) // clamp to the bottom
-	bottom := s.browseScrollY
+	bottom := s.browseScroll.offset
 	if bottom <= 0 {
 		t.Fatalf("scroll did not advance: %d", bottom)
 	}
 	s.Scroll(600) // scroll partway so early rows fall above the viewport
 	renderPNG(t, s, "browse-scrolled")
-	if s.browseScrollY == 0 {
+	if s.browseScroll.offset == 0 {
 		t.Fatal("partial scroll should be non-zero")
 	}
 	s.Scroll(-100000) // clamp back to the top
-	if s.browseScrollY != 0 {
-		t.Fatalf("scroll not clamped to 0: %d", s.browseScrollY)
+	if s.browseScroll.offset != 0 {
+		t.Fatalf("scroll not clamped to 0: %d", s.browseScroll.offset)
 	}
 }
 
@@ -259,7 +259,7 @@ func TestBrowseSubscribeRectOnGroupWithChildren(t *testing.T) {
 	if row.node == nil || !row.node.IsGroup || len(row.node.Children) == 0 {
 		t.Fatalf("alt.test not a group-with-children: %+v", row.node)
 	}
-	top := s.browseTreeTop + row.top - s.browseScrollY
+	top := s.browseTreeTop + row.top - s.browseScroll.offset
 	sr := s.browseSubscribeRect(s.m.pad, top, s.W-2*s.m.pad)
 	// The Subscribe control subscribes (branch 1).
 	if got := s.browseHitTest(sr.X+sr.W/2, sr.Y+sr.H/2); got.Kind != HitSubscribeGroup || got.Value != "alt.test" {
@@ -353,9 +353,9 @@ func TestSetUsenetServerNoOp(t *testing.T) {
 
 func TestBrowseInvalidateAndClose(t *testing.T) {
 	s := browseScene()
-	s.browseScrollY = 40
+	s.browseScroll.offset = 40
 	s.InvalidateBrowse()
-	if s.browseScrollY != 0 {
+	if s.browseScroll.offset != 0 {
 		t.Fatal("InvalidateBrowse should reset scroll")
 	}
 	s.CloseBrowse()

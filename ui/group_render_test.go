@@ -62,7 +62,7 @@ func TestGroupCollapsedSnapshotAndHits(t *testing.T) {
 	if r.height != s.m.groupHeadH {
 		t.Fatalf("collapsed height = %d, want groupHeadH %d", r.height, s.m.groupHeadH)
 	}
-	collapsedContentH := s.contentH
+	collapsedContentH := s.feedScroll.contentH
 
 	// The Usenet badge (source colour) and the accent Reconstruct pill both drew.
 	rowY := s.m.topbarH + r.top
@@ -113,8 +113,8 @@ func TestGroupCollapsedSnapshotAndHits(t *testing.T) {
 	if er.height <= r.height {
 		t.Fatalf("expanded height %d not greater than collapsed %d", er.height, r.height)
 	}
-	if s.contentH <= collapsedContentH {
-		t.Fatalf("content height did not grow on expand: %d <= %d", s.contentH, collapsedContentH)
+	if s.feedScroll.contentH <= collapsedContentH {
+		t.Fatalf("content height did not grow on expand: %d <= %d", s.feedScroll.contentH, collapsedContentH)
 	}
 }
 

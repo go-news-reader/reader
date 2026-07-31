@@ -16,9 +16,9 @@ func TestOpenCloseDetail(t *testing.T) {
 		t.Fatal("default mode should be feed")
 	}
 	it := source.Item{ID: "x", Source: source.Reddit, Title: "Deep dive", Link: "https://x"}
-	s.ScrollY = 40
+	s.feedScroll.offset = 40
 	s.OpenDetail(it)
-	if s.Mode() != ModeDetail || s.Detail().ID != "x" || s.detailScrollY != 0 {
+	if s.Mode() != ModeDetail || s.Detail().ID != "x" || s.detailScroll.offset != 0 {
 		t.Fatalf("open detail state: mode=%v item=%q", s.Mode(), s.Detail().ID)
 	}
 	s.CloseDetail()
@@ -100,18 +100,18 @@ func TestDetailScroll(t *testing.T) {
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf) // establishes detailContentH + exercises the offscreen body-skip
 	s.Scroll(1 << 20)
-	if s.detailScrollY <= 0 {
-		t.Fatalf("scroll did not advance: %d", s.detailScrollY)
+	if s.detailScroll.offset <= 0 {
+		t.Fatalf("scroll did not advance: %d", s.detailScroll.offset)
 	}
-	max := s.detailScrollY
+	max := s.detailScroll.offset
 	s.Scroll(-1 << 20)
-	if s.detailScrollY != 0 {
-		t.Fatalf("neg clamp = %d", s.detailScrollY)
+	if s.detailScroll.offset != 0 {
+		t.Fatalf("neg clamp = %d", s.detailScroll.offset)
 	}
 	s.Scroll(max / 2)
 	s.Draw(buf) // draw scrolled (top body lines now above the viewport)
-	if s.detailScrollY != max/2 {
-		t.Fatalf("mid scroll = %d", s.detailScrollY)
+	if s.detailScroll.offset != max/2 {
+		t.Fatalf("mid scroll = %d", s.detailScroll.offset)
 	}
 }
 

@@ -97,7 +97,7 @@ func TestNavScrollsIntoView(t *testing.T) {
 	if it.ID != "39" {
 		t.Fatalf("did not reach the last item: %q", it.ID)
 	}
-	if s.ScrollY == 0 {
+	if s.feedScroll.offset == 0 {
 		t.Fatal("navigating to the last item should scroll the feed down")
 	}
 	// Walk back to the top; the feed scrolls up so the first card is flush with
@@ -106,7 +106,7 @@ func TestNavScrollsIntoView(t *testing.T) {
 		it, _ = s.NavItem(-1)
 		s.SelectPreview(it)
 	}
-	if s.ScrollY != s.rows[0].top {
-		t.Fatalf("navigating to the top should scroll to the first row (%d), got %d", s.rows[0].top, s.ScrollY)
+	if s.feedScroll.offset != s.rows[0].top {
+		t.Fatalf("navigating to the top should scroll to the first row (%d), got %d", s.rows[0].top, s.feedScroll.offset)
 	}
 }

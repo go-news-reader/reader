@@ -69,9 +69,9 @@ func TestNewClampAndScale(t *testing.T) {
 
 func TestSetters(t *testing.T) {
 	s := newScene()
-	s.ScrollY = 50
+	s.feedScroll.offset = 50
 	s.SetItems(nil)
-	if s.ScrollY != 0 {
+	if s.feedScroll.offset != 0 {
 		t.Fatal("SetItems should reset scroll")
 	}
 	s.SetTheme(nil) // no-op
@@ -168,8 +168,8 @@ func TestScrollClamp(t *testing.T) {
 	// Short content: max < 0, scroll pinned to 0.
 	s.SetItems(sampleItems()[:1])
 	s.Scroll(100)
-	if s.ScrollY != 0 {
-		t.Fatalf("short content scroll = %d", s.ScrollY)
+	if s.feedScroll.offset != 0 {
+		t.Fatalf("short content scroll = %d", s.feedScroll.offset)
 	}
 	// Tall content: many items so contentH exceeds viewport.
 	many := make([]source.Item, 40)
@@ -178,17 +178,17 @@ func TestScrollClamp(t *testing.T) {
 	}
 	s.SetItems(many)
 	s.Scroll(100000) // clamp to max
-	if s.ScrollY <= 0 {
-		t.Fatalf("expected positive clamped scroll, got %d", s.ScrollY)
+	if s.feedScroll.offset <= 0 {
+		t.Fatalf("expected positive clamped scroll, got %d", s.feedScroll.offset)
 	}
-	max := s.ScrollY
+	max := s.feedScroll.offset
 	s.Scroll(-100000) // clamp to 0
-	if s.ScrollY != 0 {
-		t.Fatalf("neg clamp = %d", s.ScrollY)
+	if s.feedScroll.offset != 0 {
+		t.Fatalf("neg clamp = %d", s.feedScroll.offset)
 	}
 	s.Scroll(max / 2) // within range
-	if s.ScrollY != max/2 {
-		t.Fatalf("mid scroll = %d want %d", s.ScrollY, max/2)
+	if s.feedScroll.offset != max/2 {
+		t.Fatalf("mid scroll = %d want %d", s.feedScroll.offset, max/2)
 	}
 }
 
@@ -462,7 +462,7 @@ func BenchmarkScrollCached(b *testing.B) {
 	s.Draw(buf) // warm cache
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		s.ScrollY = i % 400
+		s.feedScroll.offset = i % 400
 		s.Draw(buf)
 	}
 }
@@ -478,7 +478,7 @@ func BenchmarkScrollUncached(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s.invalidateCards() // force full re-rasterisation every frame
-		s.ScrollY = i % 400
+		s.feedScroll.offset = i % 400
 		s.Draw(buf)
 	}
 }

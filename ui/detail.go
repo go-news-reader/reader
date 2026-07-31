@@ -33,8 +33,7 @@ func (s *Scene) layoutDetail() {
 	} else {
 		s.openR = toolkit.Rect{}
 	}
-	s.detailContentH = s.detailContent().height
-	s.detailScrollY = clampPanelScroll(s.detailScrollY, s.detailContentH, s.H-m.topbarH)
+	s.detailScroll.refresh(s.detailContent().height, s.H-m.topbarH)
 }
 
 // detailContent lays out (wraps + measures) the reading-view body. It is shared
@@ -142,11 +141,11 @@ func (s *Scene) drawDetail(buf []byte) {
 	for _, ln := range d.bodyLines {
 		col.AddFixed(&textLine{face: d.bodyFace, text: ln, ink: th.OnSurface, img: img}, d.bodyFace.height+rpxOf(s, 3))
 	}
-	col.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.detailScrollY, W: d.w, H: d.height})
+	col.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.detailScroll.offset, W: d.w, H: d.height})
 	col.Draw(p, th)
 
 	// Scrollbar down the right edge when the article overflows the viewport.
-	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.detailContentH, s.detailScrollY)
+	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.detailScroll.contentH, s.detailScroll.offset)
 
 	// --- topbar chrome (over content) ---
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)

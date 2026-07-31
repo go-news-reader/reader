@@ -48,7 +48,7 @@ func (s *Scene) LogEntries() []LogEntry { return s.logEntries() }
 // OpenLog enters the Network-log view.
 func (s *Scene) OpenLog() {
 	s.mode = ModeLog
-	s.logScrollY = 0
+	s.logScroll.offset = 0
 	s.touch()
 }
 
@@ -67,8 +67,7 @@ func (s *Scene) layoutLog() {
 	y := (m.topbarH - m.searchH) / 2
 	s.logBackR = toolkit.Rect{X: m.pad, Y: y, W: m.pad*2 + m.side.width("< Back"), H: m.searchH}
 	s.logRowH = rpxOf(s, 44)
-	s.logContentH = len(s.logEntries()) * s.logRowH
-	s.logScrollY = clampPanelScroll(s.logScrollY, s.logContentH, s.H-m.topbarH)
+	s.logScroll.refresh(len(s.logEntries())*s.logRowH, s.H-m.topbarH)
 }
 
 // drawLog paints the Network-log view.
@@ -133,7 +132,7 @@ func (s *Scene) drawLog(buf []byte) {
 	x := m.pad * 2
 	// Rows stop at the shared gutter when the scrollbar is shown (same rule as the
 	// feed/browse), so nothing paints under the bar.
-	w := s.scrollClampRight(s.W-m.pad, s.W, 0, s.scrollbarNeeded(s.logContentH, s.H-m.topbarH)) - x
+	w := s.scrollClampRight(s.W-m.pad, s.W, 0, s.scrollbarNeeded(s.logScroll.contentH, s.H-m.topbarH)) - x
 
 	if len(entries) == 0 {
 		m.meta.draw(img, x, m.topbarH+m.pad, "No requests yet", muteS)
@@ -147,11 +146,11 @@ func (s *Scene) drawLog(buf []byte) {
 	for _, e := range entries {
 		col.AddFixed(&logRow{s: s, e: e, p: p, img: img}, rowH)
 	}
-	col.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.logScrollY, W: w, H: len(entries) * rowH})
+	col.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.logScroll.offset, W: w, H: len(entries) * rowH})
 	col.Draw(p, th)
 
 	// Scrollbar down the right edge when the log overflows the viewport.
-	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.logContentH, s.logScrollY)
+	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.logScroll.contentH, s.logScroll.offset)
 
 	// Topbar (accent) over any overflow: "< Back" + title.
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)

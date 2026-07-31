@@ -125,7 +125,7 @@ func (s *Scene) feedGeom() (x, w int) {
 // feedScrollbarShown reports whether the feed's vertical scrollbar is visible
 // (its content overflows the viewport between the topbar and the download panel).
 func (s *Scene) feedScrollbarShown() bool {
-	return s.contentH > s.feedBottom()-s.m.topbarH
+	return s.feedScroll.contentH > s.feedBottom()-s.m.topbarH
 }
 
 // feedCardW is the feed content width for cards/banners: when the scrollbar is
@@ -149,7 +149,7 @@ func (s *Scene) feedCardW(feedW int) int {
 func (s *Scene) SelectPreview(it source.Item) {
 	s.previewItem = it
 	s.previewHas = true
-	s.previewScrollY = 0
+	s.previewScroll.offset = 0
 	s.previewImgPending = false
 	s.touch()
 }
@@ -282,7 +282,7 @@ func (s *Scene) layoutPreview() {
 		s.previewR = toolkit.Rect{}
 		s.previewOpenR = toolkit.Rect{}
 		s.previewImgR = toolkit.Rect{}
-		s.previewContentH = 0
+		s.previewScroll.contentH = 0
 		return
 	}
 	s.previewR = toolkit.Rect{X: s.W - pw, Y: m.topbarH, W: pw, H: s.feedBottom() - m.topbarH}
@@ -295,13 +295,12 @@ func (s *Scene) layoutPreview() {
 		s.previewOpenR = toolkit.Rect{}
 	}
 	if !s.previewHas {
-		s.previewContentH = 0
+		s.previewScroll.contentH = 0
 		s.previewImgR = toolkit.Rect{}
 		return
 	}
 	d := s.previewContent()
-	s.previewContentH = d.height
-	s.previewScrollY = clampPanelScroll(s.previewScrollY, s.previewContentH, s.previewR.H)
+	s.previewScroll.refresh(d.height, s.previewR.H)
 }
 
 // drawPreview paints the pane: its surface, left divider, and either the empty
@@ -390,11 +389,11 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	for _, ln := range d.bodyLines {
 		col.AddFixed(&textLine{face: d.bodyFace, text: ln, ink: th.OnSurface, img: img}, d.bodyFace.height+rpxOf(s, 3))
 	}
-	col.SetBounds(toolkit.Rect{X: x, Y: r.Y + m.pad - s.previewScrollY, W: d.innerW, H: d.height})
+	col.SetBounds(toolkit.Rect{X: x, Y: r.Y + m.pad - s.previewScroll.offset, W: d.innerW, H: d.height})
 	col.Draw(p, th)
 
 	// Scrollbar down the pane's right edge when the preview overflows.
-	s.drawVScrollbar(p, r, 0, s.previewContentH, s.previewScrollY)
+	s.drawVScrollbar(p, r, 0, s.previewScroll.contentH, s.previewScroll.offset)
 
 	// "Open" pill (fixed, over the content).
 	if s.previewOpenR.W > 0 {
