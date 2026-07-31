@@ -104,8 +104,8 @@ func TestScroll(t *testing.T) {
 	}
 	a.Scene().SetItems(items)
 	New(a).Scroll(120)
-	if a.Scene().ScrollY <= 0 {
-		t.Fatalf("ScrollY = %d, want > 0", a.Scene().ScrollY)
+	if a.Scene().ScrollY() <= 0 {
+		t.Fatalf("ScrollY = %d, want > 0", a.Scene().ScrollY())
 	}
 }
 

@@ -20,15 +20,15 @@ func TestScrollClampsOnResize(t *testing.T) {
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
 	s.Scroll(1 << 20) // pin to the bottom
-	if s.detailScrollY == 0 {
+	if s.detailScroll.offset == 0 {
 		t.Fatal("precondition: detail should be scrolled off zero")
 	}
 
 	// Grow the window taller than the whole article — no Scroll() call.
 	s.Resize(400, 4000)
 	s.layoutDetail()
-	if s.detailScrollY != 0 {
-		t.Fatalf("resize did not re-clamp detailScrollY: %d (want 0, content now fits)", s.detailScrollY)
+	if s.detailScroll.offset != 0 {
+		t.Fatalf("resize did not re-clamp detailScrollY: %d (want 0, content now fits)", s.detailScroll.offset)
 	}
 
 	// Log view: same property.
@@ -42,12 +42,27 @@ func TestScrollClampsOnResize(t *testing.T) {
 	buf2 := make([]byte, s2.W*s2.H*4)
 	s2.Draw(buf2)
 	s2.Scroll(1 << 20)
-	if s2.logScrollY == 0 {
+	if s2.logScroll.offset == 0 {
 		t.Fatal("precondition: log should be scrolled off zero")
 	}
 	s2.Resize(400, 20000)
 	s2.layoutLog()
-	if s2.logScrollY != 0 {
-		t.Fatalf("resize did not re-clamp logScrollY: %d (want 0)", s2.logScrollY)
+	if s2.logScroll.offset != 0 {
+		t.Fatalf("resize did not re-clamp logScrollY: %d (want 0)", s2.logScroll.offset)
+	}
+}
+
+// TestScrollYAccessor checks the exported feed-offset accessor reflects the
+// underlying scroller (the window-app layer reads scroll position through it).
+func TestScrollYAccessor(t *testing.T) {
+	s := New(400, 300, nil)
+	many := make([]source.Item, 40)
+	for i := range many {
+		many[i] = source.Item{ID: string(rune('a' + i%26)), Source: source.Reddit, Title: "t", Score: -1, Comments: -1}
+	}
+	s.SetItems(many)
+	s.Scroll(100000)
+	if s.ScrollY() != s.feedScroll.offset || s.ScrollY() <= 0 {
+		t.Fatalf("ScrollY()=%d, feedScroll.offset=%d", s.ScrollY(), s.feedScroll.offset)
 	}
 }

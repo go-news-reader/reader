@@ -45,7 +45,7 @@ func TestBrowseUnsubscribeHit(t *testing.T) {
 	// The subscribed "control" leaf's ✓ marker unsubscribes; the unsubscribed
 	// "junk" leaf's ＋ subscribes.
 	for _, r := range s.browseRows {
-		top := s.browseTreeTop + r.top - s.browseScrollY
+		top := s.browseTreeTop + r.top - s.browseScroll.offset
 		sr := s.browseSubscribeRect(s.m.pad, top, s.W-2*s.m.pad)
 		h := s.browseHitTest(sr.X+sr.W/2, sr.Y+sr.H/2)
 		switch r.node.Name {
@@ -61,7 +61,7 @@ func TestBrowseUnsubscribeHit(t *testing.T) {
 	}
 	// A childless subscribed leaf row (not on the marker) also unsubscribes.
 	r := s.browseRows[0] // "control"
-	top := s.browseTreeTop + r.top - s.browseScrollY
+	top := s.browseTreeTop + r.top - s.browseScroll.offset
 	if h := s.browseHitTest(s.m.pad+2, top+s.m.sideItemH/2); h.Kind != HitUnsubscribeGroup {
 		t.Fatalf("subscribed leaf row = %+v, want HitUnsubscribeGroup", h)
 	}
@@ -285,14 +285,14 @@ func TestPreviewScroll(t *testing.T) {
 	s.SelectPreview(source.Item{ID: "1", Source: source.Usenet, Title: "big", Body: long, Media: []source.Media{{Kind: source.MediaImage}}})
 	s.layout()
 	s.layoutPreview()
-	if s.previewContentH <= s.previewR.H {
+	if s.previewScroll.contentH <= s.previewR.H {
 		t.Skip("content fits; window too tall to exercise pane scroll")
 	}
 	s.MouseMove(s.previewR.X+10, s.previewR.Y+10) // pointer over the pane
-	before := s.previewScrollY
+	before := s.previewScroll.offset
 	s.Scroll(120)
-	if s.previewScrollY <= before {
-		t.Fatalf("preview did not scroll: %d -> %d", before, s.previewScrollY)
+	if s.previewScroll.offset <= before {
+		t.Fatalf("preview did not scroll: %d -> %d", before, s.previewScroll.offset)
 	}
 }
 

@@ -176,12 +176,12 @@ func TestAccountsScroll(t *testing.T) {
 	s := New(360, 240, ThemeFor(OSLinux, false))
 	s.OpenAccounts()
 	s.Scroll(1 << 20) // to the bottom
-	if s.accScrollY <= 0 {
-		t.Fatalf("form did not scroll: %d", s.accScrollY)
+	if s.accScroll.offset <= 0 {
+		t.Fatalf("form did not scroll: %d", s.accScroll.offset)
 	}
 	s.Scroll(-(1 << 20)) // clamps back to 0
-	if s.accScrollY != 0 {
-		t.Fatalf("scroll did not clamp to 0: %d", s.accScrollY)
+	if s.accScroll.offset != 0 {
+		t.Fatalf("scroll did not clamp to 0: %d", s.accScroll.offset)
 	}
 }
 

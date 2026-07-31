@@ -209,7 +209,7 @@ func TestLoadStripAndPendingSidebar(t *testing.T) {
 	}
 	// Accent appears somewhere in the strip band (the moving highlight / fill).
 	feedTop := m.topbarH
-	bandY0 := feedTop + s.loadStripTop - s.ScrollY
+	bandY0 := feedTop + s.loadStripTop - s.feedScroll.offset
 	accent := s.theme.Accent
 	foundAccent := false
 	for y := bandY0; y < bandY0+m.loadStripH && !foundAccent; y++ {

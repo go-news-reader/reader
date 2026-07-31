@@ -12,7 +12,7 @@ func TestGroupCountSegs(t *testing.T) {
 		{Channel: "a.group", GroupCount: 5},
 		{Channel: "a.group", GroupCount: 7}, // max wins → 7
 		{Channel: "nocount"},                // GroupCount 0 → skipped
-		{Channel: "", GroupCount: 3},         // empty channel → skipped
+		{Channel: "", GroupCount: 3},        // empty channel → skipped
 	}
 	segs := groupCountSegs(items)
 	if len(segs) != 2 || segs[0] != "a.group  7 posts" || segs[1] != "z.group  10 posts" {

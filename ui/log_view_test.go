@@ -19,8 +19,8 @@ func sampleLog() []LogEntry {
 func TestOpenCloseLog(t *testing.T) {
 	s := newScene()
 	s.OpenLog()
-	if s.Mode() != ModeLog || s.logScrollY != 0 {
-		t.Fatalf("OpenLog state: mode=%v scroll=%d", s.Mode(), s.logScrollY)
+	if s.Mode() != ModeLog || s.logScroll.offset != 0 {
+		t.Fatalf("OpenLog state: mode=%v scroll=%d", s.Mode(), s.logScroll.offset)
 	}
 	s.CloseLog()
 	if s.Mode() != ModeFeed {
@@ -82,13 +82,13 @@ func TestLogScroll(t *testing.T) {
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
 	s.Scroll(1 << 20) // to max -> early rows scroll above the viewport
-	if s.logScrollY <= 0 {
-		t.Fatalf("log scroll did not advance: %d", s.logScrollY)
+	if s.logScroll.offset <= 0 {
+		t.Fatalf("log scroll did not advance: %d", s.logScroll.offset)
 	}
 	s.Draw(buf) // redraw scrolled (exercises the offscreen-continue branch)
 	s.Scroll(-1 << 20)
-	if s.logScrollY != 0 {
-		t.Fatalf("neg clamp = %d", s.logScrollY)
+	if s.logScroll.offset != 0 {
+		t.Fatalf("neg clamp = %d", s.logScroll.offset)
 	}
 }
 

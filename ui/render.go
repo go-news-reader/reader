@@ -198,11 +198,10 @@ func (s *Scene) layout() {
 		s.rows = append(s.rows, r)
 		top += r.height + m.cardGap
 	}
-	s.contentH = top
-	// The feed measures its content height here (its "refresh" point), so clamp the
-	// offset here too — a resize can't leave a stale offset, and the wheel handler
-	// only nudges it. Viewport is feedBottom()-topbarH (content stops above the bar).
-	s.ScrollY = clampPanelScroll(s.ScrollY, s.contentH, s.feedBottom()-s.m.topbarH)
+	// The feed measures its content height here (its "refresh" point), so refresh the
+	// scroller here — a resize can't leave a stale offset, and the wheel handler only
+	// nudges it. Viewport is feedBottom()-topbarH (content stops above the bar).
+	s.feedScroll.refresh(top, s.feedBottom()-s.m.topbarH)
 
 	// Per-newsgroup post counts for the bottom status bar (computed here so the
 	// feed geometry, which subtracts the bar, is consistent this frame).
@@ -250,21 +249,21 @@ func (s *Scene) Draw(buf []byte) {
 	// with the feed content.
 	feedBot := s.feedBottom() // content stops above the download panel
 	if s.showStrip {
-		y := feedTop + s.loadStripTop - s.ScrollY
+		y := feedTop + s.loadStripTop - s.feedScroll.offset
 		if y+m.loadStripH >= feedTop && y < feedBot {
 			s.drawLoadStrip(p, img, feedX, y, cardW, muteS)
 		}
 	}
 	// "Needs sign-in" banners (drawn above the cards, scrolling with the feed).
 	for _, a := range s.authRows {
-		y := feedTop + a.top - s.ScrollY
+		y := feedTop + a.top - s.feedScroll.offset
 		if y+m.bannerH < feedTop || y >= feedBot {
 			continue
 		}
 		s.drawAuthBanner(p, img, s.authPrompts[a.idx], feedX, y, cardW, onAccent)
 	}
 	for _, r := range s.rows {
-		y := feedTop + r.top - s.ScrollY
+		y := feedTop + r.top - s.feedScroll.offset
 		if y+r.height < feedTop || y >= feedBot {
 			continue
 		}
@@ -286,7 +285,7 @@ func (s *Scene) Draw(buf []byte) {
 	if s.previewR.W > 0 {
 		feedGrip = s.previewR.X
 	}
-	s.drawVScrollbar(p, toolkit.Rect{X: feedX, Y: feedTop, W: feedW, H: feedBot - feedTop}, feedGrip, s.contentH, s.ScrollY)
+	s.drawVScrollbar(p, toolkit.Rect{X: feedX, Y: feedTop, W: feedW, H: feedBot - feedTop}, feedGrip, s.feedScroll.contentH, s.feedScroll.offset)
 	if len(s.rows) == 0 {
 		if s.loading {
 			// A refresh is running but nothing has arrived yet: show the animated
@@ -929,7 +928,7 @@ func (s *Scene) HitTest(x, y int) Hit {
 	// Feed.
 	feedX, feedW := s.feedGeom()
 	cardW := s.feedCardW(feedW) // match the draw's scrollbar gutter
-	contentY := y - m.topbarH + s.ScrollY
+	contentY := y - m.topbarH + s.feedScroll.offset
 	for _, a := range s.authRows {
 		if contentY >= a.top && contentY < a.top+m.bannerH {
 			return Hit{Kind: HitFixAuth, Value: string(s.authPrompts[a.idx].Kind)}

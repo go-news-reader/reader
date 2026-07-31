@@ -24,12 +24,12 @@ func TestBrowseSelectionTintClearsScrollbar(t *testing.T) {
 
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
-	if !s.scrollbarNeeded(s.browseContentH, s.H-s.m.topbarH) {
+	if !s.scrollbarNeeded(s.browseScroll.contentH, s.H-s.m.topbarH) {
 		t.Fatal("300 groups should overflow the browse viewport")
 	}
 
 	// browseSel defaults to row 0, the first visible row at the tree top.
-	rowY := s.browseTreeTop + s.browseRows[s.browseSel].top - s.browseScrollY + s.m.sideItemH/2
+	rowY := s.browseTreeTop + s.browseRows[s.browseSel].top - s.browseScroll.offset + s.m.sideItemH/2
 
 	th := s.theme
 	tintRight := s.scrollClampRight(s.W, s.W, 0, true)
