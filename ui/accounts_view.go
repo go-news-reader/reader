@@ -80,7 +80,7 @@ func (s *Scene) OpenAccounts() {
 		s.accSel = source.Reddit
 	}
 	s.accFocus = ""
-	s.accScrollY = 0 // a fresh open starts at the top, like the other views
+	s.accScroll.offset = 0 // a fresh open starts at the top, like the other views
 	s.touch()
 }
 
@@ -91,7 +91,7 @@ func (s *Scene) CloseAccounts() { s.mode = ModeFeed; s.touch() }
 func (s *Scene) SelectAccount(k source.Kind) {
 	s.accSel = k
 	s.accFocus = ""
-	s.accScrollY = 0 // the new provider has a different field set; start at the top
+	s.accScroll.offset = 0 // the new provider has a different field set; start at the top
 	s.touch()
 }
 
@@ -231,9 +231,8 @@ func (s *Scene) layoutAccounts() {
 	// Everything above was laid out unscrolled; clamp the offset (the refresh-time
 	// clamp, robust to a resize) and shift the scrollable body up by it. The topbar
 	// Back/Done live in the fixed band and are not shifted — mirrors layoutSettings.
-	s.accContentH = y - m.topbarH
-	s.accScrollY = clampPanelScroll(s.accScrollY, s.accContentH, s.H-m.topbarH)
-	if dy := -s.accScrollY; dy != 0 {
+	s.accScroll.refresh(y-m.topbarH, s.H-m.topbarH)
+	if dy := -s.accScroll.offset; dy != 0 {
 		for i := range s.accProvBtns {
 			s.accProvBtns[i].rect.Y += dy
 		}

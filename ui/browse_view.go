@@ -42,7 +42,7 @@ type browseViewKey struct {
 func (s *Scene) SetBrowseGroups(groups []source.GroupInfo) {
 	s.browseGroups = groups
 	s.browseGroupsRev++
-	s.browseScrollY = 0
+	s.browseScroll.offset = 0
 	s.browseSel = 0
 	s.touch()
 }
@@ -72,7 +72,7 @@ func (s *Scene) BrowseEntry() *toolkit.SearchEntry { return s.browseEntry }
 
 // InvalidateBrowse bumps the damage sequence after the filter binder writes
 // BrowseEntry.Text directly; passed as mvvm.BindField's invalidate hook.
-func (s *Scene) InvalidateBrowse() { s.browseScrollY = 0; s.browseSel = 0; s.touch() }
+func (s *Scene) InvalidateBrowse() { s.browseScroll.offset = 0; s.browseSel = 0; s.touch() }
 
 // BrowseFocused reports whether the filter field holds keyboard focus.
 func (s *Scene) BrowseFocused() bool { return s.browseFocused }
@@ -83,7 +83,7 @@ func (s *Scene) FocusBrowseFilter(v bool) { s.browseFocused = v; s.touch() }
 // OpenBrowse enters the newsgroup browser view.
 func (s *Scene) OpenBrowse() {
 	s.mode = ModeBrowse
-	s.browseScrollY = 0
+	s.browseScroll.offset = 0
 	s.browseSel = 0
 	s.browseFocused = false
 	s.touch()
@@ -107,12 +107,12 @@ func (s *Scene) NavBrowse(dir int) {
 	row := s.browseRows[s.browseSel]
 	viewH := s.H - s.browseTreeTop
 	switch {
-	case row.top < s.browseScrollY:
-		s.browseScrollY = row.top
-	case row.top+s.m.sideItemH > s.browseScrollY+viewH:
-		s.browseScrollY = row.top + s.m.sideItemH - viewH
+	case row.top < s.browseScroll.offset:
+		s.browseScroll.offset = row.top
+	case row.top+s.m.sideItemH > s.browseScroll.offset+viewH:
+		s.browseScroll.offset = row.top + s.m.sideItemH - viewH
 	}
-	s.browseScrollY = clampScroll(s.browseScrollY, s.browseContentH-(s.H-s.m.topbarH))
+	s.browseScroll.offset = clampScroll(s.browseScroll.offset, s.browseScroll.contentH-(s.H-s.m.topbarH))
 	s.touch()
 }
 
@@ -286,8 +286,7 @@ func (s *Scene) layoutBrowse() {
 	// browseContentH is expressed relative to the topbar so the viewport is
 	// (H - topbarH). Clamp here (the refresh-time clamp) so a resize can't leave a
 	// stale offset; the wheel handler then only nudges + relayouts.
-	s.browseContentH = (s.browseTreeTop - m.topbarH) + top
-	s.browseScrollY = clampPanelScroll(s.browseScrollY, s.browseContentH, s.H-m.topbarH)
+	s.browseScroll.refresh((s.browseTreeTop-m.topbarH)+top, s.H-m.topbarH)
 }
 
 // drawBrowse paints the newsgroup browser.
@@ -314,7 +313,7 @@ func (s *Scene) drawBrowse(buf []byte) {
 
 	// Scrollbar down the right edge when the tree overflows (a large server carries
 	// tens of thousands of groups; expanding hierarchies grows it further).
-	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.browseContentH, s.browseScrollY)
+	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.browseScroll.contentH, s.browseScroll.offset)
 
 	// Topbar (accent) with Back, title + server, and the Refresh control, drawn
 	// over any tree overflow.
@@ -378,11 +377,11 @@ func (s *Scene) drawBrowseTree(p *painter.PixelPainter, img *image.RGBA, muteS t
 	// Tree rows (scrolled), clipped to the tree viewport. When the scrollbar is
 	// shown, rows and the selected-row tint stop at the shared gutter so nothing
 	// paints under the bar (same rule the feed's cards use).
-	shown := s.scrollbarNeeded(s.browseContentH, s.H-m.topbarH)
+	shown := s.scrollbarNeeded(s.browseScroll.contentH, s.H-m.topbarH)
 	feedW := s.scrollClampRight(s.W-m.pad, s.W, 0, shown) - m.pad
 	tintRight := s.scrollClampRight(s.W, s.W, 0, shown)
 	for i, r := range s.browseRows {
-		y := s.browseTreeTop + r.top - s.browseScrollY
+		y := s.browseTreeTop + r.top - s.browseScroll.offset
 		if y+m.sideItemH < s.browseTreeTop || y >= s.H {
 			continue
 		}
@@ -468,7 +467,7 @@ func (s *Scene) browseHitTest(x, y int) Hit {
 		return Hit{Kind: HitNone}
 	}
 	for _, r := range s.browseRows {
-		top := s.browseTreeTop + r.top - s.browseScrollY
+		top := s.browseTreeTop + r.top - s.browseScroll.offset
 		// Skip rows outside the tree viewport, mirroring the draw-side clip so a
 		// drawn-clipped (invisible) row is never hit-testable.
 		if top+m.sideItemH < s.browseTreeTop || top >= s.H {

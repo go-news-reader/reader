@@ -11,13 +11,13 @@ func TestFeedCardW(t *testing.T) {
 	const feedW = 800
 
 	// No overflow → no scrollbar → full width, whatever the preview state.
-	s.contentH = 0
+	s.feedScroll.contentH = 0
 	if got := s.feedCardW(feedW); got != feedW {
 		t.Fatalf("no scrollbar: cardW=%d, want full %d", got, feedW)
 	}
 
 	// Force overflow so the scrollbar shows.
-	s.contentH = s.feedBottom() - s.m.topbarH + 10000
+	s.feedScroll.contentH = s.feedBottom() - s.m.topbarH + 10000
 
 	// Preview closed (no grip): cards stop before a right-flush bar.
 	s.previewR.W = 0
