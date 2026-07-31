@@ -370,7 +370,7 @@ func (s *Scene) layoutSettings() {
 	// (robust to a taller window) and shift the scrollable elements up by it. The
 	// Done button lives in the fixed topbar band, so it is not shifted.
 	s.settingsContentH = y - m.topbarH
-	s.settingsScrollY = clampScroll(s.settingsScrollY, s.settingsContentH-(s.H-m.topbarH))
+	s.settingsScrollY = clampPanelScroll(s.settingsScrollY, s.settingsContentH, s.H-m.topbarH)
 	if dy := -s.settingsScrollY; dy != 0 {
 		for i := range s.sButtons {
 			s.sButtons[i].rect.Y += dy

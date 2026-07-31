@@ -199,6 +199,10 @@ func (s *Scene) layout() {
 		top += r.height + m.cardGap
 	}
 	s.contentH = top
+	// The feed measures its content height here (its "refresh" point), so clamp the
+	// offset here too — a resize can't leave a stale offset, and the wheel handler
+	// only nudges it. Viewport is feedBottom()-topbarH (content stops above the bar).
+	s.ScrollY = clampPanelScroll(s.ScrollY, s.contentH, s.feedBottom()-s.m.topbarH)
 
 	// Per-newsgroup post counts for the bottom status bar (computed here so the
 	// feed geometry, which subtracts the bar, is consistent this frame).
