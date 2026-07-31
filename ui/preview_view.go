@@ -301,7 +301,7 @@ func (s *Scene) layoutPreview() {
 	}
 	d := s.previewContent()
 	s.previewContentH = d.height
-	s.previewScrollY = clampScroll(s.previewScrollY, s.previewContentH-s.previewR.H)
+	s.previewScrollY = clampPanelScroll(s.previewScrollY, s.previewContentH, s.previewR.H)
 }
 
 // drawPreview paints the pane: its surface, left divider, and either the empty

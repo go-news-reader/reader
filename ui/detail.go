@@ -34,6 +34,7 @@ func (s *Scene) layoutDetail() {
 		s.openR = toolkit.Rect{}
 	}
 	s.detailContentH = s.detailContent().height
+	s.detailScrollY = clampPanelScroll(s.detailScrollY, s.detailContentH, s.H-m.topbarH)
 }
 
 // detailContent lays out (wraps + measures) the reading-view body. It is shared
