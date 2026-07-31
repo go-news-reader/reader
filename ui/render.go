@@ -275,9 +275,14 @@ func (s *Scene) Draw(buf []byte) {
 			p.StrokeRoundRect(painter.Rect{X: feedX, Y: y, W: cardW, H: r.height}, rpxOf(s, 6), th.Accent, rpxOf(s, 2))
 		}
 	}
-	// Scrollbar down the feed's right edge when the content overflows the viewport
-	// (the shared indicator; the trees/detail/log reuse the same widget).
-	s.drawVScrollbar(p, toolkit.Rect{X: feedX, Y: feedTop, W: feedW, H: feedBot - feedTop}, s.contentH, s.ScrollY)
+	// Scrollbar down the feed's right edge when the content overflows. When the
+	// preview pane is open, its divider carries a resize grip, so position the bar
+	// the standard gap from that grip (else there is no grip → flush right edge).
+	feedGrip := 0
+	if s.previewR.W > 0 {
+		feedGrip = s.previewR.X
+	}
+	s.drawVScrollbar(p, toolkit.Rect{X: feedX, Y: feedTop, W: feedW, H: feedBot - feedTop}, feedGrip, s.contentH, s.ScrollY)
 	if len(s.rows) == 0 {
 		if s.loading {
 			// A refresh is running but nothing has arrived yet: show the animated
@@ -468,10 +473,10 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	// includes sideScrollY so it re-rasterises as the list scrolls).
 	if s.sideMaxScroll > 0 {
 		band := s.sideBandBot - s.sideBandTop
-		// Keep the scrollbar just clear of the resize grip that sits on the divider
-		// at the sidebar's right edge, so the two don't crowd each other.
-		w := m.sidebarW - rpxOf(s, 6)
-		s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: s.sideBandTop - m.topbarH, W: w, H: band}, band+s.sideMaxScroll, s.sideScrollY)
+		// The resize grip sits on the divider at the sidebar's right edge (x = sidebarW),
+		// so pass it as gripX: drawVScrollbar backs the bar off by the one standard
+		// scrollGripGap, identical to the feed's gap against the preview divider.
+		s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: s.sideBandTop - m.topbarH, W: m.sidebarW, H: band}, m.sidebarW, band+s.sideMaxScroll, s.sideScrollY)
 	}
 
 	s.sidebarKey, s.sidebarSpr = k, img
