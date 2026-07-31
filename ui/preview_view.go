@@ -134,17 +134,14 @@ func (s *Scene) feedScrollbarShown() bool {
 // drawVScrollbar uses (scrollbarRightX with the same grip), so cards and bar stay
 // aligned however the bar is positioned. Draw and hit-test both go through it.
 func (s *Scene) feedCardW(feedW int) int {
-	if !s.feedScrollbarShown() {
-		return feedW
-	}
 	// gripX in feed-relative coords: when the preview pane is open its divider grip
-	// sits at the feed's right edge (feedW); otherwise there is no grip (0).
+	// sits at the feed's right edge (feedW); otherwise there is no grip (0). The
+	// gutter comes from the shared scrollClampRight so it matches every other panel.
 	gripX := 0
 	if s.previewR.W > 0 {
 		gripX = feedW
 	}
-	barLeft := s.scrollbarRightX(feedW, gripX) - s.scrollbarW()
-	return barLeft - rpxOf(s, 6) // a small gap between the card edge and the bar
+	return s.scrollClampRight(feedW, feedW, gripX, s.feedScrollbarShown())
 }
 
 // SelectPreview loads it into the preview pane (clicking a feed item), resetting

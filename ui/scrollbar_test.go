@@ -26,3 +26,43 @@ func TestScrollGapStandard(t *testing.T) {
 		t.Fatalf("no-grip right=%d, want %d", right, panelRight-rpxOf(s, 2))
 	}
 }
+
+// TestScrollClampRight covers the shared content-gutter helper every panel uses:
+// no clamp when the bar is hidden, pull the edge in to the bar when shown and the
+// content would otherwise reach it, and no-op when content already stops short.
+func TestScrollClampRight(t *testing.T) {
+	s := New(1200, 700, ThemeFor(OSMac, false))
+	const panelRight = 800
+
+	// Bar hidden → the natural edge is untouched.
+	if got := s.scrollClampRight(panelRight, panelRight, 0, false); got != panelRight {
+		t.Fatalf("hidden bar: got %d, want %d unchanged", got, panelRight)
+	}
+
+	limit := s.scrollbarRightX(panelRight, 0) - s.scrollbarW() - rpxOf(s, 6)
+
+	// Bar shown, content reaches the edge → pulled in to the shared limit.
+	if got := s.scrollClampRight(panelRight, panelRight, 0, true); got != limit {
+		t.Fatalf("shown bar, wide content: got %d, want limit %d", got, limit)
+	}
+
+	// Bar shown but content already stops short of the limit → left as-is.
+	short := limit - 40
+	if got := s.scrollClampRight(short, panelRight, 0, true); got != short {
+		t.Fatalf("shown bar, short content: got %d, want %d unchanged", got, short)
+	}
+}
+
+// TestScrollbarNeeded covers the overflow predicate the panels gate the gutter on.
+func TestScrollbarNeeded(t *testing.T) {
+	s := New(400, 300, ThemeFor(OSMac, false))
+	if s.scrollbarNeeded(100, 200) {
+		t.Fatal("content shorter than viewport should not need a bar")
+	}
+	if !s.scrollbarNeeded(300, 200) {
+		t.Fatal("content taller than viewport should need a bar")
+	}
+	if s.scrollbarNeeded(300, 0) {
+		t.Fatal("a zero viewport should never report a bar")
+	}
+}

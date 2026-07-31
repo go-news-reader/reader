@@ -373,27 +373,32 @@ func (s *Scene) drawBrowseTree(p *painter.PixelPainter, img *image.RGBA, muteS t
 	}
 	m.side.draw(img, m.pad, s.browseCountY, count, col)
 
-	// Tree rows (scrolled), clipped to the tree viewport.
-	feedW := s.W - 2*m.pad
+	// Tree rows (scrolled), clipped to the tree viewport. When the scrollbar is
+	// shown, rows and the selected-row tint stop at the shared gutter so nothing
+	// paints under the bar (same rule the feed's cards use).
+	shown := s.scrollbarNeeded(s.browseContentH, s.H-m.topbarH)
+	feedW := s.scrollClampRight(s.W-m.pad, s.W, 0, shown) - m.pad
+	tintRight := s.scrollClampRight(s.W, s.W, 0, shown)
 	for i, r := range s.browseRows {
 		y := s.browseTreeTop + r.top - s.browseScrollY
 		if y+m.sideItemH < s.browseTreeTop || y >= s.H {
 			continue
 		}
-		s.drawBrowseRow(p, img, r, m.pad, y, feedW, muteS, i == s.browseSel)
+		s.drawBrowseRow(p, img, r, m.pad, y, feedW, tintRight, muteS, i == s.browseSel)
 	}
 }
 
 // drawBrowseRow paints one tree row at screen y: indent, optional chevron with
 // child count, the node segment, and — for a real group — a Subscribe (＋) or
 // subscribed (✓) marker.
-func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browseRowLayout, x, y, w int, muteS toolkit.RGBA, selected bool) {
+func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browseRowLayout, x, y, w, tintRight int, muteS toolkit.RGBA, selected bool) {
 	m := s.m
 	th := s.theme
 	n := r.node
 	if selected {
-		// Keyboard-selected row: a full-width tint so the cursor position is clear.
-		p.FillRect(painter.Rect{X: 0, Y: y, W: s.W, H: m.sideItemH}, th.SurfaceAlt)
+		// Keyboard-selected row: a tint spanning to the shared gutter (tintRight) so
+		// the cursor is clear without painting under the scrollbar.
+		p.FillRect(painter.Rect{X: 0, Y: y, W: tintRight, H: m.sideItemH}, th.SurfaceAlt)
 	}
 	chev := s.browseChevronRect(x, y, r.depth)
 	textX := chev.X + chev.W + rpxOf(s, 4)
