@@ -130,7 +130,9 @@ func (s *Scene) drawLog(buf []byte) {
 
 	entries := s.logEntries()
 	x := m.pad * 2
-	w := s.W - x - m.pad
+	// Rows stop at the shared gutter when the scrollbar is shown (same rule as the
+	// feed/browse), so nothing paints under the bar.
+	w := s.scrollClampRight(s.W-m.pad, s.W, 0, s.scrollbarNeeded(s.logContentH, s.H-m.topbarH)) - x
 
 	if len(entries) == 0 {
 		m.meta.draw(img, x, m.topbarH+m.pad, "No requests yet", muteS)
