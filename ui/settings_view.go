@@ -411,19 +411,16 @@ func (s *Scene) drawSettings(buf []byte) {
 		lbl.SetBounds(toolkit.Rect{X: l.x, Y: l.y, W: s.W, H: m.side.height})
 		lbl.Draw(p, th)
 	}
+	// Every settings pill is a generic toolkit.Button carrying the reader's
+	// fallback font: Selected marks the active choice, ButtonDanger the destructive
+	// ones (Delete). The local settingsButton is retired from this view.
+	pillFont := ttFont(true, rpxOf(s, 12))
 	for _, b := range s.sButtons {
-		if b.kind == HitTheme {
-			// The theme picker is a generic toolkit.Button (Selected = the active
-			// theme), rendered with the reader's fallback font so CJK/etc. still
-			// resolve. First surface migrated off the local settingsButton to a
-			// stock go-widgets widget.
-			w := &toolkit.Button{Label: b.label, Selected: b.active}
-			w.Font = ttFont(true, rpxOf(s, 12))
-			w.SetBounds(b.rect)
-			w.Draw(p, th)
-			continue
+		w := &toolkit.Button{Label: b.label, Selected: b.active}
+		w.Font = pillFont
+		if b.danger {
+			w.Style = toolkit.ButtonDanger
 		}
-		w := &settingsButton{s: s, label: b.label, active: b.active, danger: b.danger}
 		w.SetBounds(b.rect)
 		w.Draw(p, th)
 	}
@@ -442,7 +439,11 @@ func (s *Scene) drawSettings(buf []byte) {
 		{s.sChannelR, s.channelInput, "channel…", s.sf == FocusChannel},
 		{s.sCacheR, s.cacheInput, "media cache path", s.sf == FocusCache},
 	} {
-		w := &settingsField{s: s, text: f.text, placeholder: f.ph, focused: f.foc}
+		// Text fields are generic toolkit.Entry (placeholder from the toolkit's own
+		// Entry.Placeholder), with the caret parked at the end since the reader
+		// drives the text itself.
+		w := &toolkit.Entry{Text: f.text, Placeholder: f.ph, Focused: f.foc, Cursor: len([]rune(f.text))}
+		w.Font = ttFont(true, rpxOf(s, 12))
 		w.SetBounds(f.r)
 		w.Draw(p, th)
 	}
