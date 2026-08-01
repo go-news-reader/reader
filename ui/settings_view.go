@@ -65,31 +65,34 @@ var settingsKinds = []source.Kind{
 // hand-drawing pills/labels/fields) ---
 
 // settingsButton is a settings pill (active = accent fill, danger = red text).
-// It captures the pixel painter + buffer at construction, like the feed card's
-// widgets, since getFace draws into an *image.RGBA.
+// It is a RETAINED widget: it recovers the frame's pixel buffer from the painter
+// its Draw is handed (via pixImg), so it can be built once and redrawn — getFace
+// draws into an *image.RGBA, which pixImg reconstructs each frame.
 type settingsButton struct {
 	toolkit.Base
 	s      *Scene
 	label  string
 	active bool
 	danger bool
-	p      *painter.PixelPainter
-	img    *image.RGBA
 }
 
-func (w *settingsButton) Draw(_ painter.Painter, th *toolkit.Theme) {
+func (w *settingsButton) Draw(pt painter.Painter, th *toolkit.Theme) {
+	p, img, ok := pixImg(pt)
+	if !ok {
+		return
+	}
 	s, b, m := w.s, w.Bounds(), w.s.m
 	fill, txt := th.Surface, th.OnSurface
 	if w.active {
 		fill, txt = th.Accent, themeOnAccent(th)
 	}
-	w.p.FillRoundRect(painter.Rect(b), rpxOf(s, 6), fill)
+	p.FillRoundRect(painter.Rect(b), rpxOf(s, 6), fill)
 	border := th.Border
 	if w.danger {
 		border, txt = rgb(0xD03030), rgb(0xD03030)
 	}
-	w.p.StrokeRoundRect(painter.Rect(b), rpxOf(s, 6), border, 1)
-	m.tab.draw(w.img, b.X+rpxOf(s, 10), b.Y+(b.H-m.tab.height)/2, w.label, txt)
+	p.StrokeRoundRect(painter.Rect(b), rpxOf(s, 6), border, 1)
+	m.tab.draw(img, b.X+rpxOf(s, 10), b.Y+(b.H-m.tab.height)/2, w.label, txt)
 }
 
 // settingsChip is a removable subscription chip (source dot + "source · channel  ×").
@@ -98,16 +101,18 @@ type settingsChip struct {
 	s      *Scene
 	label  string
 	source source.Kind
-	p      *painter.PixelPainter
-	img    *image.RGBA
 }
 
-func (w *settingsChip) Draw(_ painter.Painter, th *toolkit.Theme) {
+func (w *settingsChip) Draw(pt painter.Painter, th *toolkit.Theme) {
+	p, img, ok := pixImg(pt)
+	if !ok {
+		return
+	}
 	s, b, m := w.s, w.Bounds(), w.s.m
-	w.p.FillRoundRect(painter.Rect(b), rpxOf(s, 6), th.Surface)
-	w.p.StrokeRoundRect(painter.Rect(b), rpxOf(s, 6), th.Border, 1)
-	s.drawDot(w.p, b.X+rpxOf(s, 8), b.Y+b.H/2, sourceColor(w.source))
-	m.tab.draw(w.img, b.X+rpxOf(s, 18), b.Y+(b.H-m.tab.height)/2, w.label, th.OnSurface)
+	p.FillRoundRect(painter.Rect(b), rpxOf(s, 6), th.Surface)
+	p.StrokeRoundRect(painter.Rect(b), rpxOf(s, 6), th.Border, 1)
+	s.drawDot(p, b.X+rpxOf(s, 8), b.Y+b.H/2, sourceColor(w.source))
+	m.tab.draw(img, b.X+rpxOf(s, 18), b.Y+(b.H-m.tab.height)/2, w.label, th.OnSurface)
 }
 
 // settingsField is a text input with placeholder + caret (the old drawInput).
@@ -117,12 +122,14 @@ type settingsField struct {
 	text        string
 	placeholder string
 	focused     bool
-	p           *painter.PixelPainter
-	img         *image.RGBA
 }
 
-func (w *settingsField) Draw(_ painter.Painter, th *toolkit.Theme) {
-	w.s.drawInput(w.p, w.img, w.Bounds(), w.text, w.placeholder, w.focused, themeOnAccent(th), mute(th.OnSurface, th.Surface))
+func (w *settingsField) Draw(pt painter.Painter, th *toolkit.Theme) {
+	p, img, ok := pixImg(pt)
+	if !ok {
+		return
+	}
+	w.s.drawInput(p, img, w.Bounds(), w.text, w.placeholder, w.focused, themeOnAccent(th), mute(th.OnSurface, th.Surface))
 }
 
 // layoutBtnRow lays specs left-to-right in a toolkit HBox at (x, y) and appends
@@ -405,12 +412,12 @@ func (s *Scene) drawSettings(buf []byte) {
 		lbl.Draw(p, th)
 	}
 	for _, b := range s.sButtons {
-		w := &settingsButton{s: s, label: b.label, active: b.active, danger: b.danger, p: p, img: img}
+		w := &settingsButton{s: s, label: b.label, active: b.active, danger: b.danger}
 		w.SetBounds(b.rect)
 		w.Draw(p, th)
 	}
 	for _, c := range s.sChips {
-		w := &settingsChip{s: s, label: c.label, source: c.source, p: p, img: img}
+		w := &settingsChip{s: s, label: c.label, source: c.source}
 		w.SetBounds(c.rect)
 		w.Draw(p, th)
 	}
@@ -424,7 +431,7 @@ func (s *Scene) drawSettings(buf []byte) {
 		{s.sChannelR, s.channelInput, "channel…", s.sf == FocusChannel},
 		{s.sCacheR, s.cacheInput, "media cache path", s.sf == FocusCache},
 	} {
-		w := &settingsField{s: s, text: f.text, placeholder: f.ph, focused: f.foc, p: p, img: img}
+		w := &settingsField{s: s, text: f.text, placeholder: f.ph, focused: f.foc}
 		w.SetBounds(f.r)
 		w.Draw(p, th)
 	}
