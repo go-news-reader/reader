@@ -113,7 +113,7 @@ func (s *Scene) drawDetail(buf []byte) {
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
 
-	// --- content (scrolled, below the topbar), composed as a Sencha VBox ---
+	// --- content (scrolled, below the topbar), composed as a toolkit VBox ---
 	x := d.x
 	label := sourceLabel(it.Source)
 	badge := &toolkit.Badge{Text: label, Fill: sourceColor(it.Source), Ink: onAccentFor(sourceColor(it.Source))}

@@ -8,7 +8,7 @@ import (
 	"github.com/go-news-reader/reader/source"
 )
 
-// TestScrollClampsOnResize proves the Sencha-style refresh clamp: a panel scrolled
+// TestScrollClampsOnResize proves the layout refresh clamp: a panel scrolled
 // to its bottom, then resized so its whole content fits, re-clamps its offset to 0
 // during layout alone — no wheel event. Before, the clamp lived only in Scroll, so
 // a resize left a stale out-of-range offset until the next wheel.

@@ -60,7 +60,7 @@ var settingsKinds = []source.Kind{
 	source.Bluesky, source.Lemmy, source.Mastodon, source.Usenet,
 }
 
-// --- settings widgets (Sencha-style composition; the layout below positions
+// --- settings widgets (box-composed; the layout below positions
 // them with toolkit boxes, and drawSettings renders each as a widget rather than
 // hand-drawing pills/labels/fields) ---
 

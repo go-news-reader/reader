@@ -537,7 +537,7 @@ func (c *cardThumb) Draw(_ painter.Painter, _ *toolkit.Theme) {
 }
 
 // drawCard paints one feed card. Its interior is composed with toolkit box
-// layouts (Sencha model) rather than hand-positioned draws: an outer HBox splits
+// layouts rather than hand-positioned draws: an outer HBox splits
 // the content column from the thumbnail, and the column is a VBox of a badge row,
 // the title, a flexible spacer, and the meta line — each a real widget (Badge /
 // Label / cardThumb) the boxes lay out and draw.

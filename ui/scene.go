@@ -260,7 +260,7 @@ type Scene struct {
 	logRowH   int
 	logBackR  toolkit.Rect
 
-	// The log row list is the reader's first surface on the toolkit's Sencha-style
+	// The log row list is the reader's first surface on the toolkit's container/layout
 	// stack: an mvvm.ObservableList drives a toolkit.Container (VBox layout) via
 	// tkbind.BindContainer, so the rows are retained widgets rebuilt only when the
 	// exchanges change (synced from logSource in layoutLog), not per frame.
@@ -866,7 +866,7 @@ func (s *Scene) ensureRowVisible(row feedRow) {
 }
 
 // panelScroll owns one scrollable panel's vertical position — the reader's analog
-// of Sencha's Ext.scroll.Scroller. It bundles the offset with the last measured
+// of a scroller. It bundles the offset with the last measured
 // content and viewport heights so the offset is never stored apart from the sizes
 // that bound it. Panels call refresh() at the end of their layout (the
 // Scroller.refresh() analog), and the wheel handler calls scrollBy(); both keep
