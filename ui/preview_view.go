@@ -358,7 +358,7 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	gap := rpxOf(s, 8)
 	x := d.innerX
 
-	// Content, composed with the Sencha box model: a VBox stacks the badge row,
+	// Content, composed with the toolkit box model: a VBox stacks the badge row,
 	// title lines, meta, image and body lines; each is a widget the box positions.
 	// The text widgets reuse the getFace line renderer (textLine) so wrapping and
 	// CJK stay identical — only the layout is now box-driven.
