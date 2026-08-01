@@ -27,6 +27,10 @@ type accProvBtn struct {
 	active bool
 }
 
+// flowSlot is a do-nothing placeholder widget used only to read back the
+// positions a toolkit.FlowLayout computes for the provider pills.
+type flowSlot struct{ toolkit.Base }
+
 // accFieldRow is one credential input for the selected provider.
 type accFieldRow struct {
 	rect    toolkit.Rect
@@ -179,26 +183,35 @@ func (s *Scene) layoutAccounts() {
 	top := m.topbarH + pad
 	y := top // laid out unscrolled; the scroll shift is applied after clamping
 
-	// Provider selector.
+	// Provider selector — a wrapping row of pills, positioned by a toolkit
+	// FlowLayout (the app dogfooding the toolkit's own layout instead of a
+	// hand-rolled wrap loop). Each slot's box-computed bounds become a provider
+	// button's rect for drawing + hit-testing.
 	label(pad, y, "PROVIDER")
 	y += m.side.height + gap
-	x := pad
-	for _, pc := range settings.CredentialSchema() {
+	schema := settings.CredentialSchema()
+	labels := make([]string, len(schema))
+	flow := toolkit.NewContainer(&toolkit.FlowLayout{RowHeight: btnH, HGap: gap, VGap: gap})
+	for i, pc := range schema {
 		lbl := pc.Label
 		if s.accConfigured(pc.Kind) {
 			lbl = "• " + pc.Label // a leading dot marks a configured provider
 		}
-		w := m.tab.width(lbl) + rpxOf(s, 20)
-		if x+w > s.W-pad {
-			x = pad
-			y += btnH + gap
-		}
-		s.accProvBtns = append(s.accProvBtns, accProvBtn{
-			rect: toolkit.Rect{X: x, Y: y, W: w, H: btnH}, kind: pc.Kind, label: lbl, active: pc.Kind == s.accSel,
-		})
-		x += w + gap
+		labels[i] = lbl
+		flow.Add(toolkit.Item{Widget: &flowSlot{}, Size: m.tab.width(lbl) + rpxOf(s, 20)})
 	}
-	y += btnH + pad
+	flow.SetBounds(toolkit.Rect{X: pad, Y: y, W: s.W - 2*pad, H: btnH})
+	bottom := y
+	for i, pc := range schema {
+		r := flow.Items()[i].Widget.Bounds()
+		s.accProvBtns = append(s.accProvBtns, accProvBtn{
+			rect: r, kind: pc.Kind, label: labels[i], active: pc.Kind == s.accSel,
+		})
+		if r.Y+r.H > bottom {
+			bottom = r.Y + r.H
+		}
+	}
+	y = bottom + pad
 
 	// Selected provider's credential fields.
 	pc := credsFor(s.accSel)
