@@ -265,7 +265,7 @@ func (s *Scene) drawAccounts(buf []byte) {
 		lbl.Draw(p, th)
 	}
 	for _, b := range s.accProvBtns {
-		w := &settingsButton{s: s, label: b.label, active: b.active, p: p, img: img}
+		w := &settingsButton{s: s, label: b.label, active: b.active}
 		w.SetBounds(b.rect)
 		w.Draw(p, th)
 	}
@@ -275,7 +275,7 @@ func (s *Scene) drawAccounts(buf []byte) {
 			if s.accFieldValue(s.accSel, f.key) == "true" {
 				lbl = "On"
 			}
-			w := &settingsButton{s: s, label: lbl, active: lbl == "On", p: p, img: img}
+			w := &settingsButton{s: s, label: lbl, active: lbl == "On"}
 			w.SetBounds(f.rect)
 			w.Draw(p, th)
 			continue
@@ -284,7 +284,7 @@ func (s *Scene) drawAccounts(buf []byte) {
 		if f.secret {
 			val = mask(val)
 		}
-		w := &settingsField{s: s, text: val, placeholder: "…", focused: f.focused, p: p, img: img}
+		w := &settingsField{s: s, text: val, placeholder: "…", focused: f.focused}
 		w.SetBounds(f.rect)
 		w.Draw(p, th)
 	}

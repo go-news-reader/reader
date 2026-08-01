@@ -23,8 +23,12 @@ func TestPixImgNonPixelPainter(t *testing.T) {
 	if _, _, ok := pixImg(nonPixelPainter{}); ok {
 		t.Fatal("pixImg on a non-pixel painter should report ok=false")
 	}
-	// A retained logRow must be a safe no-op when handed a non-pixel painter (it
-	// returns before touching any scene state).
+	// Every retained reader widget must be a safe no-op when handed a non-pixel
+	// painter (each returns before touching any scene state).
 	s := New(400, 300, ThemeFor(OSMac, false))
-	(&logRow{s: s}).Draw(nonPixelPainter{}, s.theme)
+	np, th := nonPixelPainter{}, s.theme
+	(&logRow{s: s}).Draw(np, th)
+	(&settingsButton{s: s}).Draw(np, th)
+	(&settingsChip{s: s}).Draw(np, th)
+	(&settingsField{s: s}).Draw(np, th)
 }
