@@ -48,12 +48,12 @@ github.com/go-syndication/feed v0.1.1 h1:nB//8Cp9K3HQvZBqN1jsir8jVqmnxU5SPk14MYw
 github.com/go-syndication/feed v0.1.1/go.mod h1:PR2mpm60ZMdEt3QEAEgoiC28gNi6fhCgBb/99JGwxR0=
 github.com/go-tiktok/tiktok v0.1.0 h1:I/duF5SLq+BdlbIqVmSso6O0PayYYm+u4+g4JRjbMHc=
 github.com/go-tiktok/tiktok v0.1.0/go.mod h1:YfwNRpTyk5QNWauCm4nxhdVvjmEvLd0HpxzLtivHJew=
-github.com/go-widgets/mvvm v0.2.0 h1:AYt7jRQ1DHM3om9c8YFyO91wZK97Bl1BsiqJTbtXybs=
-github.com/go-widgets/mvvm v0.2.0/go.mod h1:Bw5fydhyHD28moQy08F5h8Tetn2SdG0XvlZsmt02FSk=
+github.com/go-widgets/mvvm v0.3.0 h1:rVU/phb6nKF+deCDHSuKGFp75+PcXZHtrIFT4ghjf/A=
+github.com/go-widgets/mvvm v0.3.0/go.mod h1:H2J6jSNOVj3f9JHlxwAPOE6pFniT5CeOEc8vEUqGU54=
 github.com/go-widgets/painter v0.1.3 h1:50oeDH76vMUlxQ8117wMFf5MGuAJlq5n2JeVS+QlpnM=
 github.com/go-widgets/painter v0.1.3/go.mod h1:ccmlkH2UmcXQh6rt9Fu2eDt2RI0B5V0POaGmUKeW0EQ=
-github.com/go-widgets/toolkit v0.58.0 h1:U6WD2XojRcdfsQc6mZFB9BZAntKGHvwf2E7tWJgmwXg=
-github.com/go-widgets/toolkit v0.58.0/go.mod h1:AZJWQh4rQrFqwEuPjluV9eGnLqA+XnfrxCcvTs5C+LU=
+github.com/go-widgets/toolkit v0.63.0 h1:JAjdFHMhBJW/hBloMrn5Mc4BHfgVVhhq3VRyR9WqZiQ=
+github.com/go-widgets/toolkit v0.63.0/go.mod h1:AZJWQh4rQrFqwEuPjluV9eGnLqA+XnfrxCcvTs5C+LU=
 github.com/jezek/xgb v1.3.0 h1:Wa1pn4GVtcmNVAVB6/pnQVJ7xPFZVZ/W1Tc27msDhgI=
 github.com/jezek/xgb v1.3.0/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
 github.com/klauspost/compress v1.17.4 h1:Ej5ixsIri7BrIjBkRZLTo6ghwrEtHFk7ijlczPW4fZ4=

@@ -6,9 +6,26 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-widgets/mvvm"
+	"github.com/go-widgets/mvvm/tkbind"
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
 )
+
+// pixImg recovers the concrete pixel buffer (and an *image.RGBA over it) from the
+// painter a widget's Draw is handed. It lets reader widgets be RETAINED — built
+// once and redrawn into whatever buffer the current frame supplies — instead of
+// captured at construction and rebuilt every frame. ok is false for a non-pixel
+// painter, in which case the widget draws nothing. This is the seam the whole
+// toolkit-migration relies on (getFace text needs the raw *image.RGBA).
+func pixImg(pt painter.Painter) (*painter.PixelPainter, *image.RGBA, bool) {
+	p, ok := pt.(*painter.PixelPainter)
+	if !ok {
+		return nil, nil, false
+	}
+	img := &image.RGBA{Pix: p.Buf, Stride: p.Width * 4, Rect: image.Rect(0, 0, p.Width, p.Height)}
+	return p, img, true
+}
 
 // The in-canvas Network-log view (ModeLog). It shows, newest-first, the HTTP
 // exchanges every provider made — method, host+path, status (colour-coded) and
@@ -67,7 +84,40 @@ func (s *Scene) layoutLog() {
 	y := (m.topbarH - m.searchH) / 2
 	s.logBackR = toolkit.Rect{X: m.pad, Y: y, W: m.pad*2 + m.side.width("< Back"), H: m.searchH}
 	s.logRowH = rpxOf(s, 44)
+	s.syncLogList()
 	s.logScroll.refresh(len(s.logEntries())*s.logRowH, s.H-m.topbarH)
+}
+
+// ensureLogBinding lazily wires the ObservableList → Container binding the first
+// time the log view lays out: BindContainer maps each LogEntry to a retained
+// logRow item in a vertical box, rebuilding only when the list actually changes.
+func (s *Scene) ensureLogBinding() {
+	if s.logContainer != nil {
+		return
+	}
+	s.logList = mvvm.NewObservableList[LogEntry]()
+	s.logContainer = toolkit.NewContainer(&toolkit.BoxLayout{Vertical: true, Spacing: -1})
+	tkbind.BindContainer(s.logList, s.logContainer, func(e LogEntry) toolkit.Item {
+		return toolkit.Item{Widget: &logRow{s: s, e: e}, Size: s.logRowH}
+	}, s.touch)
+}
+
+// syncLogList refreshes the ObservableList from the pull source when the entries
+// (or the row height, on zoom) change — driving BindContainer to rebuild the
+// retained rows, instead of rebuilding a VBox every frame.
+func (s *Scene) syncLogList() {
+	s.ensureLogBinding()
+	entries := s.logEntries()
+	var top time.Time
+	if len(entries) > 0 {
+		top = entries[0].When
+	}
+	if len(entries) == s.logSyncN && top == s.logSyncTop && s.logRowH == s.logSyncRowH {
+		return
+	}
+	s.logList.Clear()
+	s.logList.Append(entries...)
+	s.logSyncN, s.logSyncTop, s.logSyncRowH = len(entries), top, s.logRowH
 }
 
 // drawLog paints the Network-log view.
@@ -76,13 +126,15 @@ func (s *Scene) layoutLog() {
 // right-aligned duration) plus a bottom divider, all via getFace textLines.
 type logRow struct {
 	toolkit.Base
-	s   *Scene
-	e   LogEntry
-	p   *painter.PixelPainter
-	img *image.RGBA
+	s *Scene
+	e LogEntry
 }
 
-func (w *logRow) Draw(_ painter.Painter, th *toolkit.Theme) {
+func (w *logRow) Draw(pt painter.Painter, th *toolkit.Theme) {
+	p, img, ok := pixImg(pt)
+	if !ok {
+		return
+	}
 	s, b := w.s, w.Bounds()
 	m := s.m
 	muteS := mute(th.OnSurface, th.Surface)
@@ -94,10 +146,10 @@ func (w *logRow) Draw(_ painter.Painter, th *toolkit.Theme) {
 	// Line 1: method (fixed) | elided URL (flex).
 	l1 := toolkit.NewHBox()
 	l1.Spacing = -1
-	l1.AddFixed(&textLine{face: methodFace, text: w.e.Method, ink: th.OnSurface, img: w.img}, mw)
-	l1.AddFlex(&textLine{face: urlFace, text: truncate(urlFace, shortURL(w.e.URL), b.W-mw), ink: muteS, img: w.img}, 1)
+	l1.AddFixed(&textLine{face: methodFace, text: w.e.Method, ink: th.OnSurface, img: img}, mw)
+	l1.AddFlex(&textLine{face: urlFace, text: truncate(urlFace, shortURL(w.e.URL), b.W-mw), ink: muteS, img: img}, 1)
 	l1.SetBounds(toolkit.Rect{X: b.X, Y: b.Y, W: b.W, H: urlFace.height})
-	l1.Draw(w.p, th)
+	l1.Draw(p, th)
 
 	// Line 2: status/error colour-coded (flex) | duration right-aligned (fixed).
 	text, col := fmt.Sprintf("%d", w.e.Status), statusColor(w.e.Status)
@@ -106,12 +158,12 @@ func (w *logRow) Draw(_ painter.Painter, th *toolkit.Theme) {
 	}
 	l2 := toolkit.NewHBox()
 	l2.Spacing = -1
-	l2.AddFlex(&textLine{face: m.meta, text: truncate(m.meta, text, b.W-durW), ink: col, img: w.img}, 1)
-	l2.AddFixed(&textLine{face: m.meta, text: formatDur(w.e.Dur), ink: muteS, img: w.img, alignRight: true}, durW)
+	l2.AddFlex(&textLine{face: m.meta, text: truncate(m.meta, text, b.W-durW), ink: col, img: img}, 1)
+	l2.AddFixed(&textLine{face: m.meta, text: formatDur(w.e.Dur), ink: muteS, img: img, alignRight: true}, durW)
 	l2.SetBounds(toolkit.Rect{X: b.X, Y: b.Y + urlFace.height + rpxOf(s, 4), W: b.W, H: m.meta.height})
-	l2.Draw(w.p, th)
+	l2.Draw(p, th)
 
-	w.p.FillRect(painter.Rect{X: b.X, Y: b.Y + b.H - 1, W: b.W, H: 1}, th.Border)
+	p.FillRect(painter.Rect{X: b.X, Y: b.Y + b.H - 1, W: b.W, H: 1}, th.Border)
 }
 
 func (s *Scene) drawLog(buf []byte) {
@@ -138,16 +190,12 @@ func (s *Scene) drawLog(buf []byte) {
 		m.meta.draw(img, x, m.topbarH+m.pad, "No requests yet", muteS)
 	}
 
-	// Rows are a VBox of logRow widgets: each row is two box-composed lines
-	// (method | URL, then status | duration).
-	rowH := s.logRowH
-	col := toolkit.NewVBox()
-	col.Spacing = -1
-	for _, e := range entries {
-		col.AddFixed(&logRow{s: s, e: e, p: p, img: img}, rowH)
-	}
-	col.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.logScroll.offset, W: w, H: len(entries) * rowH})
-	col.Draw(p, th)
+	// The rows are a data-bound toolkit.Container (see ensureLogBinding): an
+	// ObservableList[LogEntry] → Container of retained logRow items via
+	// tkbind.BindContainer. Position it in the scrolled content area and draw it;
+	// each logRow recovers this frame's buffer via pixImg.
+	s.logContainer.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.logScroll.offset, W: w, H: len(entries) * s.logRowH})
+	s.logContainer.Draw(p, th)
 
 	// Scrollbar down the right edge when the log overflows the viewport.
 	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.logScroll.contentH, s.logScroll.offset)

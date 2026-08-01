@@ -10,7 +10,9 @@ package ui
 import (
 	"image"
 	"strings"
+	"time"
 
+	"github.com/go-widgets/mvvm"
 	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/internal/settings"
@@ -257,6 +259,16 @@ type Scene struct {
 	logScroll panelScroll
 	logRowH   int
 	logBackR  toolkit.Rect
+
+	// The log row list is the reader's first surface on the toolkit's Sencha-style
+	// stack: an mvvm.ObservableList drives a toolkit.Container (VBox layout) via
+	// tkbind.BindContainer, so the rows are retained widgets rebuilt only when the
+	// exchanges change (synced from logSource in layoutLog), not per frame.
+	logList      *mvvm.ObservableList[LogEntry]
+	logContainer *toolkit.Container
+	logSyncN     int       // entries count at the last list sync
+	logSyncTop   time.Time // newest entry's timestamp at the last sync
+	logSyncRowH  int       // row height at the last sync (rebuild on zoom)
 
 	// Unified sidebar width model (feed view). The effective sidebar width is 0
 	// when collapsed, else the user-dragged width (device px, clamped) or the
