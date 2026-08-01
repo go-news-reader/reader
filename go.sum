@@ -52,8 +52,8 @@ github.com/go-widgets/mvvm v0.3.0 h1:rVU/phb6nKF+deCDHSuKGFp75+PcXZHtrIFT4ghjf/A
 github.com/go-widgets/mvvm v0.3.0/go.mod h1:H2J6jSNOVj3f9JHlxwAPOE6pFniT5CeOEc8vEUqGU54=
 github.com/go-widgets/painter v0.1.3 h1:50oeDH76vMUlxQ8117wMFf5MGuAJlq5n2JeVS+QlpnM=
 github.com/go-widgets/painter v0.1.3/go.mod h1:ccmlkH2UmcXQh6rt9Fu2eDt2RI0B5V0POaGmUKeW0EQ=
-github.com/go-widgets/toolkit v0.63.0 h1:JAjdFHMhBJW/hBloMrn5Mc4BHfgVVhhq3VRyR9WqZiQ=
-github.com/go-widgets/toolkit v0.63.0/go.mod h1:AZJWQh4rQrFqwEuPjluV9eGnLqA+XnfrxCcvTs5C+LU=
+github.com/go-widgets/toolkit v0.65.0 h1:55OmE82ChGGuqydrg5dHgqhsu3jLnNOtklLe3NDA54g=
+github.com/go-widgets/toolkit v0.65.0/go.mod h1:AZJWQh4rQrFqwEuPjluV9eGnLqA+XnfrxCcvTs5C+LU=
 github.com/jezek/xgb v1.3.0 h1:Wa1pn4GVtcmNVAVB6/pnQVJ7xPFZVZ/W1Tc27msDhgI=
 github.com/jezek/xgb v1.3.0/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
 github.com/klauspost/compress v1.17.4 h1:Ej5ixsIri7BrIjBkRZLTo6ghwrEtHFk7ijlczPW4fZ4=
