@@ -24,7 +24,7 @@ require (
 	github.com/go-tiktok/tiktok v0.1.0
 	github.com/go-widgets/mvvm v0.3.0
 	github.com/go-widgets/painter v0.1.3
-	github.com/go-widgets/toolkit v0.65.0
+	github.com/go-widgets/toolkit v0.66.0
 	github.com/jezek/xgb v1.3.0
 	golang.org/x/image v0.44.0
 	golang.org/x/sys v0.46.0

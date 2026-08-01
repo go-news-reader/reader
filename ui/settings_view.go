@@ -412,6 +412,17 @@ func (s *Scene) drawSettings(buf []byte) {
 		lbl.Draw(p, th)
 	}
 	for _, b := range s.sButtons {
+		if b.kind == HitTheme {
+			// The theme picker is a generic toolkit.Button (Selected = the active
+			// theme), rendered with the reader's fallback font so CJK/etc. still
+			// resolve. First surface migrated off the local settingsButton to a
+			// stock go-widgets widget.
+			w := &toolkit.Button{Label: b.label, Selected: b.active}
+			w.Font = ttFont(true, rpxOf(s, 12))
+			w.SetBounds(b.rect)
+			w.Draw(p, th)
+			continue
+		}
 		w := &settingsButton{s: s, label: b.label, active: b.active, danger: b.danger}
 		w.SetBounds(b.rect)
 		w.Draw(p, th)
