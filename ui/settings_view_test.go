@@ -1,11 +1,7 @@
 package ui
 
 import (
-	"image"
 	"testing"
-
-	"github.com/go-widgets/painter"
-	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
@@ -349,19 +345,6 @@ func TestSettingsEdgeCases(t *testing.T) {
 		t.Fatalf("chips did not wrap: %d rows", len(rows))
 	}
 	renderPNG(t, narrow, "settings-wrapped")
-
-	// drawInput's zero-width guard (unreachable via the normal layout).
-	buf := make([]byte, s.W*s.H*4)
-	p := painter.NewPixelPainter(buf, s.W, s.H)
-	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, s.H)}
-	s.layoutSettings()
-	before := append([]byte(nil), buf...)
-	s.drawInput(p, img, toolkit.Rect{}, "", "ph", false, toolkit.RGBA{}, toolkit.RGBA{})
-	for i := range buf {
-		if buf[i] != before[i] {
-			t.Fatal("zero-width drawInput painted something")
-		}
-	}
 }
 
 func TestItoaAndTitleCase(t *testing.T) {

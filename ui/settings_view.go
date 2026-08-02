@@ -64,37 +64,6 @@ var settingsKinds = []source.Kind{
 // them with toolkit boxes, and drawSettings renders each as a widget rather than
 // hand-drawing pills/labels/fields) ---
 
-// settingsButton is a settings pill (active = accent fill, danger = red text).
-// It is a RETAINED widget: it recovers the frame's pixel buffer from the painter
-// its Draw is handed (via pixImg), so it can be built once and redrawn — getFace
-// draws into an *image.RGBA, which pixImg reconstructs each frame.
-type settingsButton struct {
-	toolkit.Base
-	s      *Scene
-	label  string
-	active bool
-	danger bool
-}
-
-func (w *settingsButton) Draw(pt painter.Painter, th *toolkit.Theme) {
-	p, img, ok := pixImg(pt)
-	if !ok {
-		return
-	}
-	s, b, m := w.s, w.Bounds(), w.s.m
-	fill, txt := th.Surface, th.OnSurface
-	if w.active {
-		fill, txt = th.Accent, themeOnAccent(th)
-	}
-	p.FillRoundRect(painter.Rect(b), rpxOf(s, 6), fill)
-	border := th.Border
-	if w.danger {
-		border, txt = rgb(0xD03030), rgb(0xD03030)
-	}
-	p.StrokeRoundRect(painter.Rect(b), rpxOf(s, 6), border, 1)
-	m.tab.draw(img, b.X+rpxOf(s, 10), b.Y+(b.H-m.tab.height)/2, w.label, txt)
-}
-
 // settingsChip is a removable subscription chip (source dot + "source · channel  ×").
 type settingsChip struct {
 	toolkit.Base
@@ -115,23 +84,6 @@ func (w *settingsChip) Draw(pt painter.Painter, th *toolkit.Theme) {
 	m.tab.draw(img, b.X+rpxOf(s, 18), b.Y+(b.H-m.tab.height)/2, w.label, th.OnSurface)
 }
 
-// settingsField is a text input with placeholder + caret (the old drawInput).
-type settingsField struct {
-	toolkit.Base
-	s           *Scene
-	text        string
-	placeholder string
-	focused     bool
-}
-
-func (w *settingsField) Draw(pt painter.Painter, th *toolkit.Theme) {
-	p, img, ok := pixImg(pt)
-	if !ok {
-		return
-	}
-	w.s.drawInput(p, img, w.Bounds(), w.text, w.placeholder, w.focused, themeOnAccent(th), mute(th.OnSurface, th.Surface))
-}
-
 // layoutBtnRow lays specs left-to-right in a toolkit HBox at (x, y) and appends
 // the resulting sButtons (with their box-computed rects) for drawing + hit-test.
 // AddFixed(content width) reproduces the previous manual flow's positions.
@@ -139,9 +91,11 @@ func (s *Scene) layoutBtnRow(x, y int, specs []sButton) {
 	m := s.m
 	row := toolkit.NewHBox()
 	row.Spacing = rpxOf(s, 6)
-	ws := make([]*settingsButton, len(specs))
+	// Placeholder slots just to read back the box-computed rects; the pills
+	// themselves are drawn as generic toolkit.Button in drawSettings.
+	ws := make([]*flowSlot, len(specs))
 	for i := range specs {
-		ws[i] = &settingsButton{s: s, label: specs[i].label, active: specs[i].active, danger: specs[i].danger}
+		ws[i] = &flowSlot{}
 		row.AddFixed(ws[i], m.tab.width(specs[i].label)+rpxOf(s, 20))
 	}
 	row.SetBounds(toolkit.Rect{X: x, Y: y, W: s.W, H: m.btnH})
@@ -456,38 +410,6 @@ func (s *Scene) drawSettings(buf []byte) {
 }
 
 // drawInput paints one text field with placeholder + caret.
-func (s *Scene) drawInput(p *painter.PixelPainter, img *image.RGBA, r toolkit.Rect, text, placeholder string, focused bool, onAccent, muteS toolkit.RGBA) {
-	if r.W == 0 {
-		return
-	}
-	m := s.m
-	th := s.theme
-	p.FillRoundRect(painter.Rect(r), rpxOf(s, 6), th.Surface)
-	border := th.Border
-	if focused {
-		border = th.Accent
-	}
-	p.StrokeRoundRect(painter.Rect(r), rpxOf(s, 6), border, rpxOf(s, 1))
-	tx := r.X + rpxOf(s, 8)
-	ty := r.Y + (r.H-m.tab.height)/2
-	avail := r.W - 2*rpxOf(s, 8)
-	// Show the trailing portion of the value that fits, so a long entry scrolls
-	// left (keeping its end and the caret visible) rather than overrunning the box.
-	vis := m.tab.clipRight(text, avail)
-	txt, col := vis, th.OnSurface
-	if text == "" {
-		txt, col = m.tab.clipRight(placeholder, avail), muteS
-	}
-	m.tab.draw(img, tx, ty, txt, col)
-	if focused {
-		// Caret follows the visible value's end (which clipRight already bounds to
-		// the field width, so it stays inside the box) and is drawn even on an empty
-		// field, where it sits at the field start.
-		cx := tx + m.tab.width(vis) + rpxOf(s, 1)
-		p.FillRect(painter.Rect{X: cx, Y: ty, W: rpxOf(s, 2), H: m.tab.height}, th.OnSurface)
-	}
-	_ = onAccent
-}
 
 // hitSettings maps a click in the preferences view to an action.
 func (s *Scene) hitSettings(x, y int) Hit {
