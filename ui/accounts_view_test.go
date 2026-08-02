@@ -104,12 +104,6 @@ func TestCredsForFallback(t *testing.T) {
 	}
 }
 
-func TestMask(t *testing.T) {
-	if mask("abc") != "•••" || mask("") != "" {
-		t.Fatalf("mask = %q / %q", mask("abc"), mask(""))
-	}
-}
-
 func TestAccountsHitTest(t *testing.T) {
 	s := New(900, 700, ThemeFor(OSLinux, false))
 	s.OpenAccounts() // Reddit selected -> text fields incl. secret

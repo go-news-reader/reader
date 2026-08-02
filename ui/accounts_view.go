@@ -157,9 +157,6 @@ func credsFor(k source.Kind) settings.ProviderCreds {
 	return sc[0]
 }
 
-// mask returns a bullet string the width (in runes) of secret, for display.
-func mask(secret string) string { return strings.Repeat("•", len([]rune(secret))) }
-
 // layoutAccounts computes the provider selector, credential rows and the
 // topbar's Back/Done buttons, applying the vertical scroll offset.
 func (s *Scene) layoutAccounts() {
@@ -277,27 +274,35 @@ func (s *Scene) drawAccounts(buf []byte) {
 		lbl.SetBounds(toolkit.Rect{X: l.x, Y: l.y, W: s.W, H: m.side.height})
 		lbl.Draw(p, th)
 	}
+	// Provider pills + credential fields are generic go-widgets widgets with the
+	// reader's fallback font: Button (Selected = the active provider / an On bool),
+	// Entry (with the toolkit's own secret Mask for the masked credentials).
+	pillFont := ttFont(true, rpxOf(s, 12))
 	for _, b := range s.accProvBtns {
-		w := &settingsButton{s: s, label: b.label, active: b.active}
+		w := &toolkit.Button{Label: b.label, Selected: b.active}
+		w.Font = pillFont
 		w.SetBounds(b.rect)
 		w.Draw(p, th)
 	}
 	for _, f := range s.accRows {
 		if f.isBool {
+			on := s.accFieldValue(s.accSel, f.key) == "true"
 			lbl := "Off"
-			if s.accFieldValue(s.accSel, f.key) == "true" {
+			if on {
 				lbl = "On"
 			}
-			w := &settingsButton{s: s, label: lbl, active: lbl == "On"}
+			w := &toolkit.Button{Label: lbl, Selected: on}
+			w.Font = pillFont
 			w.SetBounds(f.rect)
 			w.Draw(p, th)
 			continue
 		}
-		val := s.accFieldValue(s.accSel, f.key)
+		w := &toolkit.Entry{Text: s.accFieldValue(s.accSel, f.key), Placeholder: "…", Focused: f.focused}
+		w.Font = pillFont
+		w.Cursor = len([]rune(w.Text))
 		if f.secret {
-			val = mask(val)
+			w.Mask = '•' // the toolkit masks the display; Text keeps the real secret
 		}
-		w := &settingsField{s: s, text: val, placeholder: "…", focused: f.focused}
 		w.SetBounds(f.rect)
 		w.Draw(p, th)
 	}
