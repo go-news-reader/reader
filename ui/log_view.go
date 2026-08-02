@@ -131,7 +131,7 @@ type logRow struct {
 }
 
 func (w *logRow) Draw(pt painter.Painter, th *toolkit.Theme) {
-	p, img, ok := pixImg(pt)
+	p, _, ok := pixImg(pt) // Labels draw through the painter; no *image.RGBA needed
 	if !ok {
 		return
 	}
@@ -143,11 +143,20 @@ func (w *logRow) Draw(pt painter.Painter, th *toolkit.Theme) {
 	durW := rpxOf(s, 72)
 	mw := methodFace.width(w.e.Method) + m.pad
 
+	// Text is stock toolkit.Label with the reader's fallback fonts; the URL and
+	// status lines ellipsise to their flex width instead of pre-truncating.
+	methodFont, urlFont, metaFont := ttFont(true, rpxOf(s, 13)), ttFont(false, rpxOf(s, 13)), ttFont(false, rpxOf(s, 12))
+	mkLabel := func(text string, font toolkit.Font, ink toolkit.RGBA) *toolkit.Label {
+		l := toolkit.NewLabel(text)
+		l.Font, l.Ink, l.Ellipsis = font, ink, true
+		return l
+	}
+
 	// Line 1: method (fixed) | elided URL (flex).
 	l1 := toolkit.NewHBox()
 	l1.Spacing = -1
-	l1.AddFixed(&textLine{face: methodFace, text: w.e.Method, ink: th.OnSurface, img: img}, mw)
-	l1.AddFlex(&textLine{face: urlFace, text: truncate(urlFace, shortURL(w.e.URL), b.W-mw), ink: muteS, img: img}, 1)
+	l1.AddFixed(mkLabel(w.e.Method, methodFont, th.OnSurface), mw)
+	l1.AddFlex(mkLabel(shortURL(w.e.URL), urlFont, muteS), 1)
 	l1.SetBounds(toolkit.Rect{X: b.X, Y: b.Y, W: b.W, H: urlFace.height})
 	l1.Draw(p, th)
 
@@ -158,8 +167,10 @@ func (w *logRow) Draw(pt painter.Painter, th *toolkit.Theme) {
 	}
 	l2 := toolkit.NewHBox()
 	l2.Spacing = -1
-	l2.AddFlex(&textLine{face: m.meta, text: truncate(m.meta, text, b.W-durW), ink: col, img: img}, 1)
-	l2.AddFixed(&textLine{face: m.meta, text: formatDur(w.e.Dur), ink: muteS, img: img, alignRight: true}, durW)
+	l2.AddFlex(mkLabel(text, metaFont, col), 1)
+	dur := mkLabel(formatDur(w.e.Dur), metaFont, muteS)
+	dur.Align = toolkit.AlignRight
+	l2.AddFixed(dur, durW)
 	l2.SetBounds(toolkit.Rect{X: b.X, Y: b.Y + urlFace.height + rpxOf(s, 4), W: b.W, H: m.meta.height})
 	l2.Draw(p, th)
 
