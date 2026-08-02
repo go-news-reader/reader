@@ -115,6 +115,13 @@ func (s *Scene) drawDetail(buf []byte) {
 
 	// --- content (scrolled, below the topbar), composed as a toolkit VBox ---
 	x := d.x
+	// Content text is stock toolkit.Label carrying the reader's fallback fonts.
+	titleFont, bodyFont, metaFont := ttFont(true, rpxOf(s, 22)), ttFont(false, rpxOf(s, 15)), ttFont(false, rpxOf(s, 12))
+	mkLabel := func(text string, font toolkit.Font, ink toolkit.RGBA) *toolkit.Label {
+		l := toolkit.NewLabel(text)
+		l.Font, l.Ink = font, ink
+		return l
+	}
 	label := sourceLabel(it.Source)
 	badge := &toolkit.Badge{Text: label, Fill: sourceColor(it.Source), Ink: onAccentFor(sourceColor(it.Source))}
 	badge.Font = ttFont(true, rpxOf(s, 10))
@@ -122,24 +129,24 @@ func (s *Scene) drawDetail(buf []byte) {
 	badgeRow := toolkit.NewHBox()
 	badgeRow.Spacing = rpxOf(s, 6)
 	badgeRow.AddFixed(badge, bw)
-	badgeRow.AddFlex(&textLine{face: m.meta, text: truncate(m.meta, it.Channel, d.w-bw-rpxOf(s, 6)), ink: muteS, img: img}, 1)
+	badgeRow.AddFlex(mkLabel(truncate(m.meta, it.Channel, d.w-bw-rpxOf(s, 6)), metaFont, muteS), 1)
 
 	col := toolkit.NewVBox()
 	col.Spacing = -1
 	col.AddFixed(badgeRow, m.badgeH)
 	col.AddFixed(toolkit.NewLabel(""), gap)
 	for _, ln := range d.titleLines {
-		col.AddFixed(&textLine{face: d.titleFace, text: ln, ink: th.OnSurface, img: img}, d.titleFace.height+rpxOf(s, 2))
+		col.AddFixed(mkLabel(ln, titleFont, th.OnSurface), d.titleFace.height+rpxOf(s, 2))
 	}
 	col.AddFixed(toolkit.NewLabel(""), gap)
-	col.AddFixed(&textLine{face: m.meta, text: d.meta, ink: muteS, img: img}, m.meta.height)
+	col.AddFixed(mkLabel(d.meta, metaFont, muteS), m.meta.height)
 	col.AddFixed(toolkit.NewLabel(""), gap)
 	if len(it.Media) > 0 {
 		col.AddFixed(&detailImage{s: s, it: it, p: p, img: img}, m.thumbH*2)
 		col.AddFixed(toolkit.NewLabel(""), gap)
 	}
 	for _, ln := range d.bodyLines {
-		col.AddFixed(&textLine{face: d.bodyFace, text: ln, ink: th.OnSurface, img: img}, d.bodyFace.height+rpxOf(s, 3))
+		col.AddFixed(mkLabel(ln, bodyFont, th.OnSurface), d.bodyFace.height+rpxOf(s, 3))
 	}
 	col.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.detailScroll.offset, W: d.w, H: d.height})
 	col.Draw(p, th)
