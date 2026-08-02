@@ -435,9 +435,14 @@ func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browse
 		cw = m.side.width(cnt)
 		labelW -= cw + rpxOf(s, 6)
 	}
-	content.AddFlex(&textLine{face: m.side, text: truncate(m.side, label, labelW), ink: th.OnSurface, img: img}, 1)
+	sideFont := ttFont(false, rpxOf(s, 13))
+	nameLbl := toolkit.NewLabel(label)
+	nameLbl.Font, nameLbl.Ink, nameLbl.Ellipsis = sideFont, th.OnSurface, true
+	content.AddFlex(nameLbl, 1)
 	if cnt != "" {
-		content.AddFixed(&textLine{face: m.side, text: cnt, ink: muteS, img: img, alignRight: true}, cw)
+		cntLbl := toolkit.NewLabel(cnt)
+		cntLbl.Font, cntLbl.Ink, cntLbl.Align = sideFont, muteS, toolkit.AlignRight
+		content.AddFixed(cntLbl, cw)
 	}
 	content.SetBounds(toolkit.Rect{X: textX, Y: y, W: right - textX - m.pad, H: m.sideItemH})
 	content.Draw(p, th)
