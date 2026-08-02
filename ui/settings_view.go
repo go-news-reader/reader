@@ -64,26 +64,6 @@ var settingsKinds = []source.Kind{
 // them with toolkit boxes, and drawSettings renders each as a widget rather than
 // hand-drawing pills/labels/fields) ---
 
-// settingsChip is a removable subscription chip (source dot + "source · channel  ×").
-type settingsChip struct {
-	toolkit.Base
-	s      *Scene
-	label  string
-	source source.Kind
-}
-
-func (w *settingsChip) Draw(pt painter.Painter, th *toolkit.Theme) {
-	p, img, ok := pixImg(pt)
-	if !ok {
-		return
-	}
-	s, b, m := w.s, w.Bounds(), w.s.m
-	p.FillRoundRect(painter.Rect(b), rpxOf(s, 6), th.Surface)
-	p.StrokeRoundRect(painter.Rect(b), rpxOf(s, 6), th.Border, 1)
-	s.drawDot(p, b.X+rpxOf(s, 8), b.Y+b.H/2, sourceColor(w.source))
-	m.tab.draw(img, b.X+rpxOf(s, 18), b.Y+(b.H-m.tab.height)/2, w.label, th.OnSurface)
-}
-
 // layoutBtnRow lays specs left-to-right in a toolkit HBox at (x, y) and appends
 // the resulting sButtons (with their box-computed rects) for drawing + hit-test.
 // AddFixed(content width) reproduces the previous manual flow's positions.
@@ -359,15 +339,16 @@ func (s *Scene) drawSettings(buf []byte) {
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
 
-	// Every element is drawn as a widget positioned at its box-computed rect.
+	// Every element is a stock go-widgets widget with the reader's fallback font.
+	// Section captions are toolkit.Label (muted ink).
+	labelFont := ttFont(false, rpxOf(s, 13))
 	for _, l := range s.sLabels {
-		lbl := &textLine{face: m.side, text: l.text, ink: muteS, img: img}
-		lbl.SetBounds(toolkit.Rect{X: l.x, Y: l.y, W: s.W, H: m.side.height})
-		lbl.Draw(p, th)
+		w := toolkit.NewLabel(l.text)
+		w.Font, w.Ink = labelFont, muteS
+		w.SetBounds(toolkit.Rect{X: l.x, Y: l.y, W: s.W, H: m.side.height})
+		w.Draw(p, th)
 	}
-	// Every settings pill is a generic toolkit.Button carrying the reader's
-	// fallback font: Selected marks the active choice, ButtonDanger the destructive
-	// ones (Delete). The local settingsButton is retired from this view.
+	// Pills are toolkit.Button (Selected = active choice, ButtonDanger = destructive).
 	pillFont := ttFont(true, rpxOf(s, 12))
 	for _, b := range s.sButtons {
 		w := &toolkit.Button{Label: b.label, Selected: b.active}
@@ -378,8 +359,10 @@ func (s *Scene) drawSettings(buf []byte) {
 		w.SetBounds(b.rect)
 		w.Draw(p, th)
 	}
+	// Subscription chips are toolkit.Chip with a source-coloured leading dot.
 	for _, c := range s.sChips {
-		w := &settingsChip{s: s, label: c.label, source: c.source}
+		w := toolkit.NewChip(c.label)
+		w.Dot, w.Font = sourceColor(c.source), pillFont
 		w.SetBounds(c.rect)
 		w.Draw(p, th)
 	}
