@@ -268,9 +268,14 @@ func (s *Scene) drawAccounts(buf []byte) {
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
 
 	// Every element is drawn as a widget positioned at its box-computed rect,
-	// reusing the settings editor's pill/field widgets.
+	// reusing the settings editor's pill/field widgets. The section captions are
+	// stock toolkit.Labels carrying the reader's fallback font (matching m.side's
+	// size/weight) and the muted section-caption ink.
+	labelFont := ttFont(false, rpxOf(s, 13))
 	for _, l := range s.accLabels {
-		lbl := &textLine{face: m.side, text: l.text, ink: muteS, img: img}
+		lbl := toolkit.NewLabel(l.text)
+		lbl.Font = labelFont
+		lbl.Ink = muteS
 		lbl.SetBounds(toolkit.Rect{X: l.x, Y: l.y, W: s.W, H: m.side.height})
 		lbl.Draw(p, th)
 	}
