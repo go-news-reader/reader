@@ -27,6 +27,9 @@ import (
 
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
+	"github.com/go-widgets/tray"
+
+	"github.com/go-news-reader/reader/internal/appicon"
 )
 
 // sfFontPath is the macOS system (SF Pro) font; harvested so the UI renders in
@@ -75,6 +78,10 @@ var (
 	selRedComponent              = objc.RegisterName("redComponent")
 	selGreenComponent            = objc.RegisterName("greenComponent")
 	selBlueComponent             = objc.RegisterName("blueComponent")
+	selDataWithBytesLength       = objc.RegisterName("dataWithBytes:length:")
+	selInitWithData              = objc.RegisterName("initWithData:")
+	selSetApplicationIconImage   = objc.RegisterName("setApplicationIconImage:")
+	selTerminate                 = objc.RegisterName("terminate:")
 )
 
 // NSWindowStyleMask bits.
@@ -486,6 +493,54 @@ func decodeKey(event objc.ID) (name string, r rune) {
 // Run opens the window and enters the Cocoa run loop. It blocks until the app
 // quits, and must run on the main OS thread (the caller does
 // runtime.LockOSThread).
+// nsImageFromPNG builds an NSImage from PNG bytes via NSData. Returns 0 (nil id)
+// for empty input. NSData copies the bytes, so png need not outlive the call.
+func nsImageFromPNG(png []byte) objc.ID {
+	if len(png) == 0 {
+		return 0
+	}
+	data := objc.ID(objc.GetClass("NSData")).Send(selDataWithBytesLength, unsafe.Pointer(&png[0]), len(png))
+	return objc.ID(objc.GetClass("NSImage")).Send(selAlloc).Send(selInitWithData, data)
+}
+
+// setDockIcon replaces the app's dock / application icon with the branded PNG.
+// A no-op if the image can't be decoded (keeps the default icon).
+func setDockIcon(app objc.ID) {
+	img := nsImageFromPNG(appicon.Icon)
+	if img == 0 {
+		return
+	}
+	app.Send(selSetApplicationIconImage, img)
+}
+
+// trayHandle keeps the attached menu-bar Tray alive for the process lifetime
+// (its Objective-C status item is retained by AppKit, but holding the Go value
+// keeps the click-dispatch closures reachable).
+var trayHandle *tray.Tray
+
+// attachTray adds a menu-bar (system-tray) icon — the branded glyph as a
+// template image — with a small menu (a disabled title + Quit). It attaches to
+// THIS app's already-set-up NSApplication rather than starting its own run
+// loop. Without the `tray_native` build tag the darwin backend is absent and
+// Attach is a graceful no-op (ErrNoBackend), so the plain build still links.
+func attachTray(app objc.ID) {
+	t := tray.New(appicon.Tray).SetTooltip("go-news-reader")
+	t.Menu().Add(
+		disabledItem("go-news-reader"),
+		tray.Separator(),
+		tray.Item("Quit", func() { app.Send(selTerminate, objc.ID(0)) }),
+	)
+	_ = t.Attach()
+	trayHandle = t
+}
+
+// disabledItem is a non-clickable menu label (a section title).
+func disabledItem(label string) *tray.MenuItem {
+	it := tray.Item(label, nil)
+	it.Disabled = true
+	return it
+}
+
 func Run(cfg Config, h Handler) error {
 	if err := loadFrameworks(); err != nil {
 		return err
@@ -504,6 +559,8 @@ func Run(cfg Config, h Handler) error {
 
 	app := objc.ID(objc.GetClass("NSApplication")).Send(selSharedApplication)
 	app.Send(selSetActivationPolicy, activationPolicyReg)
+	setDockIcon(app)
+	attachTray(app)
 
 	rect := nsRect{Size: nsSize{W: cfg.Width, H: cfg.Height}}
 	style := uint(styleTitled | styleClosable | styleMiniaturizable | styleResizable)
