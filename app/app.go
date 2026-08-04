@@ -87,6 +87,11 @@ type App struct {
 	webFetch  func(id, url string, width int)
 	webRender webrender.Renderer
 
+	// groupStatsFetch triggers the asynchronous sampled scan of a newsgroup's
+	// content mix (binaries/images) for the browser panel, keyed by group name.
+	// A field so tests can substitute a synchronous variant.
+	groupStatsFetch func(name string)
+
 	// dl is the parallel image download manager (feed-wide thumbnail prefetch);
 	// fdl is the parallel file download manager (reconstruct+save checked posts).
 	dl  *downloader
@@ -221,6 +226,9 @@ func New(cfg Config) *App {
 	a.webRender = webrender.New()
 	a.webFetch = func(id, url string, width int) {
 		go a.loadPreviewPage(context.Background(), id, url, width)
+	}
+	a.groupStatsFetch = func(name string) {
+		go a.loadGroupStats(context.Background(), name)
 	}
 	a.dl = newDownloader(a)
 	a.fdl = newFileDownloader(a)
