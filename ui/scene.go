@@ -313,10 +313,16 @@ type Scene struct {
 	// the filtered tree auto-expands so this only applies to the unfiltered view.
 	// usenetAddr is non-empty when a Usenet server is configured, which is what
 	// gates the sidebar "Browse newsgroups" entry.
-	browseGroups   []source.GroupInfo
-	browseServer   string
-	usenetAddr     string
-	browseEntry    *toolkit.SearchEntry
+	browseGroups []source.GroupInfo
+	browseServer string
+	usenetAddr   string
+	browseEntry  *toolkit.SearchEntry
+
+	// browseStats caches the sampled content-mix estimate (binaries/images) per
+	// group name, filled asynchronously as groups are focused in the browser and
+	// shown as a "~B% bin · ~I% img" suffix on the group's row. Empty until a
+	// scan lands; a group without an entry shows only its post count.
+	browseStats    map[string]source.GroupStats
 	browseFocused  bool
 	browseExpanded map[string]bool
 	browseScroll   panelScroll
