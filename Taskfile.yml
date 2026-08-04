@@ -7,8 +7,10 @@ env:
 tasks:
   run:
     desc: Launch the native aggregator window (macOS / Windows / Linux)
+    # -tags tray_native links the macOS menu-bar (NSStatusItem) tray backend;
+    # without it the app still runs and shows its dock icon, just no tray.
     cmds:
-      - 'go run ./cmd/newsreader -window -sub reddit:golang -sub hackernews: {{.CLI_ARGS}}'
+      - 'go run -tags tray_native ./cmd/newsreader -window -sub reddit:golang -sub hackernews: {{.CLI_ARGS}}'
 
   serve:
     desc: Serve a read-only PNG view over HTTP (default :8080)
@@ -26,9 +28,9 @@ tasks:
       - 'go run ./cmd/newsreader -json -sub reddit:golang {{.CLI_ARGS}}'
 
   build:
-    desc: Build the newsreader binary into ./bin
+    desc: Build the newsreader binary into ./bin (with the macOS tray backend)
     cmds:
-      - go build -o bin/newsreader ./cmd/newsreader
+      - go build -tags tray_native -o bin/newsreader ./cmd/newsreader
 
   test:
     desc: Run tests (100% gate on every package except the native-window boundary)

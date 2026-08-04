@@ -84,3 +84,12 @@ jobs:
           GOOS: ${{ matrix.target.goos }}
           GOARCH: ${{ matrix.target.goarch }}
         run: go build ./...
+      # Compile-check the macOS menu-bar tray backend (NSStatusItem via purego),
+      # which only links under -tags tray_native, so the tray integration can't
+      # rot unnoticed.
+      - name: Build darwin tray backend (-tags tray_native)
+        if: matrix.target.goos == 'darwin'
+        env:
+          GOOS: ${{ matrix.target.goos }}
+          GOARCH: ${{ matrix.target.goarch }}
+        run: go build -tags tray_native ./...
