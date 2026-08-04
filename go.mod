@@ -22,6 +22,7 @@ require (
 	github.com/go-reddit/reddit v0.1.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
+	github.com/go-webengine/engine v0.0.0-20260804155851-abdee3b40c6a
 	github.com/go-widgets/mvvm v0.3.0
 	github.com/go-widgets/painter v0.2.0
 	github.com/go-widgets/toolkit v0.98.0
@@ -42,5 +43,6 @@ require (
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 )

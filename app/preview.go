@@ -26,11 +26,17 @@ const previewMaxDim = 1200
 // reconstruct → decode → SetThumb so the picture appears in the pane.
 func (a *App) SelectPreview(it source.Item) {
 	a.scene.SelectPreview(it)
-	if !a.wantsPreviewImage(it) {
+	if a.wantsPreviewImage(it) {
+		a.scene.SetPreviewLoading(true)
+		a.previewFetch(it.ID, singleArticleParts(it))
 		return
 	}
-	a.scene.SetPreviewLoading(true)
-	a.previewFetch(it.ID, singleArticleParts(it))
+	// A non-Usenet item that links out: render its target page into the pane
+	// (unless already rendered). The plain-text summary shows until it lands.
+	if url := a.scene.WebPreviewURL(it); url != "" && !a.scene.HasWeb(it.ID) {
+		a.scene.SetPreviewWebLoading(true)
+		a.webFetch(it.ID, url, a.scene.PreviewWebWidth())
+	}
 }
 
 // SelectAdjacent moves the feed selection one card up (dir<0) or down (dir>0)

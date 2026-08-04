@@ -192,6 +192,75 @@ func (s *Scene) GroupPreviewItem(base string) (source.Item, bool) {
 // previewed item, so the pane shows a spinner until SetThumb lands.
 func (s *Scene) SetPreviewLoading(v bool) { s.previewImgPending = v; s.touch() }
 
+// webImg / hasWeb read the rendered-page cache for an item id.
+func (s *Scene) webImg(id string) *image.RGBA {
+	if s.previewWeb == nil {
+		return nil
+	}
+	return s.previewWeb[id]
+}
+func (s *Scene) hasWeb(id string) bool { return s.webImg(id) != nil }
+
+// HasWeb reports whether a rendered target page is cached for the item id (the
+// app checks it before kicking off a render, on the UI thread).
+func (s *Scene) HasWeb(id string) bool { return s.hasWeb(id) }
+
+// SetPreviewWebLoading marks (or clears) that a page render is in flight for the
+// previewed item, so the pane shows a spinner until SetPreviewWeb lands.
+func (s *Scene) SetPreviewWebLoading(v bool) { s.previewWebPending = v; s.touch() }
+
+// WebLoading reports whether a page render is currently in flight for the
+// previewed item.
+func (s *Scene) WebLoading() bool { return s.previewWebPending }
+
+// SetPreviewWeb stores a rendered target-page image (keyed by item id) and, when
+// the fetch was for the item still being previewed, clears the pane's web
+// loading state. A nil image only clears the pending flag (a render that failed
+// falls back to the text summary).
+func (s *Scene) SetPreviewWeb(id string, img *image.RGBA) {
+	if img != nil {
+		if s.previewWeb == nil {
+			s.previewWeb = map[string]*image.RGBA{}
+		}
+		s.previewWeb[id] = img
+	}
+	if s.previewHas && s.previewItem.ID == id {
+		s.previewWebPending = false
+	}
+	s.previewScroll.offset = 0
+	s.touch()
+}
+
+// WebPreviewURL returns the external http(s) target page to render for it, or ""
+// when there is none or the source isn't web-renderable. Usenet posts preview as
+// reconstructed images, not web pages, so they never return a URL here.
+func (s *Scene) WebPreviewURL(it source.Item) string { return webPreviewURL(it) }
+
+// PreviewWebWidth is the pixel width to render a target page at: the pane's
+// current inner content width (so the render displays 1:1), floored so a render
+// kicked off before the pane's first layout still uses a usable width.
+func (s *Scene) PreviewWebWidth() int {
+	_, w := s.previewInner()
+	if w < 320 {
+		w = 320
+	}
+	return w
+}
+
+func webPreviewURL(it source.Item) string {
+	if it.Source == source.Usenet {
+		return ""
+	}
+	u := it.Link
+	if u == "" {
+		u = it.Permalink
+	}
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return u
+	}
+	return ""
+}
+
 // HasThumb reports whether a decoded image is cached for the item id.
 func (s *Scene) HasThumb(id string) bool { return s.hasThumb(id) }
 
@@ -250,7 +319,26 @@ func (s *Scene) previewContent() previewBody {
 	// the aspect ratio reaches first (toolkit.FitBounds) — so a portrait image
 	// fills the height and a landscape fills the width, each as big as it fits.
 	// Before it loads, a placeholder box hosts the spinner / label.
-	if len(it.Media) > 0 || s.hasThumb(it.ID) {
+	switch {
+	case s.hasWeb(it.ID):
+		// A rendered target page: show it full-width (scaled to the inner width),
+		// its natural height, and scroll through it — the page replaces the
+		// text summary, so drop the wrapped body lines.
+		t := s.webImg(it.ID)
+		b := t.Bounds()
+		if b.Dx() > 0 {
+			d.imgH = b.Dy() * w / b.Dx()
+		}
+		d.bodyLines = nil
+	case s.previewWebPending:
+		// Rendering the page: reserve a tall box for the spinner, no summary yet.
+		availH := s.previewR.H - headerH - gap - m.pad
+		if lo := rpxOf(s, 160); availH < lo {
+			availH = lo
+		}
+		d.imgH = availH
+		d.bodyLines = nil
+	case len(it.Media) > 0 || s.hasThumb(it.ID):
 		if t := s.thumb(it.ID); t != nil {
 			availH := s.previewR.H - headerH - gap - m.pad
 			if lo := rpxOf(s, 160); availH < lo {
@@ -321,9 +409,12 @@ func (w *previewImage) Draw(_ painter.Painter, th *toolkit.Theme) {
 	s.previewImgR = b
 	w.p.FillRect(painter.Rect(b), th.SurfaceAlt)
 	switch {
+	case s.webImg(w.it.ID) != nil:
+		// The rendered target page, scaled to the box width (top-aligned).
+		s.drawPreviewImage(w.p, th, s.webImg(w.it.ID), b)
 	case s.thumb(w.it.ID) != nil:
 		s.drawPreviewImage(w.p, th, s.thumb(w.it.ID), b)
-	case s.previewImgPending:
+	case s.previewImgPending || s.previewWebPending:
 		d := rpxOf(s, 22)
 		s.spinnerAt(toolkit.Rect{X: b.X + (b.W-d)/2, Y: b.Y + (b.H-d)/2, W: d, H: d}).Draw(w.p, th)
 	default:
@@ -396,7 +487,12 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		col.AddFixed(mkLabel(ln, bodyFont, th.OnSurface), d.bodyFace.height+rpxOf(s, 3))
 	}
 	col.SetBounds(toolkit.Rect{X: x, Y: r.Y + m.pad - s.previewScroll.offset, W: d.innerW, H: d.height})
+	// Clip the scrolling content to the pane so overflow (notably a tall
+	// rendered web page, but also scrolled-up header/body) never paints over the
+	// topbar above or the download panel below.
+	p.PushClip(painter.Rect(r))
 	col.Draw(p, th)
+	p.PopClip()
 
 	// Scrollbar down the pane's right edge when the preview overflows.
 	s.drawVScrollbar(p, r, 0, s.previewScroll.contentH, s.previewScroll.offset)
