@@ -21,6 +21,7 @@ import (
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/viewmodel"
+	"github.com/go-news-reader/reader/internal/webrender"
 	"github.com/go-news-reader/reader/provider/usenet"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
@@ -78,6 +79,13 @@ type App struct {
 	// image into the preview pane, keyed by id. A field so tests can substitute a
 	// synchronous variant.
 	previewFetch func(id string, parts []usenet.ReconstructPart)
+
+	// webFetch triggers the asynchronous render of a non-Usenet item's external
+	// target page into the preview pane, keyed by id. A field so tests can
+	// substitute a synchronous variant. webRender is the page renderer it uses
+	// (go-webengine by default; a fake in tests).
+	webFetch  func(id, url string, width int)
+	webRender webrender.Renderer
 
 	// dl is the parallel image download manager (feed-wide thumbnail prefetch);
 	// fdl is the parallel file download manager (reconstruct+save checked posts).
@@ -209,6 +217,10 @@ func New(cfg Config) *App {
 	a.loadGroups = func(force bool) { go a.doLoadGroups(context.Background(), force) }
 	a.previewFetch = func(id string, parts []usenet.ReconstructPart) {
 		go a.loadPreviewImage(context.Background(), id, parts)
+	}
+	a.webRender = webrender.New()
+	a.webFetch = func(id, url string, width int) {
+		go a.loadPreviewPage(context.Background(), id, url, width)
 	}
 	a.dl = newDownloader(a)
 	a.fdl = newFileDownloader(a)

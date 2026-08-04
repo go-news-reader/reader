@@ -233,6 +233,15 @@ type Scene struct {
 	previewR          toolkit.Rect // the whole pane
 	previewOpenR      toolkit.Rect // "Open" (full detail) button
 	previewImgR       toolkit.Rect // image area (for hit-testing / geometry)
+
+	// Web-page preview: for a non-Usenet item that links out (HackerNews /
+	// Reddit / RSS …), the app renders the target article page into an image
+	// (via go-webengine) and shows it full-width + scrollable in the pane,
+	// replacing the plain-text summary. previewWeb caches the rendered page per
+	// item id; previewWebPending marks a render in flight (spinner) for the
+	// current selection.
+	previewWeb        map[string]*image.RGBA
+	previewWebPending bool
 	// previewUserW is the user-dragged pane width in device px (0 => default),
 	// clamped at read time; draggingPreview is set while its divider is dragged.
 	previewUserW    int
