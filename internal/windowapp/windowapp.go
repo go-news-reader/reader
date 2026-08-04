@@ -254,6 +254,7 @@ func (h *Handler) Key(name string, r rune) {
 			h.a.SelectAdjacent(-1) // move the feed selection up (previous post)
 		case ui.ModeBrowse:
 			s.NavBrowse(-1) // move the newsgroup-tree selection up
+			h.a.ScanBrowseGroup()
 		}
 	case "Down":
 		switch s.Mode() {
@@ -262,6 +263,7 @@ func (h *Handler) Key(name string, r rune) {
 			h.a.SelectAdjacent(1) // move the feed selection down (next post)
 		case ui.ModeBrowse:
 			s.NavBrowse(1) // move the newsgroup-tree selection down
+			h.a.ScanBrowseGroup()
 		}
 	default:
 		if r != 0 {

@@ -99,6 +99,18 @@ type GroupInfo struct {
 	Count int
 }
 
+// GroupStats is a sampled estimate of a newsgroup's content mix: within the last
+// Sampled article overviews scanned, how many are binary posts (Binaries) and,
+// of those, how many name an image file (Images ⊆ Binaries). A full scan of a
+// busy binary group is far too large, so callers sample the tail and extrapolate
+// the ratios to the group's full post count. The zero value (Sampled == 0) means
+// "not yet scanned".
+type GroupStats struct {
+	Sampled  int
+	Binaries int
+	Images   int
+}
+
 // Query selects what a provider should fetch.
 type Query struct {
 	// Channel scopes the fetch: a subreddit, feed URL, newsgroup name, account

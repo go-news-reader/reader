@@ -217,6 +217,51 @@ func (p *Provider) Groups(ctx context.Context) ([]source.GroupInfo, error) {
 	return p.fetchGroups(ctx)
 }
 
+// DefaultStatsSample is the number of trailing article overviews GroupStats
+// scans when the caller passes a non-positive sample size.
+const DefaultStatsSample = 2000
+
+// GroupStats samples the last `sample` article overviews of the newsgroup name
+// and counts how many are binary posts and how many name an image — a cheap
+// content-mix estimate for the browse panel (scanning a busy binary group's
+// full overview would be far too large). A non-positive sample uses
+// DefaultStatsSample. The returned Sampled is how many overviews were actually
+// scanned (fewer than `sample` for a small/young group), so a caller can
+// extrapolate the ratios to the group's full post count.
+func (p *Provider) GroupStats(ctx context.Context, name string, sample int) (source.GroupStats, error) {
+	if sample <= 0 {
+		sample = DefaultStatsSample
+	}
+	c, err := p.connect(ctx)
+	if err != nil {
+		return source.GroupStats{}, mapErr(err)
+	}
+	defer c.Close()
+
+	g, err := c.Group(name)
+	if err != nil {
+		return source.GroupStats{}, mapErr(err)
+	}
+	low := g.High - sample + 1
+	if low < g.Low {
+		low = g.Low
+	}
+	ovs, err := c.Over(low, g.High)
+	if err != nil {
+		return source.GroupStats{}, mapErr(err)
+	}
+	st := source.GroupStats{Sampled: len(ovs)}
+	for _, ov := range ovs {
+		if isBinarySubject(ov.Subject) {
+			st.Binaries++
+			if isImageSubject(ov.Subject) {
+				st.Images++
+			}
+		}
+	}
+	return st, nil
+}
+
 // RefreshGroups discards any cached list and re-fetches the server's full active
 // group list, so the browse window's Refresh control shows newly-carried groups.
 func (p *Provider) RefreshGroups(ctx context.Context) ([]source.GroupInfo, error) {

@@ -50,6 +50,55 @@ func (s *Scene) SetBrowseGroups(groups []source.GroupInfo) {
 // BrowseGroups returns the loaded group list.
 func (s *Scene) BrowseGroups() []source.GroupInfo { return s.browseGroups }
 
+// groupStatsLabel formats a sampled estimate as "~B% bin · ~I% img", or "" when
+// nothing was sampled. The percentages are of the sampled window, which the row
+// presents (with the leading ~) as an estimate of the whole group.
+func groupStatsLabel(st source.GroupStats) string {
+	if st.Sampled == 0 {
+		return ""
+	}
+	bin := st.Binaries * 100 / st.Sampled
+	img := st.Images * 100 / st.Sampled
+	return fmt.Sprintf("~%d%% bin · ~%d%% img", bin, img)
+}
+
+// SetGroupStats stores the sampled content-mix estimate for a group and repaints
+// so its browser row picks up the "~B% bin · ~I% img" suffix.
+func (s *Scene) SetGroupStats(name string, st source.GroupStats) {
+	if s.browseStats == nil {
+		s.browseStats = map[string]source.GroupStats{}
+	}
+	s.browseStats[name] = st
+	s.touch()
+}
+
+// HasGroupStats reports whether a sampled estimate is already cached for name
+// (the app checks it before kicking off a scan, avoiding a re-scan).
+func (s *Scene) HasGroupStats(name string) bool {
+	_, ok := s.browseStats[name]
+	return ok
+}
+
+// groupStats returns the cached estimate for name and whether one exists.
+func (s *Scene) groupStats(name string) (source.GroupStats, bool) {
+	st, ok := s.browseStats[name]
+	return st, ok
+}
+
+// SelectedBrowseGroup returns the name of the group under the browser's keyboard
+// selection, and whether the selected row is a group (not a hierarchy node). The
+// app uses it to scan the focused group's content mix.
+func (s *Scene) SelectedBrowseGroup() (string, bool) {
+	if s.browseSel < 0 || s.browseSel >= len(s.browseRows) {
+		return "", false
+	}
+	n := s.browseRows[s.browseSel].node
+	if n == nil || !n.IsGroup {
+		return "", false
+	}
+	return n.Name, true
+}
+
 // SetUsenetServer records the configured Usenet server address. A non-empty
 // value gates the sidebar "Browse newsgroups" entry and titles the browse view.
 func (s *Scene) SetUsenetServer(addr string) {
@@ -432,6 +481,12 @@ func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browse
 	var cw int
 	if n.IsGroup && n.Count > 0 {
 		cnt = strconv.Itoa(n.Count)
+		// Append the sampled content-mix estimate once a scan has landed.
+		if st, ok := s.groupStats(n.Name); ok {
+			if lbl := groupStatsLabel(st); lbl != "" {
+				cnt += " · " + lbl
+			}
+		}
 		cw = m.side.width(cnt)
 		labelW -= cw + rpxOf(s, 6)
 	}
