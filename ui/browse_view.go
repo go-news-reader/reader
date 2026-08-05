@@ -401,7 +401,7 @@ func (s *Scene) drawBrowseTree(p *painter.PixelPainter, img *image.RGBA, muteS t
 	se := s.browseEntry
 	se.SetBounds(toolkit.Rect(s.browseFilterR))
 	se.Font = ttFont(false, rpxOf(s, 13))
-	se.Focused = s.browseFocused
+	se.SetFocused(s.browseFocused)
 	p.FillRoundRect(painter.Rect(s.browseFilterR), rpxOf(s, 6), th.Surface)
 	se.Draw(p, th)
 	if s.browseFocused {
