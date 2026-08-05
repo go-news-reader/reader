@@ -46,10 +46,21 @@ func (a *App) NavigateWeb(id, href string) {
 	a.webFetch(id, href, a.scene.PreviewWebWidth())
 }
 
-// WebBack navigates the preview's web view to the previous page on the item's
-// back-stack. A no-op when there is nothing to go back to.
+// WebBack navigates the preview's web view to the previous page in the item's
+// history. A no-op when there is nothing to go back to.
 func (a *App) WebBack(id string) {
 	url, ok := a.scene.WebBackURL(id)
+	if !ok {
+		return
+	}
+	a.scene.SetPreviewWebLoading(true)
+	a.webFetch(id, url, a.scene.PreviewWebWidth())
+}
+
+// WebForward navigates the preview's web view to the next page in the item's
+// history (after one or more Backs). A no-op when there is nothing forward.
+func (a *App) WebForward(id string) {
+	url, ok := a.scene.WebForwardURL(id)
 	if !ok {
 		return
 	}
