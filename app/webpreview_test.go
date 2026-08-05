@@ -200,6 +200,54 @@ func TestWebNavigateAndBack(t *testing.T) {
 	}
 }
 
+// TestWebFetchDebounce covers the keyboard-navigation debounce: an armed page
+// render fires only after the selection has settled for webDebounceFrames ticks,
+// and rapid re-selection fires only the last one.
+func TestWebFetchDebounce(t *testing.T) {
+	a := New(Config{Registry: newReg(), Width: 800, Height: 600})
+	a.SetWebRenderer(&fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 400, 800))})
+	calls := 0
+	lastID := ""
+	a.SetWebFetchHook(func(id, url string, width int) { calls++; lastID = id })
+
+	// Debounced select arms but does not fetch immediately.
+	a.selectPreview(webItem("a", "https://a/"), true)
+	if calls != 0 || !a.webArmed {
+		t.Fatalf("after debounced select: armed=%v calls=%d, want true,0", a.webArmed, calls)
+	}
+	// Ticks below the threshold keep it armed, unfired.
+	for i := uint64(0); i < a.webDebounceFrames-1; i++ {
+		a.Frame()
+	}
+	if calls != 0 {
+		t.Fatalf("fired before settling: calls=%d", calls)
+	}
+	// The tick that crosses the threshold fires exactly once.
+	a.Frame()
+	if calls != 1 || a.webArmed || lastID != "a" {
+		t.Fatalf("after threshold: calls=%d armed=%v last=%q, want 1,false,a", calls, a.webArmed, lastID)
+	}
+
+	// Rapid re-selection resets the deadline; only the final item settles.
+	a.selectPreview(webItem("b", "https://b/"), true)
+	a.Frame() // a partial wait for b …
+	a.selectPreview(webItem("c", "https://c/"), true) // … superseded by c
+	before := calls
+	for i := uint64(0); i < a.webDebounceFrames; i++ {
+		a.Frame()
+	}
+	if calls != before+1 || lastID != "c" {
+		t.Fatalf("rapid nav: fired %d times last=%q, want 1 and c", calls-before, lastID)
+	}
+
+	// A direct click (debounceWeb=false) still fetches immediately.
+	before = calls
+	a.selectPreview(webItem("d", "https://d/"), false)
+	if calls != before+1 || a.webArmed {
+		t.Fatalf("direct select: calls=%d armed=%v, want immediate fetch", calls-before, a.webArmed)
+	}
+}
+
 // TestWebTabsApp covers switching to and closing web tabs through the app.
 func TestWebTabsApp(t *testing.T) {
 	a := New(Config{Registry: newReg()})
