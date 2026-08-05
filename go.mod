@@ -6,7 +6,7 @@ require (
 	github.com/ebitengine/purego v0.10.2
 	github.com/go-atproto/atproto v0.1.0
 	github.com/go-birdsite/twitter v0.1.0
-	github.com/go-browserhttp/browserhttp v0.1.0
+	github.com/go-browserhttp/browserhttp v0.2.0
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-iconoir/iconoir v0.1.0
 	github.com/go-images/images v0.0.0-20260702213524-ea366b42f216
@@ -22,7 +22,7 @@ require (
 	github.com/go-reddit/reddit v0.1.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
-	github.com/go-webengine/engine v0.0.0-20260805141657-a6c9b1cde2ee
+	github.com/go-webengine/engine v0.0.0-20260805144217-4229ec0aee8c
 	github.com/go-widgets/mvvm v0.3.0
 	github.com/go-widgets/painter v0.2.0
 	github.com/go-widgets/toolkit v0.98.0
@@ -34,6 +34,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
+	github.com/breml/rootcerts v0.3.7 // indirect
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/dop251/goja v0.0.0-20260723142020-b4aef50fa347 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect

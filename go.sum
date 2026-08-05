@@ -2,6 +2,8 @@ github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAw
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/andybalholm/brotli v1.2.2 h1:HzTuoo2ErYQqf5qvcJInB8uvqSVxRttzkFexPWtnceM=
 github.com/andybalholm/brotli v1.2.2/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
+github.com/breml/rootcerts v0.3.7 h1:KZZkmd591bmq//te85L0u33zgtI3phyGlfD8u7/pzUg=
+github.com/breml/rootcerts v0.3.7/go.mod h1:S/PKh+4d1HUn4HQovEB8hPJZO6pUZYrIhmXBhsegfXw=
 github.com/dlclark/regexp2/v2 v2.5.2 h1:HAsucWRhsqcDzl6Ua9aR8JwYOTzrZyPrF0/FNxJVAI0=
 github.com/dlclark/regexp2/v2 v2.5.2/go.mod h1:avUrQvPaLz2DrFNHJF0taWAFFX2C1GMSSoeiqFjcBmU=
 github.com/dop251/goja v0.0.0-20260723142020-b4aef50fa347 h1:RZr+96+PKQjn444QL1K9MtncwJ/PwfE+3TJLCYJL8es=
@@ -12,8 +14,8 @@ github.com/go-atproto/atproto v0.1.0 h1:gdf/+JTPEq9z51JMmvH6huiBT6WIpOTfhbPMS3QV
 github.com/go-atproto/atproto v0.1.0/go.mod h1:0ir15Nin/oDgaeIPBpG2ncndlITx0Z9ZFzExl48M0SM=
 github.com/go-birdsite/twitter v0.1.0 h1:s6xFl2oG6b8/o+nkth3Nr992bq+wSVsz/HYqeTBIZtU=
 github.com/go-birdsite/twitter v0.1.0/go.mod h1:K81gyFwTIuec82tIz/Ffo4mOqT/obIqjHhyUnbbmcOc=
-github.com/go-browserhttp/browserhttp v0.1.0 h1:nyzTAv8vF3tkn4z0JUoX/y1hy/ihTV5DYTns+QM1ogE=
-github.com/go-browserhttp/browserhttp v0.1.0/go.mod h1:zAN6vOC7f+MLC+P1J/C4dpdgj8D3+BhSpZRQlgSyZu8=
+github.com/go-browserhttp/browserhttp v0.2.0 h1:3RcjOQVHgqhSOmI5cfsURpexw/vetoDUoLXKzgTCSac=
+github.com/go-browserhttp/browserhttp v0.2.0/go.mod h1:VJiwBxLetXdc8eDadOcNbiO0EelNQPny0cLZhg1hTKU=
 github.com/go-datetime/dates v0.1.0 h1:Uj8TaTZ09DXdq75EGQ/teFdrXpfVAC3ZDHAPQvPTnaA=
 github.com/go-datetime/dates v0.1.0/go.mod h1:KeZ1wUeMScJD6HOvj3hINwbsB+GCSFjJLWcJhrBlwIo=
 github.com/go-erasure/reedsolomon v0.3.0 h1:A+qrLr3OdHOftL+EyoqrdUu1sFiCb23PDWxgvc9foxU=
@@ -56,8 +58,8 @@ github.com/go-syndication/feed v0.1.1 h1:nB//8Cp9K3HQvZBqN1jsir8jVqmnxU5SPk14MYw
 github.com/go-syndication/feed v0.1.1/go.mod h1:PR2mpm60ZMdEt3QEAEgoiC28gNi6fhCgBb/99JGwxR0=
 github.com/go-tiktok/tiktok v0.1.0 h1:I/duF5SLq+BdlbIqVmSso6O0PayYYm+u4+g4JRjbMHc=
 github.com/go-tiktok/tiktok v0.1.0/go.mod h1:YfwNRpTyk5QNWauCm4nxhdVvjmEvLd0HpxzLtivHJew=
-github.com/go-webengine/engine v0.0.0-20260805141657-a6c9b1cde2ee h1:biI73jOVbx+7xQFlCOoX5rPgdt0WN0rnmjZaS1+vPDY=
-github.com/go-webengine/engine v0.0.0-20260805141657-a6c9b1cde2ee/go.mod h1:Z83pN0ozfboeJvbqehNfzS4rFUnxNr46aTusiJBgOvI=
+github.com/go-webengine/engine v0.0.0-20260805144217-4229ec0aee8c h1:bv2N1kC2yN16/1jMHMDc21QhIqTDnla3HH3AZzgeo7A=
+github.com/go-webengine/engine v0.0.0-20260805144217-4229ec0aee8c/go.mod h1:bdJQHmEFn9ifn4+m9sVASYMipok6odMBWjTXrM5tRjA=
 github.com/go-widgets/mvvm v0.3.0 h1:rVU/phb6nKF+deCDHSuKGFp75+PcXZHtrIFT4ghjf/A=
 github.com/go-widgets/mvvm v0.3.0/go.mod h1:H2J6jSNOVj3f9JHlxwAPOE6pFniT5CeOEc8vEUqGU54=
 github.com/go-widgets/painter v0.2.0 h1:C7anwlKLYnlTeCK90xKYvy0srxYXqhuvyDFismlf2Sc=
