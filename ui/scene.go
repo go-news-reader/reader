@@ -94,6 +94,8 @@ const (
 	HitWebFwd                 // the web preview's "Fwd ›" chip — Item set
 	HitWebReload              // the web preview's "↻" reload chip — Item set
 	HitWebURL                 // the web preview's address field — Item set
+	HitWebTab                 // a web preview tab (switch to it) — Value = item id
+	HitWebTabClose            // a web preview tab's close box — Value = item id
 	HitToggleDownload         // a complete post's download checkbox — Value = release base
 	HitClearDownloads         // the download panel's "Clear" button
 
@@ -270,6 +272,13 @@ type Scene struct {
 	previewFwdR       toolkit.Rect // "Fwd ›" chip (web view), 0 when not shown
 	previewReloadR    toolkit.Rect // "↻" reload chip (web view), 0 when not shown
 	previewURLR       toolkit.Rect // the address field (web view), 0 when not shown
+	// webTabs are the target pages opened this session (each keeps its own cached
+	// render + history under previewWeb*/previewWebHist keyed by item id): a
+	// browser-style switchable strip. A tab is added when a page first renders for
+	// an item; the strip shows once ≥2 are open. webTabHits records each drawn
+	// tab's clickable body + close-box for hit-testing.
+	webTabs    []source.Item
+	webTabHits []webTabHit
 	// webURLFocused marks the address field as holding keyboard focus (in the
 	// feed view, mutually exclusive with the topbar search); webURLBuf is the URL
 	// being typed while it is focused (seeded from the current page on focus).

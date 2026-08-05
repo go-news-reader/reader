@@ -199,3 +199,35 @@ func TestWebNavigateAndBack(t *testing.T) {
 		t.Fatal("reload with no current page should be a no-op")
 	}
 }
+
+// TestWebTabsApp covers switching to and closing web tabs through the app.
+func TestWebTabsApp(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	fr := &fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 400, 800))}
+	a.SetWebRenderer(fr)
+	a.SetWebFetchHook(func(id, url string, width int) { a.loadPreviewPage(context.Background(), id, url, width) })
+
+	a.SelectPreview(webItem("t1", "https://a/")) // opens tab t1
+	a.SelectPreview(webItem("t2", "https://b/")) // opens tab t2 (active)
+
+	// Switching to an unknown tab is a no-op; switching to t1 re-selects it.
+	a.SelectWebTab("nope")
+	if it, _ := a.Scene().PreviewItem(); it.ID != "t2" {
+		t.Fatalf("unknown tab switch changed selection to %q", it.ID)
+	}
+	a.SelectWebTab("t1")
+	if it, _ := a.Scene().PreviewItem(); it.ID != "t1" {
+		t.Fatalf("SelectWebTab(t1) → active %q, want t1", it.ID)
+	}
+
+	// Closing the active tab (t1) switches to the neighbour (t2).
+	a.CloseWebTab("t1")
+	if it, _ := a.Scene().PreviewItem(); it.ID != "t2" {
+		t.Fatalf("after closing active t1, active = %q, want t2", it.ID)
+	}
+	// Closing a non-active / unknown tab leaves the selection alone.
+	a.CloseWebTab("gone")
+	if it, _ := a.Scene().PreviewItem(); it.ID != "t2" {
+		t.Fatalf("closing unknown tab changed selection to %q", it.ID)
+	}
+}
