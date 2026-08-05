@@ -68,6 +68,24 @@ func (a *App) WebForward(id string) {
 	a.webFetch(id, url, a.scene.PreviewWebWidth())
 }
 
+// SelectWebTab switches the preview to an open web tab. Its rendered page is
+// cached (that is what made it a tab), so the pane shows it without re-fetching.
+func (a *App) SelectWebTab(id string) {
+	it, ok := a.scene.WebTabItem(id)
+	if !ok {
+		return
+	}
+	a.scene.SelectPreview(it)
+}
+
+// CloseWebTab closes an open web tab (dropping its cached render). When the
+// closed tab was the active one, the neighbour that takes its place is shown.
+func (a *App) CloseWebTab(id string) {
+	if next, ok := a.scene.CloseWebTab(id); ok {
+		a.scene.SelectPreview(next)
+	}
+}
+
 // WebReload re-renders the page currently shown in the preview's web view
 // without touching the history. A no-op when no page is shown.
 func (a *App) WebReload(id string) {

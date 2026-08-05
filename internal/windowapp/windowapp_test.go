@@ -641,4 +641,14 @@ func TestMouseDownWebLinkAndBack(t *testing.T) {
 	if s.WebURLFocused() {
 		t.Fatal("a click off the address field should defocus it")
 	}
+
+	// Open a second web page so the tab strip appears, then switch/close via clicks.
+	it2 := source.Item{ID: "w2", Source: source.HackerNews, Title: "Second", Link: "https://site2/"}
+	s.SelectPreview(it2)
+	s.InitWebHistory("w2", "https://site2/")
+	s.SetPreviewWeb("w2", image.NewRGBA(image.Rect(0, 0, 400, 900)), nil, 400)
+	a.Frame() // strip now shown (two tabs: w, w2)
+	click(t, h, ui.HitWebTab)      // → SelectWebTab (switch to the other tab)
+	a.Frame()
+	click(t, h, ui.HitWebTabClose) // → CloseWebTab
 }

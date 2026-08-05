@@ -83,6 +83,10 @@ func (h *Handler) MouseDown(x, y int) {
 		h.a.WebForward(hit.Item.ID) // the web preview's "Fwd ›" chip
 	case ui.HitWebReload:
 		h.a.WebReload(hit.Item.ID) // the web preview's "↻" reload chip
+	case ui.HitWebTab:
+		h.a.SelectWebTab(hit.Value) // switch to an open web preview tab
+	case ui.HitWebTabClose:
+		h.a.CloseWebTab(hit.Value) // close an open web preview tab
 	case ui.HitWebURL:
 		s.FocusWebURL(true) // focus the web preview's address field for typing
 	case ui.HitBack:
