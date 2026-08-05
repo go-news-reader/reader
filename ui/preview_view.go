@@ -213,22 +213,87 @@ func (s *Scene) SetPreviewWebLoading(v bool) { s.previewWebPending = v; s.touch(
 // previewed item.
 func (s *Scene) WebLoading() bool { return s.previewWebPending }
 
-// SetPreviewWeb stores a rendered target-page image (keyed by item id) and, when
-// the fetch was for the item still being previewed, clears the pane's web
-// loading state. A nil image only clears the pending flag (a render that failed
-// falls back to the text summary).
-func (s *Scene) SetPreviewWeb(id string, img *image.RGBA) {
+// SetPreviewWeb stores a rendered target-page image (keyed by item id) plus its
+// clickable link map and the width it was rendered at, and — when the fetch was
+// for the item still being previewed — clears the pane's web loading state and
+// resets the scroll to the top of the new page. A nil image only clears the
+// pending flag (a render that failed falls back to the text summary).
+func (s *Scene) SetPreviewWeb(id string, img *image.RGBA, links []WebLink, renderW int) {
 	if img != nil {
 		if s.previewWeb == nil {
 			s.previewWeb = map[string]*image.RGBA{}
+			s.previewWebLinks = map[string][]WebLink{}
+			s.previewWebRenderW = map[string]int{}
 		}
 		s.previewWeb[id] = img
+		s.previewWebLinks[id] = links
+		s.previewWebRenderW[id] = renderW
 	}
 	if s.previewHas && s.previewItem.ID == id {
 		s.previewWebPending = false
+		s.previewScroll.offset = 0
 	}
-	s.previewScroll.offset = 0
 	s.touch()
+}
+
+// InitWebHistory starts (or restarts) the back-stack for an item at its target
+// URL — called when the item is first previewed, so Back never leaves the page
+// that was opened.
+func (s *Scene) InitWebHistory(id, url string) {
+	if s.previewWebHist == nil {
+		s.previewWebHist = map[string][]string{}
+	}
+	s.previewWebHist[id] = []string{url}
+}
+
+// PushWebURL records a navigation to url (a clicked link) on the item's back
+// stack. The top of the stack is always the currently-shown page.
+func (s *Scene) PushWebURL(id, url string) {
+	if s.previewWebHist == nil {
+		s.previewWebHist = map[string][]string{}
+	}
+	s.previewWebHist[id] = append(s.previewWebHist[id], url)
+}
+
+// WebBackURL pops the current page off the item's back stack and returns the URL
+// now on top (the page to re-render), and whether a back step was possible (the
+// stack had more than the initial page).
+func (s *Scene) WebBackURL(id string) (string, bool) {
+	h := s.previewWebHist[id]
+	if len(h) < 2 {
+		return "", false
+	}
+	h = h[:len(h)-1]
+	s.previewWebHist[id] = h
+	return h[len(h)-1], true
+}
+
+// WebCanBack reports whether the item's web view can navigate back (more than
+// the initial page on the stack).
+func (s *Scene) WebCanBack(id string) bool { return len(s.previewWebHist[id]) > 1 }
+
+// webLinkAt maps a widget-space click at (x, y) to the href of the rendered-page
+// anchor under it, or ("", false). It inverts the display transform: the page
+// image fills previewImgR (the box recorded by the last Draw) scaled from its
+// render width, so a click maps to render-pixel coords by the box→render scale.
+func (s *Scene) webLinkAt(id string, x, y int) (string, bool) {
+	box := s.previewImgR
+	rw := s.previewWebRenderW[id]
+	img := s.webImg(id)
+	if box.W <= 0 || box.H <= 0 || rw <= 0 || img == nil || !inRect(box, x, y) {
+		return "", false
+	}
+	// Box was sized to the image's aspect at render width, so both axes share the
+	// scale render/box; map the click into render-pixel space.
+	px := (x - box.X) * rw / box.W
+	py := (y - box.Y) * img.Bounds().Dy() / box.H
+	pt := image.Pt(px, py)
+	for _, l := range s.previewWebLinks[id] {
+		if pt.In(l.Rect) {
+			return l.Href, true
+		}
+	}
+	return "", false
 }
 
 // WebPreviewURL returns the external http(s) target page to render for it, or ""
@@ -502,6 +567,22 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		p.FillRoundRect(painter.Rect(s.previewOpenR), rpxOf(s, 6), th.Accent)
 		m.side.draw(img, s.previewOpenR.X+m.pad, s.previewOpenR.Y+(s.previewOpenR.H-m.side.height)/2, "Open", themeOnAccent(th))
 	}
+
+	// "‹ Back" chip, fixed at the pane's top-left, shown only once the web view
+	// has navigated past its first page (a mini in-app browser control).
+	s.previewBackR = toolkit.Rect{}
+	if s.webCanBackCurrent() {
+		bw := m.pad*2 + m.side.width("‹ Back")
+		s.previewBackR = toolkit.Rect{X: r.X + m.pad, Y: m.topbarH + m.pad/2, W: bw, H: m.badgeH + rpxOf(s, 4)}
+		p.FillRoundRect(painter.Rect(s.previewBackR), rpxOf(s, 6), th.SurfaceAlt)
+		m.side.draw(img, s.previewBackR.X+m.pad, s.previewBackR.Y+(s.previewBackR.H-m.side.height)/2, "‹ Back", th.OnSurface)
+	}
+}
+
+// webCanBackCurrent reports whether the currently-previewed item's web view can
+// navigate back.
+func (s *Scene) webCanBackCurrent() bool {
+	return s.previewHas && s.hasWeb(s.previewItem.ID) && s.WebCanBack(s.previewItem.ID)
 }
 
 // previewHitTest resolves a click inside the pane: the Open button (full detail)
@@ -513,6 +594,17 @@ func (s *Scene) previewHitTest(x, y int) (Hit, bool) {
 	}
 	if s.previewHas && s.previewOpenR.W > 0 && inRect(s.previewOpenR, x, y) {
 		return Hit{Kind: HitOpenPreview, Item: s.previewItem}, true
+	}
+	// Web preview is a mini browser: the "‹" back chip, then any anchor under the
+	// cursor navigates in-pane.
+	if s.previewHas {
+		id := s.previewItem.ID
+		if s.previewBackR.W > 0 && inRect(s.previewBackR, x, y) {
+			return Hit{Kind: HitWebBack, Item: s.previewItem}, true
+		}
+		if href, ok := s.webLinkAt(id, x, y); ok {
+			return Hit{Kind: HitWebLink, Item: s.previewItem, Value: href}, true
+		}
 	}
 	return Hit{Kind: HitNone}, true
 }

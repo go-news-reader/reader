@@ -34,6 +34,7 @@ func (a *App) SelectPreview(it source.Item) {
 	// A non-Usenet item that links out: render its target page into the pane
 	// (unless already rendered). The plain-text summary shows until it lands.
 	if url := a.scene.WebPreviewURL(it); url != "" && !a.scene.HasWeb(it.ID) {
+		a.scene.InitWebHistory(it.ID, url) // seed the back-stack at the item's page
 		a.scene.SetPreviewWebLoading(true)
 		a.webFetch(it.ID, url, a.scene.PreviewWebWidth())
 	}

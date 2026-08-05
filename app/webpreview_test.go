@@ -7,25 +7,30 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-news-reader/reader/internal/webrender"
 	"github.com/go-news-reader/reader/source"
 )
 
-// fakeRenderer is a webrender.Renderer that returns a canned image/error without
-// touching the network; done (when non-nil) is closed as Render returns so a
-// test can await the async default webFetch goroutine.
+// fakeRenderer is a webrender.Renderer that returns a canned image/links/error
+// without touching the network; done (when non-nil) is closed as Render returns
+// so a test can await the async default webFetch goroutine. lastURL records the
+// most recent URL rendered (to assert navigation targets).
 type fakeRenderer struct {
-	img   *image.RGBA
-	err   error
-	calls int
-	done  chan struct{}
+	img     *image.RGBA
+	links   []webrender.Link
+	err     error
+	calls   int
+	lastURL string
+	done    chan struct{}
 }
 
-func (f *fakeRenderer) Render(_ context.Context, _ string, _ int) (*image.RGBA, error) {
+func (f *fakeRenderer) Render(_ context.Context, url string, _ int) (*image.RGBA, []webrender.Link, string, error) {
 	f.calls++
+	f.lastURL = url
 	if f.done != nil {
 		close(f.done)
 	}
-	return f.img, f.err
+	return f.img, f.links, url, f.err
 }
 
 func webItem(id, link string) source.Item {
@@ -104,5 +109,43 @@ func TestWebFetchDefaultAsync(t *testing.T) {
 	}
 	if !ok {
 		t.Fatal("default async render did not deliver the page")
+	}
+}
+
+// TestWebNavigateAndBack exercises in-pane link navigation + Back through the
+// synchronous hook (deterministic).
+func TestWebNavigateAndBack(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	fr := &fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 400, 800)),
+		links: []webrender.Link{{Rect: image.Rect(0, 0, 50, 20), Href: "https://site/next"}}}
+	a.SetWebRenderer(fr)
+	a.SetWebFetchHook(func(id, url string, width int) { a.loadPreviewPage(context.Background(), id, url, width) })
+
+	// Initial preview seeds the history at the item's URL and renders it.
+	a.SelectPreview(webItem("h1", "https://site/"))
+	if !a.Scene().HasWeb("h1") || a.Scene().WebCanBack("h1") {
+		t.Fatalf("after select: has=%v canBack=%v", a.Scene().HasWeb("h1"), a.Scene().WebCanBack("h1"))
+	}
+	// Navigate to a link → new page rendered, Back now possible.
+	a.NavigateWeb("h1", "https://site/next")
+	if fr.lastURL != "https://site/next" || !a.Scene().WebCanBack("h1") {
+		t.Fatalf("navigate: lastURL=%q canBack=%v", fr.lastURL, a.Scene().WebCanBack("h1"))
+	}
+	// Empty href is ignored.
+	before := fr.calls
+	a.NavigateWeb("h1", "")
+	if fr.calls != before {
+		t.Fatal("empty href should not render")
+	}
+	// Back → previous URL re-rendered, Back no longer possible (at the root).
+	a.WebBack("h1")
+	if fr.lastURL != "https://site/" || a.Scene().WebCanBack("h1") {
+		t.Fatalf("back: lastURL=%q canBack=%v", fr.lastURL, a.Scene().WebCanBack("h1"))
+	}
+	// Back at the root is a no-op.
+	before = fr.calls
+	a.WebBack("h1")
+	if fr.calls != before {
+		t.Fatal("back at root should be a no-op")
 	}
 }
