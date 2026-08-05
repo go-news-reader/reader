@@ -198,3 +198,31 @@ func TestPreviewWebClickRouting(t *testing.T) {
 		t.Fatalf("back chip hit = %+v, want HitWebBack", hit)
 	}
 }
+
+func TestPreviewLoadingSpinner(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	if s.Animating() {
+		t.Fatal("idle scene must not animate")
+	}
+	s.SelectPreview(webTestItem())
+	// A pending web render animates (the spinner must keep spinning).
+	s.SetPreviewWebLoading(true)
+	if !s.Animating() {
+		t.Fatal("pending web preview should animate")
+	}
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf) // first-load: centred spinner in the empty box
+
+	// Navigation: a previous page is present AND a new render is pending → the
+	// top-centre loading spinner chip overlays the old page.
+	s.SetPreviewWeb("h1", image.NewRGBA(image.Rect(0, 0, 400, 1200)), nil, 400)
+	s.SetPreviewWebLoading(true)
+	s.Draw(buf)
+
+	// A pending Usenet image preview also animates.
+	u := New(760, 460, ThemeFor(OSMac, false))
+	u.SetPreviewLoading(true)
+	if !u.Animating() {
+		t.Fatal("pending image preview should animate")
+	}
+}
