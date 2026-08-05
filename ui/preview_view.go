@@ -151,6 +151,8 @@ func (s *Scene) SelectPreview(it source.Item) {
 	s.previewHas = true
 	s.previewScroll.offset = 0
 	s.previewImgPending = false
+	s.webURLFocused = false // a new selection drops any in-progress address edit
+	s.webURLBuf = ""
 	s.touch()
 }
 
@@ -305,6 +307,57 @@ func (s *Scene) WebCanBack(id string) bool {
 func (s *Scene) WebCanForward(id string) bool {
 	h := s.histFor(id)
 	return h != nil && h.cur < len(h.urls)-1
+}
+
+// CurrentWebURL returns the URL of the page currently shown for the item, or ""
+// when the item has no web history.
+func (s *Scene) CurrentWebURL(id string) string {
+	h := s.histFor(id)
+	if h == nil || len(h.urls) == 0 {
+		return ""
+	}
+	return h.urls[h.cur]
+}
+
+// WebURLFocused reports whether the preview's address field holds keyboard focus.
+func (s *Scene) WebURLFocused() bool { return s.webURLFocused }
+
+// FocusWebURL gives (v=true) or removes keyboard focus from the address field.
+// Taking focus seeds the edit buffer with the page currently shown and drops the
+// topbar search focus, so the two text fields never both capture keystrokes.
+func (s *Scene) FocusWebURL(v bool) {
+	if v {
+		s.searchFocused = false
+		if s.previewHas {
+			s.webURLBuf = s.CurrentWebURL(s.previewItem.ID)
+		}
+	}
+	s.webURLFocused = v
+	s.touch()
+}
+
+// webURLDisplay is the text shown in the address field: the buffer being typed
+// while focused, else the page currently shown.
+func (s *Scene) webURLDisplay(id string) string {
+	if s.webURLFocused {
+		return s.webURLBuf
+	}
+	return s.CurrentWebURL(id)
+}
+
+// CommitWebURL defocuses the address field and returns the normalised URL to
+// navigate to (a bare host gains an https:// scheme) and whether it is non-empty.
+func (s *Scene) CommitWebURL() (string, bool) {
+	u := strings.TrimSpace(s.webURLBuf)
+	s.webURLFocused = false
+	s.touch()
+	if u == "" {
+		return "", false
+	}
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		u = "https://" + u
+	}
+	return u, true
 }
 
 // webLinkAt maps a widget-space click at (x, y) to the href of the rendered-page
@@ -613,15 +666,24 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		m.side.draw(img, s.previewOpenR.X+m.pad, s.previewOpenR.Y+(s.previewOpenR.H-m.side.height)/2, "Open", themeOnAccent(th))
 	}
 
-	// "‹ Back" / "Fwd ›" chips, fixed at the pane's top-left — a mini in-app
-	// browser toolbar shown once the web view has navigated at all. Each chip is
-	// drawn enabled (and hit-testable) or dimmed (disabled) by whether that
-	// direction has history, mirroring a browser's grey-out.
-	s.previewBackR, s.previewFwdR = toolkit.Rect{}, toolkit.Rect{}
-	if s.webNavigable() {
+	// Mini in-app browser toolbar, fixed at the pane's top edge, shown whenever a
+	// target page is rendered: "‹ Back" / "Fwd ›" chips (enabled or dimmed by the
+	// available history) followed by an editable address field spanning the rest
+	// of the row.
+	s.previewBackR, s.previewFwdR, s.previewURLR = toolkit.Rect{}, toolkit.Rect{}, toolkit.Rect{}
+	if s.webToolbar() {
 		id := s.previewItem.ID
 		h := m.badgeH + rpxOf(s, 4)
 		y := m.topbarH + m.pad/2
+		// Opaque band behind the toolbar so the scrolling page (and the post's
+		// badge/title beneath it) never shows through the gaps between controls —
+		// the toolbar reads as fixed browser chrome. It stops before the "Open"
+		// pill at the top-right, which stays visible.
+		bandRight := r.X + r.W
+		if s.previewOpenR.W > 0 {
+			bandRight = s.previewOpenR.X - m.pad/2
+		}
+		p.FillRect(painter.Rect(toolkit.Rect{X: r.X + 1, Y: r.Y, W: bandRight - r.X - 1, H: (y - r.Y) + h + m.pad/2}), th.Surface)
 		bw := m.pad*2 + m.side.width("‹ Back")
 		fw := m.pad*2 + m.side.width("Fwd ›")
 		back := toolkit.Rect{X: r.X + m.pad, Y: y, W: bw, H: h}
@@ -633,6 +695,17 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		}
 		if s.WebCanForward(id) {
 			s.previewFwdR = fwd
+		}
+		// Address field fills the remainder of the row (leaving room for the "Open"
+		// pill, which is drawn at the top-right).
+		urlX := fwd.X + fwd.W + m.pad
+		urlW := r.X + r.W - m.pad - urlX
+		if s.previewOpenR.W > 0 {
+			urlW = s.previewOpenR.X - m.pad - urlX
+		}
+		if urlW > rpxOf(s, 40) { // only when there is usable width
+			s.previewURLR = toolkit.Rect{X: urlX, Y: y, W: urlW, H: h}
+			s.drawAddressField(p, img, m, th, s.previewURLR, id)
 		}
 	}
 }
@@ -648,14 +721,52 @@ func (s *Scene) drawNavChip(p *painter.PixelPainter, img *image.RGBA, m metrics,
 	m.side.draw(img, r.X+m.pad, r.Y+(r.H-m.side.height)/2, label, fg)
 }
 
-// webNavigable reports whether the currently-previewed item's web view has any
-// browsing history (so the Back/Forward toolbar is shown).
-func (s *Scene) webNavigable() bool {
-	if !s.previewHas || !s.hasWeb(s.previewItem.ID) {
-		return false
+// drawAddressField paints the browser toolbar's URL field: a rounded box holding
+// the current (or being-typed) URL, with a focus ring + caret while focused. The
+// text is right-clipped to the field so a long URL never bleeds past it.
+func (s *Scene) drawAddressField(p *painter.PixelPainter, img *image.RGBA, m metrics, th *toolkit.Theme, r toolkit.Rect, id string) {
+	p.FillRoundRect(painter.Rect(r), rpxOf(s, 6), th.Background)
+	if s.webURLFocused {
+		p.StrokeRoundRect(painter.Rect(r), rpxOf(s, 6), th.Accent, rpxOf(s, 1)) // focus ring
 	}
-	id := s.previewItem.ID
-	return s.WebCanBack(id) || s.WebCanForward(id)
+	txt := s.webURLDisplay(id)
+	fg := th.OnSurface
+	if txt == "" {
+		txt, fg = "Enter a URL…", th.Border // placeholder
+	}
+	avail := r.W - m.pad*2
+	txt = clipTextRight(m.side, txt, avail)
+	tx := r.X + m.pad
+	ty := r.Y + (r.H-m.side.height)/2
+	p.PushClip(painter.Rect(r))
+	m.side.draw(img, tx, ty, txt, fg)
+	if s.webURLFocused {
+		caretX := tx + m.side.width(txt)
+		p.FillRect(painter.Rect(toolkit.Rect{X: caretX + 1, Y: ty, W: rpxOf(s, 1), H: m.side.height}), th.Accent)
+	}
+	p.PopClip()
+}
+
+// clipTextRight trims the head of s so it fits within w px (keeping the tail,
+// where the meaningful part of a long URL — the path — lives), prefixing an
+// ellipsis when it had to cut.
+func clipTextRight(f textFace, str string, w int) string {
+	if w <= 0 || f.width(str) <= w {
+		return str
+	}
+	rs := []rune(str)
+	for i := 1; i < len(rs); i++ {
+		if cand := "…" + string(rs[i:]); f.width(cand) <= w {
+			return cand
+		}
+	}
+	return "…"
+}
+
+// webToolbar reports whether the browser toolbar (chips + address field) should
+// be shown: the current item has a rendered target page.
+func (s *Scene) webToolbar() bool {
+	return s.previewHas && s.hasWeb(s.previewItem.ID)
 }
 
 // previewHitTest resolves a click inside the pane: the Open button (full detail)
@@ -677,6 +788,9 @@ func (s *Scene) previewHitTest(x, y int) (Hit, bool) {
 		}
 		if s.previewFwdR.W > 0 && inRect(s.previewFwdR, x, y) {
 			return Hit{Kind: HitWebFwd, Item: s.previewItem}, true
+		}
+		if s.previewURLR.W > 0 && inRect(s.previewURLR, x, y) {
+			return Hit{Kind: HitWebURL, Item: s.previewItem}, true
 		}
 		if href, ok := s.webLinkAt(id, x, y); ok {
 			return Hit{Kind: HitWebLink, Item: s.previewItem, Value: href}, true

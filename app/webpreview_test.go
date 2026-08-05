@@ -160,4 +160,27 @@ func TestWebNavigateAndBack(t *testing.T) {
 	if fr.calls != before {
 		t.Fatal("forward at tip should be a no-op")
 	}
+
+	// Typing a bare host into the address field + Enter navigates (https:// added).
+	a.Scene().FocusWebURL(true)
+	for i := 0; i < 64; i++ {
+		a.Scene().Backspace() // clear the seeded current URL first
+	}
+	for _, r := range "z.t" {
+		a.Scene().TypeRune(r)
+	}
+	a.CommitWebURL("h1")
+	if fr.lastURL != "https://z.t" {
+		t.Fatalf("address-bar nav lastURL = %q, want https://z.t", fr.lastURL)
+	}
+	// Committing an empty address field is a no-op.
+	before = fr.calls
+	a.Scene().FocusWebURL(true)
+	for i := 0; i < 64; i++ {
+		a.Scene().Backspace() // clear the seeded buffer to empty
+	}
+	a.CommitWebURL("h1")
+	if fr.calls != before {
+		t.Fatal("empty address commit should be a no-op")
+	}
 }
