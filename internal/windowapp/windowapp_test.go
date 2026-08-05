@@ -1,6 +1,7 @@
 package windowapp
 
 import (
+	"image"
 	"image/color"
 	"testing"
 
@@ -592,4 +593,25 @@ func TestMouseDownFixAuthOpensAccounts(t *testing.T) {
 	if s.SelectedAccount() != source.Mastodon {
 		t.Fatalf("selected account = %q, want mastodon", s.SelectedAccount())
 	}
+}
+
+// TestMouseDownWebLinkAndBack covers routing a rendered-page link click to
+// in-pane navigation and the "‹ Back" chip to WebBack. The scene's web state is
+// set directly and the async fetch is stubbed to a no-op, so no network runs.
+func TestMouseDownWebLinkAndBack(t *testing.T) {
+	a := app.New(app.Config{Registry: source.NewRegistry(), Width: 1000, Height: 700})
+	a.SetWebFetchHook(func(string, string, int) {}) // no-op: navigation must not hit the network
+	s := a.Scene()
+	it := source.Item{ID: "w", Source: source.HackerNews, Title: "T", Link: "https://site/"}
+	s.SelectPreview(it)
+	s.InitWebHistory("w", "https://site/")
+	img := image.NewRGBA(image.Rect(0, 0, 400, 1200))
+	s.SetPreviewWeb("w", img, []ui.WebLink{{Rect: image.Rect(0, 0, 220, 40), Href: "https://site/next"}}, 400)
+	a.Frame() // draw so the web image box (previewImgR) is recorded
+
+	h := New(a)
+	click(t, h, ui.HitWebLink) // → NavigateWeb (stubbed), pushes history
+
+	a.Frame()                  // back chip now shown (history depth > 1)
+	click(t, h, ui.HitWebBack) // → WebBack (stubbed)
 }

@@ -75,6 +75,10 @@ func (h *Handler) MouseDown(x, y int) {
 		h.a.PreviewGroup(hit.Value) // preview a Usenet post: reconstruct its image into the pane
 	case ui.HitOpenPreview:
 		vm.OpenDetail(hit.Item) // the pane's "Open" button → full-screen reading view
+	case ui.HitWebLink:
+		h.a.NavigateWeb(hit.Item.ID, hit.Value) // click a link in the rendered page → navigate in-pane
+	case ui.HitWebBack:
+		h.a.WebBack(hit.Item.ID) // the web preview's "‹ Back" chip
 	case ui.HitBack:
 		vm.CloseView.Execute()
 	case ui.HitOpenExternal:

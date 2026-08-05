@@ -50,6 +50,15 @@ func (s Subscription) name() string {
 	}
 }
 
+// WebLink is one clickable anchor in a rendered web preview: Rect is its bounds
+// in the rendered image's own pixel coordinates (at the width it was rendered),
+// Href the resolved absolute target. The pane maps a click through the image's
+// display rect + scale back to these to find the anchor under the cursor.
+type WebLink struct {
+	Rect image.Rectangle
+	Href string
+}
+
 // AuthPrompt names a provider whose subscription failed because it needs the
 // user to sign in or supply configuration. The feed renders one clickable
 // "needs sign-in" banner per prompt; a click opens the Accounts editor for Kind.
@@ -80,6 +89,8 @@ const (
 	HitPreviewGroup           // a Usenet group card's body (preview it in the pane) — Value = release base
 	HitOpenPreview            // the preview pane's "Open" button (full reading view) — Item set
 	HitPreviewDivider         // the preview pane's left-edge resize grip (start a drag)
+	HitWebLink                // a clickable anchor in the rendered web preview — Value = href, Item set
+	HitWebBack                // the web preview's "‹" back chip — Item set
 	HitToggleDownload         // a complete post's download checkbox — Value = release base
 	HitClearDownloads         // the download panel's "Clear" button
 
@@ -240,8 +251,18 @@ type Scene struct {
 	// replacing the plain-text summary. previewWeb caches the rendered page per
 	// item id; previewWebPending marks a render in flight (spinner) for the
 	// current selection.
+	//
+	// The pane is a mini in-app browser: previewWebLinks holds each rendered
+	// page's clickable anchors (rects in the render's own pixel coords) and
+	// previewWebRenderW the width it was rendered at, so a click maps back to an
+	// anchor; previewWebHist is the per-item back-stack of visited URLs (top =
+	// current). Clicking a link pushes + re-renders; Back pops.
 	previewWeb        map[string]*image.RGBA
 	previewWebPending bool
+	previewWebLinks   map[string][]WebLink
+	previewWebRenderW map[string]int
+	previewWebHist    map[string][]string
+	previewBackR      toolkit.Rect // "‹" back chip (web view), 0 when not shown
 	// previewUserW is the user-dragged pane width in device px (0 => default),
 	// clamped at read time; draggingPreview is set while its divider is dragged.
 	previewUserW    int
