@@ -79,6 +79,8 @@ func (h *Handler) MouseDown(x, y int) {
 		h.a.NavigateWeb(hit.Item.ID, hit.Value) // click a link in the rendered page → navigate in-pane
 	case ui.HitWebBack:
 		h.a.WebBack(hit.Item.ID) // the web preview's "‹ Back" chip
+	case ui.HitWebFwd:
+		h.a.WebForward(hit.Item.ID) // the web preview's "Fwd ›" chip
 	case ui.HitBack:
 		vm.CloseView.Execute()
 	case ui.HitOpenExternal:

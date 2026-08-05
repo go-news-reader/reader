@@ -90,7 +90,8 @@ const (
 	HitOpenPreview            // the preview pane's "Open" button (full reading view) — Item set
 	HitPreviewDivider         // the preview pane's left-edge resize grip (start a drag)
 	HitWebLink                // a clickable anchor in the rendered web preview — Value = href, Item set
-	HitWebBack                // the web preview's "‹" back chip — Item set
+	HitWebBack                // the web preview's "‹ Back" chip — Item set
+	HitWebFwd                 // the web preview's "Fwd ›" chip — Item set
 	HitToggleDownload         // a complete post's download checkbox — Value = release base
 	HitClearDownloads         // the download panel's "Clear" button
 
@@ -255,14 +256,16 @@ type Scene struct {
 	// The pane is a mini in-app browser: previewWebLinks holds each rendered
 	// page's clickable anchors (rects in the render's own pixel coords) and
 	// previewWebRenderW the width it was rendered at, so a click maps back to an
-	// anchor; previewWebHist is the per-item back-stack of visited URLs (top =
-	// current). Clicking a link pushes + re-renders; Back pops.
+	// anchor; previewWebHist is the per-item visited-URL history with a cursor
+	// (back/forward), so Back/Forward move the cursor and re-render without
+	// discarding the other direction — a link click truncates the forward tail.
 	previewWeb        map[string]*image.RGBA
 	previewWebPending bool
 	previewWebLinks   map[string][]WebLink
 	previewWebRenderW map[string]int
-	previewWebHist    map[string][]string
-	previewBackR      toolkit.Rect // "‹" back chip (web view), 0 when not shown
+	previewWebHist    map[string]*webHist
+	previewBackR      toolkit.Rect // "‹ Back" chip (web view), 0 when not shown
+	previewFwdR       toolkit.Rect // "Fwd ›" chip (web view), 0 when not shown
 	// previewUserW is the user-dragged pane width in device px (0 => default),
 	// clamped at read time; draggingPreview is set while its divider is dragged.
 	previewUserW    int

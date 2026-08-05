@@ -613,5 +613,8 @@ func TestMouseDownWebLinkAndBack(t *testing.T) {
 	click(t, h, ui.HitWebLink) // → NavigateWeb (stubbed), pushes history
 
 	a.Frame()                  // back chip now shown (history depth > 1)
-	click(t, h, ui.HitWebBack) // → WebBack (stubbed)
+	click(t, h, ui.HitWebBack) // → WebBack (stubbed): steps to the root
+
+	a.Frame()                 // forward chip now active (we stepped back)
+	click(t, h, ui.HitWebFwd) // → WebForward (stubbed)
 }
