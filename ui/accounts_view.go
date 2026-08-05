@@ -299,7 +299,8 @@ func (s *Scene) drawAccounts(buf []byte) {
 			w.Draw(p, th)
 			continue
 		}
-		w := &toolkit.Entry{Text: s.accFieldValue(s.accSel, f.key), Placeholder: "…", Focused: f.focused}
+		w := &toolkit.Entry{Text: s.accFieldValue(s.accSel, f.key), Placeholder: "…"}
+		w.SetFocused(f.focused)
 		w.Font = pillFont
 		w.Cursor = len([]rune(w.Text))
 		if f.secret {
