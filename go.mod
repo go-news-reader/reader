@@ -22,7 +22,7 @@ require (
 	github.com/go-reddit/reddit v0.1.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
-	github.com/go-webengine/engine v0.0.0-20260804155851-abdee3b40c6a
+	github.com/go-webengine/engine v0.0.0-20260805085158-a4afc5c3516c
 	github.com/go-widgets/mvvm v0.3.0
 	github.com/go-widgets/painter v0.2.0
 	github.com/go-widgets/toolkit v0.98.0
@@ -34,12 +34,16 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
+	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
+	github.com/dop251/goja v0.0.0-20260723142020-b4aef50fa347 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-opentype/bidi v0.2.1 // indirect
 	github.com/go-opentype/opentype v0.5.0 // indirect
 	github.com/go-opentype/shape v0.3.3 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
+	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
