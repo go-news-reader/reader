@@ -26,7 +26,7 @@ require (
 	github.com/go-widgets/mvvm v0.3.0
 	github.com/go-widgets/painter v0.2.0
 	github.com/go-widgets/toolkit v0.98.0
-	github.com/go-widgets/tray v0.1.0
+	github.com/go-widgets/tray v0.1.1
 	github.com/jezek/xgb v1.3.1
 	golang.org/x/image v0.44.0
 	golang.org/x/sys v0.47.0
