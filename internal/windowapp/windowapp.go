@@ -81,6 +81,8 @@ func (h *Handler) MouseDown(x, y int) {
 		h.a.WebBack(hit.Item.ID) // the web preview's "‹ Back" chip
 	case ui.HitWebFwd:
 		h.a.WebForward(hit.Item.ID) // the web preview's "Fwd ›" chip
+	case ui.HitWebURL:
+		s.FocusWebURL(true) // focus the web preview's address field for typing
 	case ui.HitBack:
 		vm.CloseView.Execute()
 	case ui.HitOpenExternal:
@@ -182,6 +184,7 @@ func (h *Handler) MouseDown(x, y int) {
 		s.ToggleAccountBool(hit.Value)
 	default:
 		vm.FocusSearch(false)
+		s.FocusWebURL(false) // a click elsewhere commits/leaves the address field
 	}
 }
 
@@ -245,9 +248,13 @@ func (h *Handler) Key(name string, r rune) {
 		case ui.ModeBrowse:
 			h.activateBrowseSelection() // Enter expands a hierarchy or (un)subscribes a group
 		case ui.ModeFeed:
-			if _, ok := s.PreviewItem(); ok {
+			it, hasPrev := s.PreviewItem()
+			switch {
+			case s.WebURLFocused() && hasPrev:
+				h.a.CommitWebURL(it.ID) // Enter in the address field navigates to it
+			case hasPrev:
 				h.a.OpenSelected() // Enter opens the selected post's reading view
-			} else {
+			default:
 				vm.FocusSearch(false)
 			}
 		default:

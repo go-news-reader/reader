@@ -92,6 +92,7 @@ const (
 	HitWebLink                // a clickable anchor in the rendered web preview — Value = href, Item set
 	HitWebBack                // the web preview's "‹ Back" chip — Item set
 	HitWebFwd                 // the web preview's "Fwd ›" chip — Item set
+	HitWebURL                 // the web preview's address field — Item set
 	HitToggleDownload         // a complete post's download checkbox — Value = release base
 	HitClearDownloads         // the download panel's "Clear" button
 
@@ -266,6 +267,12 @@ type Scene struct {
 	previewWebHist    map[string]*webHist
 	previewBackR      toolkit.Rect // "‹ Back" chip (web view), 0 when not shown
 	previewFwdR       toolkit.Rect // "Fwd ›" chip (web view), 0 when not shown
+	previewURLR       toolkit.Rect // the address field (web view), 0 when not shown
+	// webURLFocused marks the address field as holding keyboard focus (in the
+	// feed view, mutually exclusive with the topbar search); webURLBuf is the URL
+	// being typed while it is focused (seeded from the current page on focus).
+	webURLFocused bool
+	webURLBuf     string
 	// previewUserW is the user-dragged pane width in device px (0 => default),
 	// clamped at read time; draggingPreview is set while its divider is dragged.
 	previewUserW    int
@@ -697,6 +704,11 @@ func (s *Scene) TypeRune(r rune) {
 		}
 		return
 	}
+	if s.webURLFocused {
+		s.webURLBuf += string(r) // typing in the preview's address field
+		s.touch()
+		return
+	}
 	if s.searchFocused {
 		// Feed the printable rune through the SearchEntry widget itself, so the
 		// widget's OnChange (bound to vm.Search) fires exactly as a real widget
@@ -728,6 +740,11 @@ func (s *Scene) Backspace() {
 			s.browseScroll.offset = 0
 			s.touch()
 		}
+		return
+	}
+	if s.webURLFocused && s.webURLBuf != "" {
+		s.webURLBuf = trimLastRune(s.webURLBuf) // editing the preview's address field
+		s.touch()
 		return
 	}
 	if s.searchFocused && s.searchEntry.Text != "" {
