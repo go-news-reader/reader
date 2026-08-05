@@ -571,8 +571,17 @@ func (w *previewImage) Draw(_ painter.Painter, th *toolkit.Theme) {
 	case s.thumb(w.it.ID) != nil:
 		s.drawPreviewImage(w.p, th, s.thumb(w.it.ID), b)
 	case s.previewImgPending || s.previewWebPending:
-		d := rpxOf(s, 22)
-		s.spinnerAt(toolkit.Rect{X: b.X + (b.W-d)/2, Y: b.Y + (b.H-d)/2, W: d, H: d}).Draw(w.p, th)
+		// Clear, centred loading placeholder: a label above a sizable spinner, so a
+		// slow render (a web page can take a second or more to fetch + lay out)
+		// reads as "loading", not a frozen blank pane.
+		msg := "Loading preview…"
+		lw := s.m.meta.width(msg)
+		d := rpxOf(s, 44)
+		gap := rpxOf(s, 12)
+		blockH := s.m.meta.height + gap + d
+		top := b.Y + (b.H-blockH)/2
+		s.m.meta.draw(w.img, b.X+(b.W-lw)/2, top, msg, mute(th.OnSurface, th.SurfaceAlt))
+		s.spinnerAt(toolkit.Rect{X: b.X + (b.W-d)/2, Y: top + s.m.meta.height + gap, W: d, H: d}).Draw(w.p, th)
 	default:
 		lbl := "image"
 		if len(w.it.Media) > 0 {
