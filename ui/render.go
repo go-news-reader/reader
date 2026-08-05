@@ -443,7 +443,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		row.Draw(p, th)
 		if pending {
 			d := rpxOf(s, 14)
-			s.spinnerAt(toolkit.Rect{X: m.sidebarW - m.pad - d, Y: ly + (m.sideItemH-d)/2, W: d, H: d}).Draw(p, th)
+			s.spinnerAt(toolkit.Rect{X: m.sidebarW - m.pad - d, Y: ly + (m.sideItemH-d)/2, W: d, H: d}, toolkit.SpinnerDots).Draw(p, th)
 		}
 	}
 
@@ -511,7 +511,7 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	se := s.searchEntry
 	se.SetBounds(toolkit.Rect(s.searchR))
 	se.Font = ttFont(false, rpxOf(s, 13))
-	se.Focused = s.searchFocused // the widget draws its own aligned caret
+	se.SetFocused(s.searchFocused) // the widget draws its own aligned caret
 	se.Draw(p, th)
 	if s.searchFocused {
 		p.StrokeRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Accent, rpxOf(s, 2))

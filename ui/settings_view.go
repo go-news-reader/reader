@@ -379,7 +379,8 @@ func (s *Scene) drawSettings(buf []byte) {
 		// Text fields are generic toolkit.Entry (placeholder from the toolkit's own
 		// Entry.Placeholder), with the caret parked at the end since the reader
 		// drives the text itself.
-		w := &toolkit.Entry{Text: f.text, Placeholder: f.ph, Focused: f.foc, Cursor: len([]rune(f.text))}
+		w := &toolkit.Entry{Text: f.text, Placeholder: f.ph, Cursor: len([]rune(f.text))}
+		w.SetFocused(f.foc)
 		w.Font = ttFont(true, rpxOf(s, 12))
 		w.SetBounds(f.r)
 		w.Draw(p, th)

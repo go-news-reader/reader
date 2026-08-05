@@ -581,7 +581,7 @@ func (w *previewImage) Draw(_ painter.Painter, th *toolkit.Theme) {
 		blockH := s.m.meta.height + gap + d
 		top := b.Y + (b.H-blockH)/2
 		s.m.meta.draw(w.img, b.X+(b.W-lw)/2, top, msg, mute(th.OnSurface, th.SurfaceAlt))
-		s.spinnerAt(toolkit.Rect{X: b.X + (b.W-d)/2, Y: top + s.m.meta.height + gap, W: d, H: d}).Draw(w.p, th)
+		s.spinnerAt(toolkit.Rect{X: b.X + (b.W-d)/2, Y: top + s.m.meta.height + gap, W: d, H: d}, toolkit.SpinnerDots).Draw(w.p, th)
 	default:
 		lbl := "image"
 		if len(w.it.Media) > 0 {
@@ -597,7 +597,7 @@ func (w *previewImage) Draw(_ painter.Painter, th *toolkit.Theme) {
 		pad := rpxOf(s, 6)
 		chip := toolkit.Rect{X: b.X + (b.W-d)/2 - pad, Y: b.Y + pad, W: d + 2*pad, H: d + 2*pad}
 		w.p.FillRoundRect(painter.Rect(chip), rpxOf(s, 6), th.SurfaceAlt)
-		s.spinnerAt(toolkit.Rect{X: chip.X + pad, Y: chip.Y + pad, W: d, H: d}).Draw(w.p, th)
+		s.spinnerAt(toolkit.Rect{X: chip.X + pad, Y: chip.Y + pad, W: d, H: d}, toolkit.SpinnerRing).Draw(w.p, th)
 	}
 }
 

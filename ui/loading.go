@@ -39,8 +39,8 @@ func (s *Scene) spinnerPhase() float64 {
 // spinnerAt builds an Active toolkit.Spinner phased to the current animation
 // frame, bounded to r. Shared by the empty-feed placeholder, the strip and the
 // sidebar pending marker so every indicator spins in lock-step.
-func (s *Scene) spinnerAt(r toolkit.Rect) *toolkit.Spinner {
-	sp := &toolkit.Spinner{Active: true, Phase: s.spinnerPhase()}
+func (s *Scene) spinnerAt(r toolkit.Rect, style toolkit.SpinnerStyle) *toolkit.Spinner {
+	sp := &toolkit.Spinner{Active: true, Phase: s.spinnerPhase(), Style: style}
 	sp.SetBounds(r)
 	return sp
 }
@@ -58,7 +58,7 @@ func (s *Scene) drawLoadingPlaceholder(p *painter.PixelPainter, img *image.RGBA,
 	// Animated spinner centred below the label.
 	d := rpxOf(s, 52)
 	r := toolkit.Rect{X: feedX + (feedW-d)/2, Y: cy + m.title.height + m.pad, W: d, H: d}
-	s.spinnerAt(r).Draw(p, s.theme)
+	s.spinnerAt(r, toolkit.SpinnerRing).Draw(p, s.theme)
 }
 
 // drawLoadStrip paints the slim progress strip at the top of the feed content
@@ -73,7 +73,7 @@ func (s *Scene) drawLoadStrip(p *painter.PixelPainter, img *image.RGBA, x, y, w 
 	// Small spinner at the label row's trailing edge keeps the strip visibly
 	// alive while sources stream in.
 	sd := m.side.height
-	s.spinnerAt(toolkit.Rect{X: x + w - sd, Y: y, W: sd, H: sd}).Draw(p, s.theme)
+	s.spinnerAt(toolkit.Rect{X: x + w - sd, Y: y, W: sd, H: sd}, toolkit.SpinnerDots).Draw(p, s.theme)
 
 	// Determinate ProgressBar (completed/total sources) below the label.
 	pb := toolkit.NewProgressBar()
