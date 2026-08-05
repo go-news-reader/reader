@@ -87,6 +87,20 @@ type App struct {
 	webFetch  func(id, url string, width int)
 	webRender webrender.Renderer
 
+	// Web-preview render debounce for rapid keyboard navigation: arrowing through
+	// the feed selects each item, and firing a full page render per item is
+	// wasteful. SelectAdjacent arms the fetch instead of firing it; Frame fires it
+	// once the selection has stayed put for webDebounceFrames render ticks. Direct
+	// clicks (SelectPreview) still fetch immediately. All fields are render-thread
+	// only (armed/read in SelectAdjacent + Frame, both on the main thread).
+	frameCount        uint64
+	webArmed          bool
+	webArmID          string
+	webArmURL         string
+	webArmWidth       int
+	webArmAt          uint64
+	webDebounceFrames uint64
+
 	// groupStatsFetch triggers the asynchronous sampled scan of a newsgroup's
 	// content mix (binaries/images) for the browser panel, keyed by group name.
 	// A field so tests can substitute a synchronous variant.
@@ -216,6 +230,7 @@ func New(cfg Config) *App {
 		subs: set.ActiveProfile().Subs, scene: scene,
 		recorder: cfg.Recorder, baseOpts: cfg.Options, newRegistry: feeds.Registry,
 		osName: cfg.OS, dark: cfg.Dark, lastRev: -1,
+		webDebounceFrames: 9, // ~150ms at 60fps: fetch only after arrowing settles
 	}
 	a.refresh = func() { go a.Refresh(context.Background()) }
 	a.reconstruct = func(base string) { go a.doReconstruct(context.Background(), base) }
@@ -445,6 +460,7 @@ func (a *App) Frame() (buf []byte, changed bool) {
 	// Apply any scene mutations enqueued by background goroutines first, on this
 	// (the render) thread, so the scene is only ever touched here.
 	a.drainScene()
+	a.tickWebDebounce() // fire a debounced page render once the selection settles
 	s := a.scene
 	if s.Animating() {
 		s.AdvanceAnim()

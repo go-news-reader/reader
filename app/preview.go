@@ -24,8 +24,14 @@ const previewMaxDim = 1200
 // SelectPreview shows it in the right preview pane. For a Usenet item that
 // carries an image and has not been fetched yet, it kicks off an async
 // reconstruct → decode → SetThumb so the picture appears in the pane.
-func (a *App) SelectPreview(it source.Item) {
+func (a *App) SelectPreview(it source.Item) { a.selectPreview(it, false) }
+
+// selectPreview shows it in the pane. debounceWeb defers a web-page render until
+// the selection settles (rapid keyboard navigation), rather than firing one per
+// item; a direct click passes false and fetches immediately.
+func (a *App) selectPreview(it source.Item, debounceWeb bool) {
 	a.scene.SelectPreview(it)
+	a.webArmed = false // a new selection cancels any pending debounced fetch
 	if a.wantsPreviewImage(it) {
 		a.scene.SetPreviewLoading(true)
 		a.previewFetch(it.ID, singleArticleParts(it))
@@ -36,20 +42,37 @@ func (a *App) SelectPreview(it source.Item) {
 	if url := a.scene.WebPreviewURL(it); url != "" && !a.scene.HasWeb(it.ID) {
 		a.scene.InitWebHistory(it.ID, url) // seed the back-stack at the item's page
 		a.scene.SetPreviewWebLoading(true)
-		a.webFetch(it.ID, url, a.scene.PreviewWebWidth())
+		if debounceWeb {
+			a.webArmID, a.webArmURL, a.webArmWidth = it.ID, url, a.scene.PreviewWebWidth()
+			a.webArmAt, a.webArmed = a.frameCount, true
+		} else {
+			a.webFetch(it.ID, url, a.scene.PreviewWebWidth())
+		}
+	}
+}
+
+// tickWebDebounce advances the frame clock and fires an armed web-page render
+// once the selection has held for webDebounceFrames ticks. Called once per Frame
+// on the render thread (the only thread that arms/reads these fields).
+func (a *App) tickWebDebounce() {
+	a.frameCount++
+	if a.webArmed && a.frameCount-a.webArmAt >= a.webDebounceFrames {
+		a.webArmed = false
+		a.webFetch(a.webArmID, a.webArmURL, a.webArmWidth)
 	}
 }
 
 // SelectAdjacent moves the feed selection one card up (dir<0) or down (dir>0)
 // and previews the newly selected post — the keyboard equivalent of clicking it,
 // so its image is fetched and it scrolls into view. A no-op when the feed has no
-// selectable cards.
+// selectable cards. The web-page render is debounced so holding an arrow key
+// through the feed does not fire a render for every item it passes over.
 func (a *App) SelectAdjacent(dir int) {
 	it, ok := a.scene.NavItem(dir)
 	if !ok {
 		return
 	}
-	a.SelectPreview(it)
+	a.selectPreview(it, true)
 }
 
 // OpenSelected opens the currently previewed post in the full reading view (the
