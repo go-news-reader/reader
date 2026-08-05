@@ -670,7 +670,7 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	// target page is rendered: "‹ Back" / "Fwd ›" chips (enabled or dimmed by the
 	// available history) followed by an editable address field spanning the rest
 	// of the row.
-	s.previewBackR, s.previewFwdR, s.previewURLR = toolkit.Rect{}, toolkit.Rect{}, toolkit.Rect{}
+	s.previewBackR, s.previewFwdR, s.previewReloadR, s.previewURLR = toolkit.Rect{}, toolkit.Rect{}, toolkit.Rect{}, toolkit.Rect{}
 	if s.webToolbar() {
 		id := s.previewItem.ID
 		h := m.badgeH + rpxOf(s, 4)
@@ -688,17 +688,23 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		fw := m.pad*2 + m.side.width("Fwd ›")
 		back := toolkit.Rect{X: r.X + m.pad, Y: y, W: bw, H: h}
 		fwd := toolkit.Rect{X: back.X + bw + m.pad, Y: y, W: fw, H: h}
+		reload := toolkit.Rect{X: fwd.X + fw + m.pad, Y: y, W: h, H: h} // compact square
 		s.drawNavChip(p, img, m, th, back, "‹ Back", s.WebCanBack(id))
 		s.drawNavChip(p, img, m, th, fwd, "Fwd ›", s.WebCanForward(id))
+		// Reload is always available: a square chip with the refresh glyph.
+		p.FillRoundRect(painter.Rect(reload), rpxOf(s, 6), th.SurfaceAlt)
+		gp := rpxOf(s, 5)
+		drawRefreshIcon(p, toolkit.Rect{X: reload.X + gp, Y: reload.Y + gp, W: reload.W - 2*gp, H: reload.H - 2*gp}, th.OnSurface, s.iconStroke())
 		if s.WebCanBack(id) {
 			s.previewBackR = back
 		}
 		if s.WebCanForward(id) {
 			s.previewFwdR = fwd
 		}
+		s.previewReloadR = reload
 		// Address field fills the remainder of the row (leaving room for the "Open"
 		// pill, which is drawn at the top-right).
-		urlX := fwd.X + fwd.W + m.pad
+		urlX := reload.X + reload.W + m.pad
 		urlW := r.X + r.W - m.pad - urlX
 		if s.previewOpenR.W > 0 {
 			urlW = s.previewOpenR.X - m.pad - urlX
@@ -788,6 +794,9 @@ func (s *Scene) previewHitTest(x, y int) (Hit, bool) {
 		}
 		if s.previewFwdR.W > 0 && inRect(s.previewFwdR, x, y) {
 			return Hit{Kind: HitWebFwd, Item: s.previewItem}, true
+		}
+		if s.previewReloadR.W > 0 && inRect(s.previewReloadR, x, y) {
+			return Hit{Kind: HitWebReload, Item: s.previewItem}, true
 		}
 		if s.previewURLR.W > 0 && inRect(s.previewURLR, x, y) {
 			return Hit{Kind: HitWebURL, Item: s.previewItem}, true

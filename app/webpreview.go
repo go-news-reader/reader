@@ -68,6 +68,17 @@ func (a *App) WebForward(id string) {
 	a.webFetch(id, url, a.scene.PreviewWebWidth())
 }
 
+// WebReload re-renders the page currently shown in the preview's web view
+// without touching the history. A no-op when no page is shown.
+func (a *App) WebReload(id string) {
+	url := a.scene.CurrentWebURL(id)
+	if url == "" {
+		return
+	}
+	a.scene.SetPreviewWebLoading(true)
+	a.webFetch(id, url, a.scene.PreviewWebWidth())
+}
+
 // CommitWebURL navigates the preview's web view to the URL typed into the
 // address field (Enter). A no-op when the field is empty.
 func (a *App) CommitWebURL(id string) {

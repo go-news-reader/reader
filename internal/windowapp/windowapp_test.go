@@ -618,6 +618,9 @@ func TestMouseDownWebLinkAndBack(t *testing.T) {
 	a.Frame()                 // forward chip now active (we stepped back)
 	click(t, h, ui.HitWebFwd) // → WebForward (stubbed)
 
+	a.Frame()
+	click(t, h, ui.HitWebReload) // → WebReload (stubbed)
+
 	// The address field focuses on click, accepts typed keys, and Enter commits
 	// it (navigating). A click elsewhere in the pane defocuses it.
 	a.Frame()
