@@ -183,4 +183,19 @@ func TestWebNavigateAndBack(t *testing.T) {
 	if fr.calls != before {
 		t.Fatal("empty address commit should be a no-op")
 	}
+
+	// Reload re-renders the current page (a fetch, no history change).
+	cur := a.Scene().CurrentWebURL("h1")
+	before = fr.calls
+	depth := a.Scene().WebCanBack("h1")
+	a.WebReload("h1")
+	if fr.calls != before+1 || fr.lastURL != cur || a.Scene().WebCanBack("h1") != depth {
+		t.Fatalf("reload: calls=%d lastURL=%q (want %q), history changed=%v", fr.calls, fr.lastURL, cur, a.Scene().WebCanBack("h1") != depth)
+	}
+	// Reload with no page shown is a no-op.
+	before = fr.calls
+	a.WebReload("no-such-item")
+	if fr.calls != before {
+		t.Fatal("reload with no current page should be a no-op")
+	}
 }
