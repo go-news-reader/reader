@@ -234,6 +234,9 @@ func (s *Scene) SetPreviewWeb(id string, img *image.RGBA, links []WebLink, rende
 	if s.previewHas && s.previewItem.ID == id {
 		s.previewWebPending = false
 		s.previewScroll.offset = 0
+		if img != nil {
+			s.ensureWebTab(s.previewItem) // a rendered page opens (or keeps) its tab
+		}
 	}
 	s.touch()
 }
@@ -634,6 +637,12 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 
 	col := toolkit.NewVBox()
 	col.Spacing = -1
+	// When the fixed browser chrome (tab strip + toolbar) is shown, reserve its
+	// height at the top so the scrolling header/page starts below it rather than
+	// under it. The content already carries m.pad of top padding via SetBounds.
+	if ch := s.webChromeH(); ch > m.pad {
+		col.AddFixed(toolkit.NewLabel(""), ch-m.pad)
+	}
 	col.AddFixed(badgeRow, m.badgeH)
 	col.AddFixed(toolkit.NewLabel(""), gap)
 	for _, ln := range d.titleLines {
@@ -671,19 +680,29 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	// available history) followed by an editable address field spanning the rest
 	// of the row.
 	s.previewBackR, s.previewFwdR, s.previewReloadR, s.previewURLR = toolkit.Rect{}, toolkit.Rect{}, toolkit.Rect{}, toolkit.Rect{}
+	s.webTabHits = s.webTabHits[:0]
 	if s.webToolbar() {
 		id := s.previewItem.ID
 		h := m.badgeH + rpxOf(s, 4)
-		y := m.topbarH + m.pad/2
-		// Opaque band behind the toolbar so the scrolling page (and the post's
-		// badge/title beneath it) never shows through the gaps between controls —
-		// the toolbar reads as fixed browser chrome. It stops before the "Open"
-		// pill at the top-right, which stays visible.
-		bandRight := r.X + r.W
-		if s.previewOpenR.W > 0 {
-			bandRight = s.previewOpenR.X - m.pad/2
+		y0 := m.topbarH + m.pad/2 // tab strip row (or the toolbar row when no strip)
+		tabsH := s.tabStripH()    // 0 when fewer than two tabs are open
+		y := y0
+		if tabsH > 0 {
+			y = y0 + tabsH + m.pad/2 // the toolbar drops below the tab strip
 		}
-		p.FillRect(painter.Rect(toolkit.Rect{X: r.X + 1, Y: r.Y, W: bandRight - r.X - 1, H: (y - r.Y) + h + m.pad/2}), th.Surface)
+		// Opaque band behind the whole chrome so the scrolling page (and the post's
+		// badge/title beneath it) never shows through the gaps between controls —
+		// the toolbar reads as fixed browser chrome. The "Open" pill is re-drawn on
+		// top afterwards so it stays visible.
+		p.FillRect(painter.Rect(toolkit.Rect{X: r.X + 1, Y: r.Y, W: r.W - 2, H: (y - r.Y) + h + m.pad/2}), th.Surface)
+		// Tab strip on the top row, stopping before the "Open" pill at the right.
+		if tabsH > 0 {
+			tabsRight := r.X + r.W - m.pad
+			if s.previewOpenR.W > 0 {
+				tabsRight = s.previewOpenR.X - m.pad
+			}
+			s.drawWebTabs(p, img, m, th, r, y0, tabsRight)
+		}
 		bw := m.pad*2 + m.side.width("‹ Back")
 		fw := m.pad*2 + m.side.width("Fwd ›")
 		back := toolkit.Rect{X: r.X + m.pad, Y: y, W: bw, H: h}
@@ -702,16 +721,22 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 			s.previewFwdR = fwd
 		}
 		s.previewReloadR = reload
-		// Address field fills the remainder of the row (leaving room for the "Open"
-		// pill, which is drawn at the top-right).
+		// Address field fills the remainder of the toolbar row. When there is no tab
+		// strip the toolbar shares the top row with the "Open" pill, so it stops
+		// before it; with a strip the toolbar has its own row and can run full width.
 		urlX := reload.X + reload.W + m.pad
-		urlW := r.X + r.W - m.pad - urlX
-		if s.previewOpenR.W > 0 {
-			urlW = s.previewOpenR.X - m.pad - urlX
+		urlRight := r.X + r.W - m.pad
+		if tabsH == 0 && s.previewOpenR.W > 0 {
+			urlRight = s.previewOpenR.X - m.pad
 		}
-		if urlW > rpxOf(s, 40) { // only when there is usable width
-			s.previewURLR = toolkit.Rect{X: urlX, Y: y, W: urlW, H: h}
+		if urlRight-urlX > rpxOf(s, 40) { // only when there is usable width
+			s.previewURLR = toolkit.Rect{X: urlX, Y: y, W: urlRight - urlX, H: h}
 			s.drawAddressField(p, img, m, th, s.previewURLR, id)
+		}
+		// Re-draw the "Open" pill on top of the band so it stays visible.
+		if s.previewOpenR.W > 0 {
+			p.FillRoundRect(painter.Rect(s.previewOpenR), rpxOf(s, 6), th.Accent)
+			m.side.draw(img, s.previewOpenR.X+m.pad, s.previewOpenR.Y+(s.previewOpenR.H-m.side.height)/2, "Open", themeOnAccent(th))
 		}
 	}
 }
@@ -775,6 +800,22 @@ func (s *Scene) webToolbar() bool {
 	return s.previewHas && s.hasWeb(s.previewItem.ID)
 }
 
+// webChromeH is the total height of the fixed browser chrome (tab strip +
+// toolbar) measured from the pane's top, or 0 when no page is shown. It matches
+// the opaque band drawn in drawPreview so the scrolling content can reserve it.
+func (s *Scene) webChromeH() int {
+	if !s.webToolbar() {
+		return 0
+	}
+	m := s.m
+	h := m.badgeH + rpxOf(s, 4)
+	off := m.pad / 2 // the toolbar row's top offset below the pane top
+	if t := s.tabStripH(); t > 0 {
+		off += t + m.pad/2
+	}
+	return off + h + m.pad/2
+}
+
 // previewHitTest resolves a click inside the pane: the Open button (full detail)
 // or nothing (the pane is otherwise passive). Returns HitNone with handled=false
 // when the click is not in the pane, so the caller falls through to the feed.
@@ -784,6 +825,10 @@ func (s *Scene) previewHitTest(x, y int) (Hit, bool) {
 	}
 	if s.previewHas && s.previewOpenR.W > 0 && inRect(s.previewOpenR, x, y) {
 		return Hit{Kind: HitOpenPreview, Item: s.previewItem}, true
+	}
+	// Web preview tab strip (switch / close a tab) takes priority over the chrome.
+	if hit, ok := s.webTabHitTest(x, y); ok {
+		return hit, true
 	}
 	// Web preview is a mini browser: the "‹" back chip, then any anchor under the
 	// cursor navigates in-pane.
