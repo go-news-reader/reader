@@ -92,6 +92,7 @@ const (
 	HitWebLink                // a clickable anchor in the rendered web preview — Value = href, Item set
 	HitWebBack                // the web preview's "‹ Back" chip — Item set
 	HitWebFwd                 // the web preview's "Fwd ›" chip — Item set
+	HitWebReload              // the web preview's "↻" reload chip — Item set
 	HitWebURL                 // the web preview's address field — Item set
 	HitToggleDownload         // a complete post's download checkbox — Value = release base
 	HitClearDownloads         // the download panel's "Clear" button
@@ -267,6 +268,7 @@ type Scene struct {
 	previewWebHist    map[string]*webHist
 	previewBackR      toolkit.Rect // "‹ Back" chip (web view), 0 when not shown
 	previewFwdR       toolkit.Rect // "Fwd ›" chip (web view), 0 when not shown
+	previewReloadR    toolkit.Rect // "↻" reload chip (web view), 0 when not shown
 	previewURLR       toolkit.Rect // the address field (web view), 0 when not shown
 	// webURLFocused marks the address field as holding keyboard focus (in the
 	// feed view, mutually exclusive with the topbar search); webURLBuf is the URL

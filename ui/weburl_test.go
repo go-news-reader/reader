@@ -94,6 +94,13 @@ func TestAddressFieldDraw(t *testing.T) {
 	if hit, _ := s.previewHitTest(s.previewURLR.X+3, s.previewURLR.Y+3); hit.Kind != HitWebURL {
 		t.Fatalf("address field hit = %+v, want HitWebURL", hit)
 	}
+	// The reload chip is always present for a web page and routes to HitWebReload.
+	if s.previewReloadR.W == 0 {
+		t.Fatal("reload chip should be shown for a web preview")
+	}
+	if hit, _ := s.previewHitTest(s.previewReloadR.X+2, s.previewReloadR.Y+2); hit.Kind != HitWebReload {
+		t.Fatalf("reload chip hit = %+v, want HitWebReload", hit)
+	}
 
 	// Focused: draws the focus ring + caret and the being-typed buffer.
 	s.FocusWebURL(true)
