@@ -236,41 +236,76 @@ func (s *Scene) SetPreviewWeb(id string, img *image.RGBA, links []WebLink, rende
 	s.touch()
 }
 
-// InitWebHistory starts (or restarts) the back-stack for an item at its target
-// URL — called when the item is first previewed, so Back never leaves the page
-// that was opened.
+// webHist is an item's in-pane browsing history: the ordered list of visited
+// URLs plus a cursor at the currently-shown one. Back/Forward move the cursor;
+// a fresh navigation truncates everything after it (standard browser semantics).
+type webHist struct {
+	urls []string
+	cur  int
+}
+
+func (s *Scene) histFor(id string) *webHist {
+	if s.previewWebHist == nil {
+		s.previewWebHist = map[string]*webHist{}
+	}
+	return s.previewWebHist[id]
+}
+
+// InitWebHistory starts (or restarts) the history for an item at its target URL
+// — called when the item is first previewed, so Back never leaves the page that
+// was opened.
 func (s *Scene) InitWebHistory(id, url string) {
 	if s.previewWebHist == nil {
-		s.previewWebHist = map[string][]string{}
+		s.previewWebHist = map[string]*webHist{}
 	}
-	s.previewWebHist[id] = []string{url}
+	s.previewWebHist[id] = &webHist{urls: []string{url}, cur: 0}
 }
 
-// PushWebURL records a navigation to url (a clicked link) on the item's back
-// stack. The top of the stack is always the currently-shown page.
+// PushWebURL records a navigation to url (a clicked link): it drops any forward
+// entries past the cursor, appends url, and advances the cursor to it.
 func (s *Scene) PushWebURL(id, url string) {
-	if s.previewWebHist == nil {
-		s.previewWebHist = map[string][]string{}
+	h := s.histFor(id)
+	if h == nil || len(h.urls) == 0 {
+		s.previewWebHist[id] = &webHist{urls: []string{url}, cur: 0}
+		return
 	}
-	s.previewWebHist[id] = append(s.previewWebHist[id], url)
+	h.urls = append(h.urls[:h.cur+1], url)
+	h.cur = len(h.urls) - 1
 }
 
-// WebBackURL pops the current page off the item's back stack and returns the URL
-// now on top (the page to re-render), and whether a back step was possible (the
-// stack had more than the initial page).
+// WebBackURL steps the cursor back one and returns the URL now current (the page
+// to re-render) and whether a back step was possible.
 func (s *Scene) WebBackURL(id string) (string, bool) {
-	h := s.previewWebHist[id]
-	if len(h) < 2 {
+	h := s.histFor(id)
+	if h == nil || h.cur < 1 {
 		return "", false
 	}
-	h = h[:len(h)-1]
-	s.previewWebHist[id] = h
-	return h[len(h)-1], true
+	h.cur--
+	return h.urls[h.cur], true
 }
 
-// WebCanBack reports whether the item's web view can navigate back (more than
-// the initial page on the stack).
-func (s *Scene) WebCanBack(id string) bool { return len(s.previewWebHist[id]) > 1 }
+// WebForwardURL steps the cursor forward one and returns the URL now current and
+// whether a forward step was possible.
+func (s *Scene) WebForwardURL(id string) (string, bool) {
+	h := s.histFor(id)
+	if h == nil || h.cur >= len(h.urls)-1 {
+		return "", false
+	}
+	h.cur++
+	return h.urls[h.cur], true
+}
+
+// WebCanBack reports whether the item's web view can navigate back.
+func (s *Scene) WebCanBack(id string) bool {
+	h := s.histFor(id)
+	return h != nil && h.cur > 0
+}
+
+// WebCanForward reports whether the item's web view can navigate forward.
+func (s *Scene) WebCanForward(id string) bool {
+	h := s.histFor(id)
+	return h != nil && h.cur < len(h.urls)-1
+}
 
 // webLinkAt maps a widget-space click at (x, y) to the href of the rendered-page
 // anchor under it, or ("", false). It inverts the display transform: the page
@@ -578,21 +613,49 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		m.side.draw(img, s.previewOpenR.X+m.pad, s.previewOpenR.Y+(s.previewOpenR.H-m.side.height)/2, "Open", themeOnAccent(th))
 	}
 
-	// "‹ Back" chip, fixed at the pane's top-left, shown only once the web view
-	// has navigated past its first page (a mini in-app browser control).
-	s.previewBackR = toolkit.Rect{}
-	if s.webCanBackCurrent() {
+	// "‹ Back" / "Fwd ›" chips, fixed at the pane's top-left — a mini in-app
+	// browser toolbar shown once the web view has navigated at all. Each chip is
+	// drawn enabled (and hit-testable) or dimmed (disabled) by whether that
+	// direction has history, mirroring a browser's grey-out.
+	s.previewBackR, s.previewFwdR = toolkit.Rect{}, toolkit.Rect{}
+	if s.webNavigable() {
+		id := s.previewItem.ID
+		h := m.badgeH + rpxOf(s, 4)
+		y := m.topbarH + m.pad/2
 		bw := m.pad*2 + m.side.width("‹ Back")
-		s.previewBackR = toolkit.Rect{X: r.X + m.pad, Y: m.topbarH + m.pad/2, W: bw, H: m.badgeH + rpxOf(s, 4)}
-		p.FillRoundRect(painter.Rect(s.previewBackR), rpxOf(s, 6), th.SurfaceAlt)
-		m.side.draw(img, s.previewBackR.X+m.pad, s.previewBackR.Y+(s.previewBackR.H-m.side.height)/2, "‹ Back", th.OnSurface)
+		fw := m.pad*2 + m.side.width("Fwd ›")
+		back := toolkit.Rect{X: r.X + m.pad, Y: y, W: bw, H: h}
+		fwd := toolkit.Rect{X: back.X + bw + m.pad, Y: y, W: fw, H: h}
+		s.drawNavChip(p, img, m, th, back, "‹ Back", s.WebCanBack(id))
+		s.drawNavChip(p, img, m, th, fwd, "Fwd ›", s.WebCanForward(id))
+		if s.WebCanBack(id) {
+			s.previewBackR = back
+		}
+		if s.WebCanForward(id) {
+			s.previewFwdR = fwd
+		}
 	}
 }
 
-// webCanBackCurrent reports whether the currently-previewed item's web view can
-// navigate back.
-func (s *Scene) webCanBackCurrent() bool {
-	return s.previewHas && s.hasWeb(s.previewItem.ID) && s.WebCanBack(s.previewItem.ID)
+// drawNavChip paints one mini-browser nav chip: a rounded pill with a label,
+// in enabled (interactive) or dimmed (disabled) styling.
+func (s *Scene) drawNavChip(p *painter.PixelPainter, img *image.RGBA, m metrics, th *toolkit.Theme, r toolkit.Rect, label string, enabled bool) {
+	p.FillRoundRect(painter.Rect(r), rpxOf(s, 6), th.SurfaceAlt)
+	fg := th.OnSurface
+	if !enabled {
+		fg = th.Border // dimmed: the direction has no history
+	}
+	m.side.draw(img, r.X+m.pad, r.Y+(r.H-m.side.height)/2, label, fg)
+}
+
+// webNavigable reports whether the currently-previewed item's web view has any
+// browsing history (so the Back/Forward toolbar is shown).
+func (s *Scene) webNavigable() bool {
+	if !s.previewHas || !s.hasWeb(s.previewItem.ID) {
+		return false
+	}
+	id := s.previewItem.ID
+	return s.WebCanBack(id) || s.WebCanForward(id)
 }
 
 // previewHitTest resolves a click inside the pane: the Open button (full detail)
@@ -611,6 +674,9 @@ func (s *Scene) previewHitTest(x, y int) (Hit, bool) {
 		id := s.previewItem.ID
 		if s.previewBackR.W > 0 && inRect(s.previewBackR, x, y) {
 			return Hit{Kind: HitWebBack, Item: s.previewItem}, true
+		}
+		if s.previewFwdR.W > 0 && inRect(s.previewFwdR, x, y) {
+			return Hit{Kind: HitWebFwd, Item: s.previewItem}, true
 		}
 		if href, ok := s.webLinkAt(id, x, y); ok {
 			return Hit{Kind: HitWebLink, Item: s.previewItem, Value: href}, true

@@ -119,27 +119,51 @@ func TestWebHistory(t *testing.T) {
 		t.Fatal("a single pushed entry is not enough to go back")
 	}
 
+	// Forward on an unknown/empty item is a no-op.
+	if _, ok := fresh.WebForwardURL("nope"); ok {
+		t.Fatal("forward on unknown item should fail")
+	}
+
 	s := New(900, 560, ThemeFor(OSMac, false))
 	s.InitWebHistory("h1", "https://a/")
-	if s.WebCanBack("h1") {
-		t.Fatal("fresh history should not allow back")
+	if s.WebCanBack("h1") || s.WebCanForward("h1") {
+		t.Fatal("fresh history should allow neither back nor forward")
 	}
 	if _, ok := s.WebBackURL("h1"); ok {
 		t.Fatal("back on a single-entry history should fail")
 	}
+	if _, ok := s.WebForwardURL("h1"); ok {
+		t.Fatal("forward on a single-entry history should fail")
+	}
 	s.PushWebURL("h1", "https://a/b")
 	s.PushWebURL("h1", "https://a/b/c")
-	if !s.WebCanBack("h1") {
-		t.Fatal("should allow back after pushes")
+	if !s.WebCanBack("h1") || s.WebCanForward("h1") {
+		t.Fatal("after pushes: back yes, forward no")
 	}
 	if u, ok := s.WebBackURL("h1"); !ok || u != "https://a/b" {
 		t.Fatalf("back = %q,%v want https://a/b,true", u, ok)
 	}
+	// Now at the middle entry: forward is possible and returns the page we left.
+	if !s.WebCanForward("h1") {
+		t.Fatal("should allow forward after a back")
+	}
+	if u, ok := s.WebForwardURL("h1"); !ok || u != "https://a/b/c" {
+		t.Fatalf("forward = %q,%v want https://a/b/c,true", u, ok)
+	}
+	// Back twice to the root, then a fresh navigation truncates the forward tail.
+	s.WebBackURL("h1")
 	if u, ok := s.WebBackURL("h1"); !ok || u != "https://a/" {
 		t.Fatalf("back = %q,%v want https://a/,true", u, ok)
 	}
 	if s.WebCanBack("h1") {
-		t.Fatal("back to root should exhaust the stack")
+		t.Fatal("back to root should exhaust the back direction")
+	}
+	s.PushWebURL("h1", "https://a/d") // new nav from root drops b, b/c
+	if s.WebCanForward("h1") {
+		t.Fatal("a fresh navigation must drop the forward tail")
+	}
+	if u, ok := s.WebBackURL("h1"); !ok || u != "https://a/" {
+		t.Fatalf("after truncating nav, back = %q,%v want https://a/,true", u, ok)
 	}
 }
 
@@ -187,15 +211,29 @@ func TestPreviewWebClickRouting(t *testing.T) {
 	}
 
 	// After navigating (history depth >1), a Back chip appears and routes to
-	// HitWebBack. (The app seeds the initial history entry on preview.)
+	// HitWebBack, while the Forward chip is drawn but disabled (no forward yet).
 	s.InitWebHistory("h1", "https://example.com/a")
 	s.PushWebURL("h1", "https://x/a")
-	s.Draw(buf) // now webCanBackCurrent → previewBackR laid out
+	s.Draw(buf) // now webNavigable → back chip laid out, fwd chip dimmed
 	if s.previewBackR.W == 0 {
 		t.Fatal("back chip should be shown after navigation")
 	}
+	if s.previewFwdR.W != 0 {
+		t.Fatal("forward chip must be inert (not hit-testable) with no forward history")
+	}
 	if hit, _ := s.previewHitTest(s.previewBackR.X+2, s.previewBackR.Y+2); hit.Kind != HitWebBack {
 		t.Fatalf("back chip hit = %+v, want HitWebBack", hit)
+	}
+
+	// Step back one: now Forward is possible → the Fwd chip becomes active and
+	// routes to HitWebFwd.
+	s.WebBackURL("h1")
+	s.Draw(buf)
+	if s.previewFwdR.W == 0 {
+		t.Fatal("forward chip should be active after a back")
+	}
+	if hit, _ := s.previewHitTest(s.previewFwdR.X+2, s.previewFwdR.Y+2); hit.Kind != HitWebFwd {
+		t.Fatalf("forward chip hit = %+v, want HitWebFwd", hit)
 	}
 }
 

@@ -137,15 +137,27 @@ func TestWebNavigateAndBack(t *testing.T) {
 	if fr.calls != before {
 		t.Fatal("empty href should not render")
 	}
-	// Back → previous URL re-rendered, Back no longer possible (at the root).
+	// Back → previous URL re-rendered, Back no longer possible (at the root),
+	// but Forward now is.
 	a.WebBack("h1")
-	if fr.lastURL != "https://site/" || a.Scene().WebCanBack("h1") {
-		t.Fatalf("back: lastURL=%q canBack=%v", fr.lastURL, a.Scene().WebCanBack("h1"))
+	if fr.lastURL != "https://site/" || a.Scene().WebCanBack("h1") || !a.Scene().WebCanForward("h1") {
+		t.Fatalf("back: lastURL=%q canBack=%v canFwd=%v", fr.lastURL, a.Scene().WebCanBack("h1"), a.Scene().WebCanForward("h1"))
 	}
 	// Back at the root is a no-op.
 	before = fr.calls
 	a.WebBack("h1")
 	if fr.calls != before {
 		t.Fatal("back at root should be a no-op")
+	}
+	// Forward → the page we came back from is re-rendered.
+	a.WebForward("h1")
+	if fr.lastURL != "https://site/next" || a.Scene().WebCanForward("h1") {
+		t.Fatalf("forward: lastURL=%q canFwd=%v", fr.lastURL, a.Scene().WebCanForward("h1"))
+	}
+	// Forward at the tip is a no-op.
+	before = fr.calls
+	a.WebForward("h1")
+	if fr.calls != before {
+		t.Fatal("forward at tip should be a no-op")
 	}
 }
