@@ -478,11 +478,14 @@ func (s *Scene) Loading() bool { return s.loading }
 // LoadingProgress returns how many sources have returned and the total.
 func (s *Scene) LoadingProgress() (done, total int) { return s.loadDone, s.loadTotal }
 
-// Animating reports whether the scene wants a fresh frame every tick (the
-// loading indicator is moving). When false the scene is idle and a
+// Animating reports whether the scene wants a fresh frame every tick (a loading
+// indicator is moving): a feed refresh, OR a preview image / web-page render in
+// flight (whose spinner must keep spinning). When false the scene is idle and a
 // damage-gated present loop never re-draws — so animation costs nothing when
 // nothing is loading.
-func (s *Scene) Animating() bool { return s.loading }
+func (s *Scene) Animating() bool {
+	return s.loading || s.previewImgPending || s.previewWebPending
+}
 
 // AdvanceAnim advances the animation clock by one frame and marks the scene
 // dirty. A present loop calls it once per tick while [Animating] is true; the

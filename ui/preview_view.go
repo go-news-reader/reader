@@ -489,6 +489,16 @@ func (w *previewImage) Draw(_ painter.Painter, th *toolkit.Theme) {
 		}
 		s.m.meta.draw(w.img, b.X+(b.W-s.m.meta.width(lbl))/2, b.Y+(b.H-s.m.meta.height)/2, lbl, mute(th.OnSurface, th.Surface))
 	}
+	// Navigation overlay: while a new web page renders over an already-shown one
+	// (link click / Back), the case above kept painting the previous page — so
+	// float a small spinner chip at the top-centre so the load is still visible.
+	if s.previewWebPending && s.previewItem.ID == w.it.ID && s.webImg(w.it.ID) != nil {
+		d := rpxOf(s, 20)
+		pad := rpxOf(s, 6)
+		chip := toolkit.Rect{X: b.X + (b.W-d)/2 - pad, Y: b.Y + pad, W: d + 2*pad, H: d + 2*pad}
+		w.p.FillRoundRect(painter.Rect(chip), rpxOf(s, 6), th.SurfaceAlt)
+		s.spinnerAt(toolkit.Rect{X: chip.X + pad, Y: chip.Y + pad, W: d, H: d}).Draw(w.p, th)
+	}
 }
 
 func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
