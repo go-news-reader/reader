@@ -617,4 +617,25 @@ func TestMouseDownWebLinkAndBack(t *testing.T) {
 
 	a.Frame()                 // forward chip now active (we stepped back)
 	click(t, h, ui.HitWebFwd) // → WebForward (stubbed)
+
+	// The address field focuses on click, accepts typed keys, and Enter commits
+	// it (navigating). A click elsewhere in the pane defocuses it.
+	a.Frame()
+	click(t, h, ui.HitWebURL) // → FocusWebURL(true)
+	if !s.WebURLFocused() {
+		t.Fatal("clicking the address field should focus it")
+	}
+	h.Key("Backspace", 0)
+	h.Key("", 'q')
+	h.Key("Enter", 0) // ModeFeed + WebURLFocused → CommitWebURL (stubbed fetch)
+	if s.WebURLFocused() {
+		t.Fatal("Enter should commit + defocus the address field")
+	}
+	// Re-focus, then a click on empty pane space (HitNone) defocuses via default.
+	a.Frame()
+	click(t, h, ui.HitWebURL)
+	h.MouseDown(s.W-2, s.H-2) // bottom-right corner → not any web control
+	if s.WebURLFocused() {
+		t.Fatal("a click off the address field should defocus it")
+	}
 }

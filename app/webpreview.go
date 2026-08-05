@@ -68,6 +68,16 @@ func (a *App) WebForward(id string) {
 	a.webFetch(id, url, a.scene.PreviewWebWidth())
 }
 
+// CommitWebURL navigates the preview's web view to the URL typed into the
+// address field (Enter). A no-op when the field is empty.
+func (a *App) CommitWebURL(id string) {
+	url, ok := a.scene.CommitWebURL()
+	if !ok {
+		return
+	}
+	a.NavigateWeb(id, url)
+}
+
 // SetWebFetchHook overrides the async page render (tests use a synchronous
 // variant for determinism).
 func (a *App) SetWebFetchHook(f func(id, url string, width int)) { a.webFetch = f }
