@@ -20,17 +20,23 @@ func testEngine() *Engine {
 func TestRenderServesPage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte("<html><head><title>T</title></head><body><h1>Hello</h1><p>Article body text here.</p></body></html>"))
+		_, _ = w.Write([]byte(`<html><head><title>T</title></head><body><h1>Hello</h1><p>Article <a href="/next">body</a> text.</p></body></html>`))
 	}))
 	defer srv.Close()
 
 	r := testEngine()
-	img, err := r.Render(context.Background(), srv.URL, 400)
+	img, links, final, err := r.Render(context.Background(), srv.URL, 400)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
 	if img == nil {
 		t.Fatal("nil image")
+	}
+	if final != srv.URL {
+		t.Errorf("finalURL = %q, want %q", final, srv.URL)
+	}
+	if len(links) != 1 || links[0].Href == "" {
+		t.Errorf("links = %+v, want one anchor", links)
 	}
 	if got := img.Bounds().Dx(); got != 400 {
 		t.Errorf("width = %d, want 400", got)
@@ -46,7 +52,7 @@ func TestRenderDefaultWidth(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	img, err := testEngine().Render(context.Background(), srv.URL, 0) // width<=0 → default
+	img, _, _, err := testEngine().Render(context.Background(), srv.URL, 0) // width<=0 → default
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -59,7 +65,7 @@ func TestRenderError(t *testing.T) {
 	// A cancelled context makes the fetch fail → Render returns the error, nil img.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	img, err := testEngine().Render(ctx, "http://127.0.0.1:9/nope", 300)
+	img, _, _, err := testEngine().Render(ctx, "http://127.0.0.1:9/nope", 300)
 	if err == nil {
 		t.Fatal("expected an error for a cancelled fetch")
 	}
