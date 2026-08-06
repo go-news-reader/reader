@@ -43,8 +43,12 @@ var (
 	iconSettings = iconoir.MustGet("settings")       // sidebar Settings (gear)
 	iconSearch   = iconoir.MustGet("search")         // topbar SearchEntry magnifier
 	iconPlus     = iconoir.MustGet("plus")           // sidebar "Browse newsgroups" + subscribe
-	iconRefresh  = iconoir.MustGet("refresh-double") // browse view Refresh control
+	iconRefresh  = iconoir.MustGet("refresh-double") // browse view Refresh control + web preview Reload
 	iconCheck    = iconoir.MustGet("check")          // subscribed / complete marker
+	iconNavLeft  = iconoir.MustGet("nav-arrow-left")  // web preview Back
+	iconNavRight = iconoir.MustGet("nav-arrow-right") // web preview Forward
+	iconZoomIn   = iconoir.MustGet("zoom-in")         // web preview zoom in
+	iconZoomOut  = iconoir.MustGet("zoom-out")        // web preview zoom out
 )
 
 // drawIcon blits a cached Iconoir mask into r, inset slightly so the glyph keeps
@@ -84,6 +88,15 @@ func drawListIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int
 func drawSearchIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
 	drawIcon(p, r, iconSearch, ink)
 }
+
+// Web-preview browser toolbar icons — assigned to toolkit.Browser's host icon
+// hooks (Back/Forward/Reload/ZoomOut/ZoomIn) so its buttons show real Iconoir
+// glyphs instead of the text-label fallback. Signature matches SearchEntry.Icon.
+func drawBackNavIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA)    { drawIcon(p, r, iconNavLeft, ink) }
+func drawForwardNavIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) { drawIcon(p, r, iconNavRight, ink) }
+func drawReloadNavIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA)  { drawIcon(p, r, iconRefresh, ink) }
+func drawZoomInIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA)     { drawIcon(p, r, iconZoomIn, ink) }
+func drawZoomOutIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA)    { drawIcon(p, r, iconZoomOut, ink) }
 
 // drawPlusIcon paints the Iconoir "plus" glyph (sidebar Browse entry, subscribe).
 func drawPlusIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {
