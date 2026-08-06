@@ -229,3 +229,37 @@ func TestBrowserSingleTabConfig(t *testing.T) {
 		t.Fatal("BrowserSingleTab from settings should apply to the scene")
 	}
 }
+
+// TestBookmarkPersistence covers the address-bar bookmark toggle: it persists
+// the current page's URL through the store, and OnNavigate syncs the star.
+func TestBookmarkPersistence(t *testing.T) {
+	dir := t.TempDir()
+	store := settings.NewStore(dir + "/settings.json")
+	a := New(Config{Registry: newReg(), Store: store, Width: 900, Height: 600})
+	syncFetch(a)
+	a.SelectPreview(webItem("h1", "https://site/")) // Open → OnNavigate(SyncBookmarkStar)+fetch
+	if a.Scene().Browser().Bookmarked {
+		t.Fatal("a freshly opened page should not be bookmarked")
+	}
+	// Toggle on via the widget's hook → persisted.
+	a.Scene().Browser().OnBookmarkToggle(true)
+	saved, err := store.Load()
+	if err != nil || len(saved.Bookmarks) != 1 || saved.Bookmarks[0] != "https://site/" {
+		t.Fatalf("persist on: err=%v bookmarks=%v", err, saved.Bookmarks)
+	}
+	// Re-navigating (Reload) syncs the star to the bookmarked state.
+	a.Scene().Browser().Reload()
+	if !a.Scene().Browser().Bookmarked {
+		t.Fatal("SyncBookmarkStar after reload should reflect the bookmark")
+	}
+	// Toggle off → removed from the store.
+	a.Scene().Browser().OnBookmarkToggle(false)
+	if saved2, _ := store.Load(); len(saved2.Bookmarks) != 0 {
+		t.Fatalf("persist off: %v", saved2.Bookmarks)
+	}
+	// store == nil: toggling is a safe no-op (no persistence, no panic).
+	a2 := New(Config{Registry: newReg(), Width: 900, Height: 600})
+	syncFetch(a2)
+	a2.SelectPreview(webItem("x", "https://x/"))
+	a2.Scene().Browser().OnBookmarkToggle(true)
+}

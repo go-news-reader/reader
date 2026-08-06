@@ -245,9 +245,18 @@ func New(cfg Config) *App {
 	// The embedded browser's navigation seam: a tab open / link click / typed
 	// address / Back / Forward / Reload asks the host to render a page; run it
 	// through the (test-substitutable) webFetch.
-	a.scene.Browser().OnNavigate = func(target string, width int) { a.webFetch(target, width) }
+	a.scene.Browser().OnNavigate = func(target string, width int) {
+		a.scene.SyncBookmarkStar() // reflect whether the just-navigated page is bookmarked
+		a.webFetch(target, width)
+	}
+	// The address-bar star toggles the current page's bookmark + persists it.
+	a.scene.Browser().OnBookmarkToggle = func(on bool) {
+		a.scene.SetBookmarked(a.scene.Browser().CurrentURL(), on)
+		a.persistSettings()
+	}
 	a.scene.SetBrowserSingleTab(set.BrowserSingleTab)         // apply the persisted tab-mode preference
 	a.scene.SetBrowserZoomKeys(set.ZoomInKey, set.ZoomOutKey) // apply the persisted browser zoom keybindings
+	a.scene.SetBookmarks(set.Bookmarks)                       // apply the persisted bookmarks
 	a.groupStatsFetch = func(name string) {
 		go a.loadGroupStats(context.Background(), name)
 	}
@@ -319,6 +328,17 @@ func (a *App) SetReconstructHook(f func(base string)) { a.reconstruct = f }
 // SetRegistryBuilder overrides how ApplyAccounts rebuilds the provider registry
 // (a seam so tests inject a fake registry instead of real providers).
 func (a *App) SetRegistryBuilder(f func(feeds.Options) *source.Registry) { a.newRegistry = f }
+
+// persistSettings snapshots the scene's settings and writes them through the
+// store (a no-op when persistence is disabled, e.g. the CLI paths). Used for
+// live preference changes such as toggling a bookmark.
+func (a *App) persistSettings() {
+	if a.store == nil {
+		return
+	}
+	a.set = a.scene.Settings()
+	_ = a.store.Save(a.set)
+}
 
 // ApplyAccounts snapshots the scene's edited accounts into the settings,
 // persists them, rebuilds the provider registry with the new credentials

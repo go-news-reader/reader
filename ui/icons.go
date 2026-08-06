@@ -45,10 +45,12 @@ var (
 	iconPlus     = iconoir.MustGet("plus")           // sidebar "Browse newsgroups" + subscribe
 	iconRefresh  = iconoir.MustGet("refresh-double") // browse view Refresh control + web preview Reload
 	iconCheck    = iconoir.MustGet("check")          // subscribed / complete marker
-	iconNavLeft  = iconoir.MustGet("nav-arrow-left")  // web preview Back
-	iconNavRight = iconoir.MustGet("nav-arrow-right") // web preview Forward
-	iconZoomIn   = iconoir.MustGet("zoom-in")         // web preview zoom in
-	iconZoomOut  = iconoir.MustGet("zoom-out")        // web preview zoom out
+	iconNavLeft   = iconoir.MustGet("nav-arrow-left")  // web preview Back
+	iconNavRight  = iconoir.MustGet("nav-arrow-right") // web preview Forward
+	iconZoomIn    = iconoir.MustGet("zoom-in")         // web preview zoom in
+	iconZoomOut   = iconoir.MustGet("zoom-out")        // web preview zoom out
+	iconLockSlash = iconoir.MustGet("lock-slash")      // address bar: insecure (non-https)
+	iconStar      = iconoir.MustGet("star")            // address bar: bookmark toggle (star)
 )
 
 // drawIcon blits a cached Iconoir mask into r, inset slightly so the glyph keeps
