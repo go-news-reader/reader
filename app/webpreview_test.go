@@ -83,10 +83,10 @@ func TestSelectPreviewWebNoURL(t *testing.T) {
 func TestLoadPreviewPageError(t *testing.T) {
 	a := New(Config{Registry: newReg()})
 	a.SetWebRenderer(&fakeRenderer{err: errors.New("boom")})
-	// Open a tab so there is an active target, then a failing render delivers an
-	// empty page (clears loading rather than spinning forever).
+	syncFetch(a) // render inline via OnNavigate — deterministic, single goroutine
+	// Opening a tab triggers the (failing) render, which delivers an empty page
+	// for the target, clearing the loading state rather than spinning forever.
 	a.Scene().Browser().Open("https://x", "T")
-	a.loadPreviewPage(context.Background(), "https://x", 400)
 	if a.Scene().Browser().Loading() {
 		t.Fatal("a failed render should clear the loading state")
 	}
