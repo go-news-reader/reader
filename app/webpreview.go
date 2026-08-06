@@ -3,113 +3,56 @@ package app
 import (
 	"context"
 
+	"github.com/go-widgets/toolkit"
+
 	"github.com/go-news-reader/reader/internal/webrender"
-	"github.com/go-news-reader/reader/ui"
 )
 
-// loadPreviewPage renders the item's target page (via webRender) and delivers
-// the image + its clickable link map to the preview pane on the UI thread. On a
-// render error it delivers nil, which clears the pane's web-loading state so it
-// falls back to the text summary. The default webFetch runs this on its own
-// goroutine; tests call it directly for determinism.
-func (a *App) loadPreviewPage(ctx context.Context, id, url string, width int) {
-	img, links, _, err := a.webRender.Render(ctx, url, width)
+// loadPreviewPage renders target (via webRender) and delivers the finished
+// render — pixels, dimensions, clickable link map and title — into the embedded
+// browser on the UI thread (through post). It is the body of the browser's
+// OnNavigate seam: the widget marks the tab loading and calls OnNavigate, this
+// renders off-thread, and Deliver clears the loading state when the page lands.
+// A render error delivers an empty page for the same target, which clears the
+// spinner (the tab shows blank rather than spinning forever). The default
+// webFetch runs this on its own goroutine; tests call it directly for
+// determinism.
+func (a *App) loadPreviewPage(ctx context.Context, target string, width int) {
+	img, links, _, err := a.webRender.Render(ctx, target, width)
 	if err != nil {
-		a.post(func() { a.scene.SetPreviewWeb(id, nil, nil, 0) })
+		a.post(func() {
+			b := a.scene.Browser()
+			b.Deliver(target, nil, 0, 0, width, nil, b.ActiveTitle())
+		})
 		return
 	}
-	sl := toSceneLinks(links)
-	a.post(func() { a.scene.SetPreviewWeb(id, img, sl, width) })
+	bl := toBrowserLinks(links)
+	bnd := img.Bounds()
+	iw, ih := bnd.Dx(), bnd.Dy()
+	a.post(func() {
+		b := a.scene.Browser()
+		// Preserve the tab title the widget already carries (seeded from the feed
+		// item) — the renderer does not extract a page <title>.
+		b.Deliver(target, img.Pix, iw, ih, width, bl, b.ActiveTitle())
+	})
 }
 
-// toSceneLinks converts webrender links to the UI's link type (the app is the
-// only place that depends on both packages).
-func toSceneLinks(links []webrender.Link) []ui.WebLink {
+// toBrowserLinks converts webrender links to the toolkit.Browser's link type
+// (the app is the only place that depends on both packages).
+func toBrowserLinks(links []webrender.Link) []toolkit.BrowserLink {
 	if len(links) == 0 {
 		return nil
 	}
-	out := make([]ui.WebLink, len(links))
+	out := make([]toolkit.BrowserLink, len(links))
 	for i, l := range links {
-		out[i] = ui.WebLink{Rect: l.Rect, Href: l.Href}
+		out[i] = toolkit.BrowserLink{Rect: l.Rect, Href: l.Href}
 	}
 	return out
 }
 
-// NavigateWeb follows a clicked link in the preview's web view: it records the
-// jump on the item's back-stack and re-renders the target page in place.
-func (a *App) NavigateWeb(id, href string) {
-	if href == "" {
-		return
-	}
-	a.scene.PushWebURL(id, href)
-	a.scene.SetPreviewWebLoading(true)
-	a.webFetch(id, href, a.scene.PreviewWebWidth())
-}
-
-// WebBack navigates the preview's web view to the previous page in the item's
-// history. A no-op when there is nothing to go back to.
-func (a *App) WebBack(id string) {
-	url, ok := a.scene.WebBackURL(id)
-	if !ok {
-		return
-	}
-	a.scene.SetPreviewWebLoading(true)
-	a.webFetch(id, url, a.scene.PreviewWebWidth())
-}
-
-// WebForward navigates the preview's web view to the next page in the item's
-// history (after one or more Backs). A no-op when there is nothing forward.
-func (a *App) WebForward(id string) {
-	url, ok := a.scene.WebForwardURL(id)
-	if !ok {
-		return
-	}
-	a.scene.SetPreviewWebLoading(true)
-	a.webFetch(id, url, a.scene.PreviewWebWidth())
-}
-
-// SelectWebTab switches the preview to an open web tab. Its rendered page is
-// cached (that is what made it a tab), so the pane shows it without re-fetching.
-func (a *App) SelectWebTab(id string) {
-	it, ok := a.scene.WebTabItem(id)
-	if !ok {
-		return
-	}
-	a.scene.SelectPreview(it)
-}
-
-// CloseWebTab closes an open web tab (dropping its cached render). When the
-// closed tab was the active one, the neighbour that takes its place is shown.
-func (a *App) CloseWebTab(id string) {
-	if next, ok := a.scene.CloseWebTab(id); ok {
-		a.scene.SelectPreview(next)
-	}
-}
-
-// WebReload re-renders the page currently shown in the preview's web view
-// without touching the history. A no-op when no page is shown.
-func (a *App) WebReload(id string) {
-	url := a.scene.CurrentWebURL(id)
-	if url == "" {
-		return
-	}
-	a.scene.SetPreviewWebLoading(true)
-	a.webFetch(id, url, a.scene.PreviewWebWidth())
-}
-
-// CommitWebURL navigates the preview's web view to the URL typed into the
-// address field (Enter). A no-op when the field is empty.
-func (a *App) CommitWebURL(id string) {
-	url, ok := a.scene.CommitWebURL()
-	if !ok {
-		return
-	}
-	a.NavigateWeb(id, url)
-}
-
 // SetWebFetchHook overrides the async page render (tests use a synchronous
 // variant for determinism).
-func (a *App) SetWebFetchHook(f func(id, url string, width int)) { a.webFetch = f }
+func (a *App) SetWebFetchHook(f func(target string, width int)) { a.webFetch = f }
 
 // SetWebRenderer overrides the page renderer (tests inject a fake that returns a
 // canned image without touching the network).

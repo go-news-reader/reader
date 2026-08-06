@@ -80,24 +80,24 @@ type App struct {
 	// synchronous variant.
 	previewFetch func(id string, parts []usenet.ReconstructPart)
 
-	// webFetch triggers the asynchronous render of a non-Usenet item's external
-	// target page into the preview pane, keyed by id. A field so tests can
-	// substitute a synchronous variant. webRender is the page renderer it uses
-	// (go-webengine by default; a fake in tests).
-	webFetch  func(id, url string, width int)
+	// webFetch triggers the asynchronous render of a target page (the embedded
+	// browser's OnNavigate seam). A field so tests can substitute a synchronous
+	// variant. webRender is the page renderer it uses (go-webengine by default; a
+	// fake in tests).
+	webFetch  func(target string, width int)
 	webRender webrender.Renderer
 
-	// Web-preview render debounce for rapid keyboard navigation: arrowing through
-	// the feed selects each item, and firing a full page render per item is
-	// wasteful. SelectAdjacent arms the fetch instead of firing it; Frame fires it
-	// once the selection has stayed put for webDebounceFrames render ticks. Direct
-	// clicks (SelectPreview) still fetch immediately. All fields are render-thread
-	// only (armed/read in SelectAdjacent + Frame, both on the main thread).
+	// Web-preview open debounce for rapid keyboard navigation: arrowing through
+	// the feed selects each item, and opening a browser tab (which renders the
+	// page) per item is wasteful. SelectAdjacent arms the open instead of firing
+	// it; Frame opens it once the selection has stayed put for webDebounceFrames
+	// render ticks. Direct clicks (SelectPreview) still open immediately. All
+	// fields are render-thread only (armed/read in SelectAdjacent + Frame, both on
+	// the main thread).
 	frameCount        uint64
 	webArmed          bool
-	webArmID          string
 	webArmURL         string
-	webArmWidth       int
+	webArmTitle       string
 	webArmAt          uint64
 	webDebounceFrames uint64
 
@@ -239,9 +239,14 @@ func New(cfg Config) *App {
 		go a.loadPreviewImage(context.Background(), id, parts)
 	}
 	a.webRender = webrender.New()
-	a.webFetch = func(id, url string, width int) {
-		go a.loadPreviewPage(context.Background(), id, url, width)
+	a.webFetch = func(target string, width int) {
+		go a.loadPreviewPage(context.Background(), target, width)
 	}
+	// The embedded browser's navigation seam: a tab open / link click / typed
+	// address / Back / Forward / Reload asks the host to render a page; run it
+	// through the (test-substitutable) webFetch.
+	a.scene.Browser().OnNavigate = func(target string, width int) { a.webFetch(target, width) }
+	a.scene.SetBrowserSingleTab(set.BrowserSingleTab) // apply the persisted tab-mode preference
 	a.groupStatsFetch = func(name string) {
 		go a.loadGroupStats(context.Background(), name)
 	}
