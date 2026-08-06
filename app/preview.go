@@ -31,34 +31,33 @@ func (a *App) SelectPreview(it source.Item) { a.selectPreview(it, false) }
 // item; a direct click passes false and fetches immediately.
 func (a *App) selectPreview(it source.Item, debounceWeb bool) {
 	a.scene.SelectPreview(it)
-	a.webArmed = false // a new selection cancels any pending debounced fetch
+	a.webArmed = false // a new selection cancels any pending debounced open
 	if a.wantsPreviewImage(it) {
 		a.scene.SetPreviewLoading(true)
 		a.previewFetch(it.ID, singleArticleParts(it))
 		return
 	}
-	// A non-Usenet item that links out: render its target page into the pane
-	// (unless already rendered). The plain-text summary shows until it lands.
-	if url := a.scene.WebPreviewURL(it); url != "" && !a.scene.HasWeb(it.ID) {
-		a.scene.InitWebHistory(it.ID, url) // seed the back-stack at the item's page
-		a.scene.SetPreviewWebLoading(true)
+	// A non-Usenet item that links out: open its target page in the embedded
+	// browser (which marks the tab loading and fires OnNavigate → the async
+	// render). Re-selecting the page already shown is a no-op (no re-render).
+	if url := a.scene.WebPreviewURL(it); url != "" && a.scene.Browser().CurrentURL() != url {
 		if debounceWeb {
-			a.webArmID, a.webArmURL, a.webArmWidth = it.ID, url, a.scene.PreviewWebWidth()
+			a.webArmURL, a.webArmTitle = url, it.Title
 			a.webArmAt, a.webArmed = a.frameCount, true
 		} else {
-			a.webFetch(it.ID, url, a.scene.PreviewWebWidth())
+			a.scene.Browser().Open(url, it.Title)
 		}
 	}
 }
 
-// tickWebDebounce advances the frame clock and fires an armed web-page render
-// once the selection has held for webDebounceFrames ticks. Called once per Frame
-// on the render thread (the only thread that arms/reads these fields).
+// tickWebDebounce advances the frame clock and opens an armed web page once the
+// selection has held for webDebounceFrames ticks. Called once per Frame on the
+// render thread (the only thread that arms/reads these fields).
 func (a *App) tickWebDebounce() {
 	a.frameCount++
 	if a.webArmed && a.frameCount-a.webArmAt >= a.webDebounceFrames {
 		a.webArmed = false
-		a.webFetch(a.webArmID, a.webArmURL, a.webArmWidth)
+		a.scene.Browser().Open(a.webArmURL, a.webArmTitle)
 	}
 }
 

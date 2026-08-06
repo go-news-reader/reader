@@ -299,6 +299,16 @@ func (s *Scene) layoutSettings() {
 	s.layoutBtnRow(pad, y, themeSpecs)
 	y += btnH + pad
 
+	// WEB PREVIEW: browser tab-mode picker (multiple / single).
+	label(pad, y, "WEB PREVIEW")
+	y += m.side.height + gap
+	single := s.BrowserSingleTab()
+	s.layoutBtnRow(pad, y, []sButton{
+		{label: "Multiple tabs", kind: HitBrowserTabs, value: "multi", active: !single},
+		{label: "Single tab", kind: HitBrowserTabs, value: "single", active: single},
+	})
+	y += btnH + pad
+
 	// MEDIA CACHE: editable path.
 	label(pad, y, "MEDIA CACHE")
 	y += m.side.height + gap

@@ -23,9 +23,9 @@ require (
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
 	github.com/go-webengine/engine v0.0.0-20260805205728-ef4aed82d730
-	github.com/go-widgets/mvvm v0.3.0
+	github.com/go-widgets/mvvm v0.4.0
 	github.com/go-widgets/painter v0.2.0
-	github.com/go-widgets/toolkit v0.110.0
+	github.com/go-widgets/toolkit v0.112.0
 	github.com/go-widgets/tray v0.1.1
 	github.com/jezek/xgb v1.3.1
 	golang.org/x/image v0.44.0
