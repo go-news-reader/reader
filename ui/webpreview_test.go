@@ -36,227 +36,217 @@ func TestWebPreviewURL(t *testing.T) {
 	}
 }
 
-func TestPreviewWebLifecycleAndDraw(t *testing.T) {
+// deliverPage opens url in the scene's browser and delivers a canned page render
+// so the web preview shows a page (as the app would after a render lands).
+func deliverPage(s *Scene, url, title string, w, h int) {
+	b := s.Browser()
+	b.Open(url, title)
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	b.Deliver(url, img.Pix, w, h, w, nil, title)
+}
+
+func TestWebPreviewSelectionAndDraw(t *testing.T) {
 	s := New(900, 560, ThemeFor(OSMac, false))
 	buf := make([]byte, s.W*s.H*4)
 
-	// No web yet.
-	if s.HasWeb("h1") || s.webImg("h1") != nil {
-		t.Fatal("fresh scene should have no web image")
+	// A fresh scene: no web preview active, browser accessors are live.
+	if s.WebPreviewActive() || s.webPreviewItem() {
+		t.Fatal("fresh scene must not have a web preview")
 	}
+	if s.Browser() == nil || s.BrowserVM() == nil {
+		t.Fatal("Browser()/BrowserVM() must be wired")
+	}
+
+	// Selecting a web-linked item activates the embedded browser preview.
 	s.SelectPreview(webTestItem())
-
-	// Pending: draws a spinner box, no summary.
-	s.SetPreviewWebLoading(true)
-	if !s.WebLoading() {
-		t.Fatal("SetPreviewWebLoading(true) should set WebLoading")
+	if !s.WebPreviewActive() {
+		t.Fatal("selecting a web-linked item should activate the web preview")
 	}
-	s.Draw(buf) // exercises previewContent pending branch + previewImage spinner
-	if d := s.previewContent(); d.imgH <= 0 || len(d.bodyLines) != 0 {
-		t.Fatalf("pending: imgH=%d bodyLines=%d, want imgH>0 and no body", d.imgH, len(d.bodyLines))
+	// Loading (before a render lands): draws the browser chrome + indeterminate bar.
+	s.Browser().Open("https://example.com/a", "Title")
+	if !s.Browser().Loading() || !s.Animating() {
+		t.Fatal("an open (loading) browser tab should animate")
+	}
+	s.Draw(buf) // exercises drawWebPreview (header + browser chrome + progress)
+	if b := s.Browser().Bounds(); b.W <= 0 || b.H <= 0 {
+		t.Fatalf("layoutPreview should size the browser: %+v", b)
 	}
 
-	// Deliver a tall rendered page.
+	// Deliver a tall rendered page → loading clears, page draws.
 	page := image.NewRGBA(image.Rect(0, 0, 400, 1600))
-	s.SetPreviewWeb("h1", page, []WebLink{{Rect: image.Rect(10, 20, 120, 40), Href: "https://example.com/next"}}, page.Bounds().Dx())
-	if !s.HasWeb("h1") || s.WebLoading() {
-		t.Fatalf("after SetPreviewWeb: has=%v loading=%v", s.HasWeb("h1"), s.WebLoading())
+	s.Browser().Deliver("https://example.com/a", page.Pix, 400, 1600, 400, nil, "Title")
+	if s.Browser().Loading() {
+		t.Fatal("Deliver should clear the loading state")
 	}
-	d := s.previewContent()
-	if d.imgH <= 0 || len(d.bodyLines) != 0 {
-		t.Fatalf("web present: imgH=%d bodyLines=%d, want full image + no body", d.imgH, len(d.bodyLines))
-	}
-	s.Draw(buf) // exercises previewContent web branch + previewImage web draw + clip
-
-	// A failed render (nil image) only clears the loading flag.
-	s.SelectPreview(source.Item{ID: "e", Source: source.Reddit, Title: "x", Link: "https://y"})
-	s.SetPreviewWebLoading(true)
-	s.SetPreviewWeb("e", nil, nil, 0)
-	if s.HasWeb("e") || s.WebLoading() {
-		t.Fatalf("nil delivery: has=%v loading=%v, want false,false", s.HasWeb("e"), s.WebLoading())
-	}
-
-	// PreviewWebWidth is floored + positive.
-	if s.PreviewWebWidth() < 320 {
-		t.Errorf("PreviewWebWidth = %d, want >= 320", s.PreviewWebWidth())
-	}
-
-	// A zero-width rendered image reserves no box (guards against /0).
-	s.SelectPreview(source.Item{ID: "z", Source: source.Reddit, Title: "z", Link: "https://z"})
-	s.SetPreviewWeb("z", image.NewRGBA(image.Rect(0, 0, 0, 10)), nil, 0)
-	if dz := s.previewContent(); dz.imgH != 0 {
-		t.Errorf("zero-width web image: imgH=%d, want 0", dz.imgH)
-	}
+	s.Draw(buf) // exercises drawWebPreview with a delivered page (drawPage blit)
 }
 
-// TestPreviewWebWidthFloor covers the width floor on a scene whose preview pane
-// hasn't been laid out yet (inner width non-positive).
-func TestPreviewWebWidthFloor(t *testing.T) {
-	s := New(400, 300, ThemeFor(OSMac, false)) // no Draw → previewR unset
-	if got := s.PreviewWebWidth(); got != 320 {
-		t.Errorf("un-laid-out PreviewWebWidth = %d, want floor 320", got)
-	}
-}
-
-// TestPreviewWebPendingShortPane covers the pending image box's minimum-height
-// floor, hit when the pane is too short for the natural available height.
-func TestPreviewWebPendingShortPane(t *testing.T) {
-	s := New(900, 150, ThemeFor(OSMac, false)) // very short window → short pane
-	s.SelectPreview(webTestItem())
-	s.SetPreviewWebLoading(true)
+func TestWebPreviewHeaderLines(t *testing.T) {
+	// A long title in a narrow pane wraps to more than two lines; the fixed header
+	// caps it at two.
+	s := New(700, 500, ThemeFor(OSMac, false))
+	long := "This is a deliberately very long article title that will certainly wrap across several lines in the narrow preview pane header area"
+	s.SelectPreview(source.Item{ID: "L", Source: source.HackerNews, Title: long, Link: "https://ex/long"})
 	buf := make([]byte, s.W*s.H*4)
-	s.Draw(buf) // lays out the (short) pane, then previewContent floors availH
-	if d := s.previewContent(); d.imgH <= 0 {
-		t.Fatalf("short-pane pending imgH=%d, want the floored box", d.imgH)
-	}
-}
-
-func TestWebHistory(t *testing.T) {
-	// PushWebURL on a fresh scene lazily creates the history map.
-	fresh := New(900, 560, ThemeFor(OSMac, false))
-	fresh.PushWebURL("x", "https://a/")
-	if fresh.WebCanBack("x") {
-		t.Fatal("a single pushed entry is not enough to go back")
-	}
-
-	// Forward on an unknown/empty item is a no-op.
-	if _, ok := fresh.WebForwardURL("nope"); ok {
-		t.Fatal("forward on unknown item should fail")
-	}
-
-	s := New(900, 560, ThemeFor(OSMac, false))
-	s.InitWebHistory("h1", "https://a/")
-	if s.WebCanBack("h1") || s.WebCanForward("h1") {
-		t.Fatal("fresh history should allow neither back nor forward")
-	}
-	if _, ok := s.WebBackURL("h1"); ok {
-		t.Fatal("back on a single-entry history should fail")
-	}
-	if _, ok := s.WebForwardURL("h1"); ok {
-		t.Fatal("forward on a single-entry history should fail")
-	}
-	s.PushWebURL("h1", "https://a/b")
-	s.PushWebURL("h1", "https://a/b/c")
-	if !s.WebCanBack("h1") || s.WebCanForward("h1") {
-		t.Fatal("after pushes: back yes, forward no")
-	}
-	if u, ok := s.WebBackURL("h1"); !ok || u != "https://a/b" {
-		t.Fatalf("back = %q,%v want https://a/b,true", u, ok)
-	}
-	// Now at the middle entry: forward is possible and returns the page we left.
-	if !s.WebCanForward("h1") {
-		t.Fatal("should allow forward after a back")
-	}
-	if u, ok := s.WebForwardURL("h1"); !ok || u != "https://a/b/c" {
-		t.Fatalf("forward = %q,%v want https://a/b/c,true", u, ok)
-	}
-	// Back twice to the root, then a fresh navigation truncates the forward tail.
-	s.WebBackURL("h1")
-	if u, ok := s.WebBackURL("h1"); !ok || u != "https://a/" {
-		t.Fatalf("back = %q,%v want https://a/,true", u, ok)
-	}
-	if s.WebCanBack("h1") {
-		t.Fatal("back to root should exhaust the back direction")
-	}
-	s.PushWebURL("h1", "https://a/d") // new nav from root drops b, b/c
-	if s.WebCanForward("h1") {
-		t.Fatal("a fresh navigation must drop the forward tail")
-	}
-	if u, ok := s.WebBackURL("h1"); !ok || u != "https://a/" {
-		t.Fatalf("after truncating nav, back = %q,%v want https://a/,true", u, ok)
-	}
-}
-
-func TestWebLinkAt(t *testing.T) {
-	s := New(900, 560, ThemeFor(OSMac, false))
-	s.SelectPreview(webTestItem())
-	img := image.NewRGBA(image.Rect(0, 0, 400, 1200))
-	links := []WebLink{{Rect: image.Rect(10, 20, 110, 60), Href: "https://x/a"}}
-	s.SetPreviewWeb("h1", img, links, 400)
-
-	// Guard: no display box yet → miss.
-	if _, ok := s.webLinkAt("h1", 5, 5); ok {
-		t.Fatal("no box should miss")
-	}
-	// Scale 1: box == render size. A click at render (30,40) hits the link.
-	s.previewImgR = toolkit.Rect{X: 100, Y: 200, W: 400, H: 1200}
-	if href, ok := s.webLinkAt("h1", 130, 240); !ok || href != "https://x/a" {
-		t.Fatalf("hit = %q,%v want https://x/a,true", href, ok)
-	}
-	// A click outside every link rect misses.
-	if _, ok := s.webLinkAt("h1", 400, 800); ok {
-		t.Fatal("click outside a link should miss")
-	}
-	// Scale 2: box half the render width → a display click at box+ (15,20) maps to
-	// render (30,40), still inside the link.
-	s.previewImgR = toolkit.Rect{X: 0, Y: 0, W: 200, H: 600}
-	if _, ok := s.webLinkAt("h1", 15, 20); !ok {
-		t.Fatal("scaled click should hit the link")
-	}
-}
-
-func TestPreviewWebClickRouting(t *testing.T) {
-	s := New(900, 560, ThemeFor(OSMac, false))
-	s.SelectPreview(webTestItem())
-	img := image.NewRGBA(image.Rect(0, 0, 400, 1200))
-	links := []WebLink{{Rect: image.Rect(0, 0, 80, 30), Href: "https://x/a"}}
-	s.SetPreviewWeb("h1", img, links, 400)
-	buf := make([]byte, s.W*s.H*4)
-	s.Draw(buf) // records previewImgR (and previewBackR, empty until we can go back)
-
-	// A click on the link's mapped rect routes to HitWebLink with the href.
-	b := s.previewImgR
-	if hit, _ := s.previewHitTest(b.X+2, b.Y+2); hit.Kind != HitWebLink || hit.Value != "https://x/a" {
-		t.Fatalf("web link hit = %+v, want HitWebLink https://x/a", hit)
-	}
-
-	// After navigating (history depth >1), a Back chip appears and routes to
-	// HitWebBack, while the Forward chip is drawn but disabled (no forward yet).
-	s.InitWebHistory("h1", "https://example.com/a")
-	s.PushWebURL("h1", "https://x/a")
-	s.Draw(buf) // now webNavigable → back chip laid out, fwd chip dimmed
-	if s.previewBackR.W == 0 {
-		t.Fatal("back chip should be shown after navigation")
-	}
-	if s.previewFwdR.W != 0 {
-		t.Fatal("forward chip must be inert (not hit-testable) with no forward history")
-	}
-	if hit, _ := s.previewHitTest(s.previewBackR.X+2, s.previewBackR.Y+2); hit.Kind != HitWebBack {
-		t.Fatalf("back chip hit = %+v, want HitWebBack", hit)
-	}
-
-	// Step back one: now Forward is possible → the Fwd chip becomes active and
-	// routes to HitWebFwd.
-	s.WebBackURL("h1")
 	s.Draw(buf)
-	if s.previewFwdR.W == 0 {
-		t.Fatal("forward chip should be active after a back")
+	if got := len(s.previewHeaderLines()); got != 2 {
+		t.Fatalf("header lines = %d, want capped at 2", got)
 	}
-	if hit, _ := s.previewHitTest(s.previewFwdR.X+2, s.previewFwdR.Y+2); hit.Kind != HitWebFwd {
-		t.Fatalf("forward chip hit = %+v, want HitWebFwd", hit)
+	if s.previewHeaderH() <= 0 {
+		t.Fatal("header height must be positive")
 	}
 }
 
-func TestPreviewLoadingSpinner(t *testing.T) {
+func TestBrowserTabModeSetting(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	if s.BrowserSingleTab() {
+		t.Fatal("default tab mode is multi-tab")
+	}
+	if s.Settings().BrowserSingleTab {
+		t.Fatal("default settings snapshot should report multi-tab")
+	}
+	s.SetBrowserSingleTab(true)
+	if !s.BrowserSingleTab() || !s.Settings().BrowserSingleTab {
+		t.Fatal("SetBrowserSingleTab(true) should switch to single-tab and persist")
+	}
+	s.SetBrowserSingleTab(false)
+	if s.BrowserSingleTab() {
+		t.Fatal("SetBrowserSingleTab(false) should return to multi-tab")
+	}
+}
+
+func TestForwardBrowserClick(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	// Not a web preview: never consumed.
+	if s.ForwardBrowserClick(10, 10) {
+		t.Fatal("no web preview → click not forwarded")
+	}
+
+	s.SelectPreview(webTestItem())
+	// Web active but the browser hasn't been laid out yet (bounds zero): the click
+	// is not forwarded (and browser focus is cleared).
+	if s.ForwardBrowserClick(10, 10) || s.BrowserFocused() {
+		t.Fatal("un-laid-out browser must not consume a click")
+	}
+	deliverPage(s, "https://example.com/a", "Title", 400, 1200)
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf) // lay out the browser bounds
+
+	b := s.Browser().Bounds()
+	// A click outside the browser rect blurs focus and is not consumed.
+	if s.ForwardBrowserClick(b.X-100, b.Y) || s.BrowserFocused() {
+		t.Fatal("click outside the browser must not be consumed")
+	}
+	// A click inside is forwarded and focuses the browser.
+	if !s.ForwardBrowserClick(b.X+b.W/2, b.Y+2) || !s.BrowserFocused() {
+		t.Fatal("click inside the browser should be forwarded + focus it")
+	}
+	// A second inside click keeps focus (setBrowserFocused no-op branch).
+	if !s.ForwardBrowserClick(b.X+b.W/2, b.Y+3) {
+		t.Fatal("second inside click should still be forwarded")
+	}
+}
+
+func TestForwardBrowserScroll(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	if s.ForwardBrowserScroll(40) {
+		t.Fatal("no web preview → scroll not forwarded")
+	}
+	s.SelectPreview(webTestItem())
+	// Web active, browser not laid out (bounds zero) → not forwarded.
+	if s.ForwardBrowserScroll(40) {
+		t.Fatal("un-laid-out browser must not consume a wheel")
+	}
+	deliverPage(s, "https://example.com/a", "Title", 400, 2000)
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	b := s.Browser().Bounds()
+
+	// Pointer outside the browser → not forwarded.
+	s.MouseMove(b.X-50, b.Y)
+	if s.ForwardBrowserScroll(40) {
+		t.Fatal("wheel with the pointer off the browser must not be consumed")
+	}
+	// Pointer over the browser.
+	s.MouseMove(b.X+b.W/2, b.Y+b.H/2)
+	if !s.ForwardBrowserScroll(80) { // large delta → several rows
+		t.Fatal("wheel over the browser should be consumed (multi-row)")
+	}
+	if !s.ForwardBrowserScroll(5) { // small positive → floored to one row
+		t.Fatal("small positive wheel should be consumed as one row")
+	}
+	if !s.ForwardBrowserScroll(-5) { // small negative → floored to minus one row
+		t.Fatal("small negative wheel should be consumed as minus one row")
+	}
+	if s.ForwardBrowserScroll(0) { // zero delta → nothing to do
+		t.Fatal("zero wheel delta must not be consumed")
+	}
+}
+
+func TestForwardBrowserKey(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	// Not web / not focused → never forwarded.
+	if s.ForwardBrowserKey("Backspace", 0) {
+		t.Fatal("no web preview → key not forwarded")
+	}
+	s.SelectPreview(webTestItem())
+	deliverPage(s, "https://example.com/a", "Title", 400, 1200)
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	// Web active but browser not focused → not forwarded.
+	if s.ForwardBrowserKey("Backspace", 0) {
+		t.Fatal("unfocused browser must not capture keys")
+	}
+	// Focus the browser's address field by clicking it, then keys route to it.
+	b := s.Browser().Bounds()
+	_, _, addr := browserAddrRect(s, b)
+	s.ForwardBrowserClick(addr.X+addr.W/2, addr.Y+addr.H/2)
+	if !s.BrowserFocused() {
+		t.Fatal("address-field click should focus the browser")
+	}
+	if !s.ForwardBrowserKey("", 'q') {
+		t.Fatal("printable rune should route to the browser")
+	}
+	if !s.ForwardBrowserKey("Backspace", 0) {
+		t.Fatal("Backspace should route to the browser")
+	}
+	// A bare key name with no rune (e.g. an arrow) is not forwarded.
+	if s.ForwardBrowserKey("Up", 0) {
+		t.Fatal("a non-editing key must not be forwarded")
+	}
+	// Enter commits/navigates the address (routed to the browser).
+	if !s.ForwardBrowserKey("Enter", 0) {
+		t.Fatal("Enter should route to the browser")
+	}
+}
+
+// browserAddrRect reproduces the toolkit browser's toolbar layout enough to find
+// the address-field rect (right of the three buttons) in screen coords, so a
+// test can click it. Falls back to the toolbar's right portion.
+func browserAddrRect(s *Scene, b toolkit.Rect) (int, int, toolkit.Rect) {
+	// The toolbar row sits just below any tab strip; with one tab there is no
+	// strip, so it is the first BrowserToolbarH rows of the browser bounds. The
+	// address field fills the right ~half — clicking the far right is safely on it.
+	y := b.Y + toolkit.BrowserToolbarH/2
+	addr := toolkit.Rect{X: b.X + b.W*3/4, Y: y, W: b.W / 5, H: toolkit.BrowserToolbarH / 2}
+	return b.X, y, addr
+}
+
+func TestWebPreviewAnimationTick(t *testing.T) {
 	s := New(900, 560, ThemeFor(OSMac, false))
 	if s.Animating() {
 		t.Fatal("idle scene must not animate")
 	}
 	s.SelectPreview(webTestItem())
-	// A pending web render animates (the spinner must keep spinning).
-	s.SetPreviewWebLoading(true)
+	s.Browser().Open("https://example.com/a", "Title") // loading → animates
 	if !s.Animating() {
-		t.Fatal("pending web preview should animate")
+		t.Fatal("a loading browser tab should animate")
 	}
-	buf := make([]byte, s.W*s.H*4)
-	s.Draw(buf) // first-load: centred spinner in the empty box
-
-	// Navigation: a previous page is present AND a new render is pending → the
-	// top-centre loading spinner chip overlays the old page.
-	s.SetPreviewWeb("h1", image.NewRGBA(image.Rect(0, 0, 400, 1200)), nil, 400)
-	s.SetPreviewWebLoading(true)
-	s.Draw(buf)
-
+	before := s.Browser().Phase
+	s.AdvanceAnim() // must advance the browser's loading-bar phase
+	if s.Browser().Phase == before {
+		t.Fatal("AdvanceAnim should tick the browser phase")
+	}
 	// A pending Usenet image preview also animates.
 	u := New(760, 460, ThemeFor(OSMac, false))
 	u.SetPreviewLoading(true)

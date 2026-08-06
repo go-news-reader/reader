@@ -36,6 +36,9 @@ type Settings struct {
 	Theme     string    `json:"theme"`               // system|light|dark
 	CachePath string    `json:"cachePath,omitempty"` // media cache dir (repositionable)
 	Accounts  []Account `json:"accounts,omitempty"`  // per-provider credentials
+	// BrowserSingleTab makes the web-preview browser reuse a single tab instead of
+	// keeping a switchable multi-tab strip (default: multi-tab).
+	BrowserSingleTab bool `json:"browserSingleTab,omitempty"`
 }
 
 // Account holds a user's credentials for one provider. Fields are keyed by the

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-widgets/mvvm"
+	"github.com/go-widgets/mvvm/tkbind"
 	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/internal/settings"
@@ -89,13 +90,6 @@ const (
 	HitPreviewGroup           // a Usenet group card's body (preview it in the pane) — Value = release base
 	HitOpenPreview            // the preview pane's "Open" button (full reading view) — Item set
 	HitPreviewDivider         // the preview pane's left-edge resize grip (start a drag)
-	HitWebLink                // a clickable anchor in the rendered web preview — Value = href, Item set
-	HitWebBack                // the web preview's "‹ Back" chip — Item set
-	HitWebFwd                 // the web preview's "Fwd ›" chip — Item set
-	HitWebReload              // the web preview's "↻" reload chip — Item set
-	HitWebURL                 // the web preview's address field — Item set
-	HitWebTab                 // a web preview tab (switch to it) — Value = item id
-	HitWebTabClose            // a web preview tab's close box — Value = item id
 	HitToggleDownload         // a complete post's download checkbox — Value = release base
 	HitClearDownloads         // the download panel's "Clear" button
 
@@ -119,6 +113,7 @@ const (
 	HitFocusChannel  // focus the add-channel input
 	HitFocusCache    // focus the media-cache path input
 	HitTheme         // Value = "system"|"light"|"dark"
+	HitBrowserTabs   // Value = "multi"|"single" (web-preview browser tab mode)
 	HitCloseSettings // leave the settings view
 
 	// Accounts-view actions (Mode == ModeAccounts):
@@ -251,39 +246,20 @@ type Scene struct {
 	previewImgR       toolkit.Rect // image area (for hit-testing / geometry)
 
 	// Web-page preview: for a non-Usenet item that links out (HackerNews /
-	// Reddit / RSS …), the app renders the target article page into an image
-	// (via go-webengine) and shows it full-width + scrollable in the pane,
-	// replacing the plain-text summary. previewWeb caches the rendered page per
-	// item id; previewWebPending marks a render in flight (spinner) for the
-	// current selection.
-	//
-	// The pane is a mini in-app browser: previewWebLinks holds each rendered
-	// page's clickable anchors (rects in the render's own pixel coords) and
-	// previewWebRenderW the width it was rendered at, so a click maps back to an
-	// anchor; previewWebHist is the per-item visited-URL history with a cursor
-	// (back/forward), so Back/Forward move the cursor and re-render without
-	// discarding the other direction — a link click truncates the forward tail.
-	previewWeb        map[string]*image.RGBA
-	previewWebPending bool
-	previewWebLinks   map[string][]WebLink
-	previewWebRenderW map[string]int
-	previewWebHist    map[string]*webHist
-	previewBackR      toolkit.Rect // "‹ Back" chip (web view), 0 when not shown
-	previewFwdR       toolkit.Rect // "Fwd ›" chip (web view), 0 when not shown
-	previewReloadR    toolkit.Rect // "↻" reload chip (web view), 0 when not shown
-	previewURLR       toolkit.Rect // the address field (web view), 0 when not shown
-	// webTabs are the target pages opened this session (each keeps its own cached
-	// render + history under previewWeb*/previewWebHist keyed by item id): a
-	// browser-style switchable strip. A tab is added when a page first renders for
-	// an item; the strip shows once ≥2 are open. webTabHits records each drawn
-	// tab's clickable body + close-box for hit-testing.
-	webTabs    []source.Item
-	webTabHits []webTabHit
-	// webURLFocused marks the address field as holding keyboard focus (in the
-	// feed view, mutually exclusive with the topbar search); webURLBuf is the URL
-	// being typed while it is focused (seeded from the current page on focus).
-	webURLFocused bool
-	webURLBuf     string
+	// Reddit / RSS …), the target article page is rendered (via go-webengine) and
+	// shown in an embedded mini-browser widget — the reusable toolkit.Browser,
+	// which owns the tab strip, the Back/Forward/Reload toolbar, the editable
+	// address field, the scrollable page area and the indeterminate loading bar.
+	// The scene holds it plus its MVVM view-model (BindBrowser mirrors the
+	// widget's navigable state onto Observables/Commands and calls touch() so a
+	// widget change requests a redraw). The reader drives it: SelectPreview →
+	// browser.Open(url,title); OnNavigate → the async page render; Deliver hands
+	// the finished render back. browserFocused records that a click landed inside
+	// the browser so subsequent keystrokes route to it (its address field) rather
+	// than to the topbar search.
+	browser       *toolkit.Browser
+	browserVM     *tkbind.BrowserVM
+	browserFocused bool
 	// previewUserW is the user-dragged pane width in device px (0 => default),
 	// clamped at read time; draggingPreview is set while its divider is dragged.
 	previewUserW    int
@@ -443,9 +419,36 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	// magnifier instead of the toolkit's "?" bitmap-font stand-in.
 	s.searchEntry.Icon = drawSearchIcon
 	s.browseEntry.Icon = drawSearchIcon
+	// The embedded web-preview browser, with its MVVM view-model bound so a
+	// navigation / load / tab change requests a redraw through touch(). The app
+	// wires browser.OnNavigate to the async page render.
+	s.browser = toolkit.NewBrowser()
+	s.browserVM, _ = tkbind.BindBrowser(s.browser, s.touch)
 	s.clampSize()
 	return s
 }
+
+// Browser exposes the embedded web-preview browser so the app can wire its
+// OnNavigate render seam and drive it (Open / Deliver).
+func (s *Scene) Browser() *toolkit.Browser { return s.browser }
+
+// BrowserVM exposes the browser's MVVM view-model (observable URL / loading /
+// history-guards and the Back/Forward/Reload commands).
+func (s *Scene) BrowserVM() *tkbind.BrowserVM { return s.browserVM }
+
+// SetBrowserSingleTab selects the embedded browser's tab mode: single-tab reuses
+// one tab per page (no strip), multi-tab (the default) keeps a switchable strip.
+func (s *Scene) SetBrowserSingleTab(v bool) {
+	if v {
+		s.browser.SetTabMode(toolkit.SingleTab)
+	} else {
+		s.browser.SetTabMode(toolkit.MultiTab)
+	}
+	s.touch()
+}
+
+// BrowserSingleTab reports whether the embedded browser is in single-tab mode.
+func (s *Scene) BrowserSingleTab() bool { return s.browser.Mode() == toolkit.SingleTab }
 
 // SetTheme swaps the palette.
 func (s *Scene) SetTheme(t *toolkit.Theme) {
@@ -505,13 +508,19 @@ func (s *Scene) LoadingProgress() (done, total int) { return s.loadDone, s.loadT
 // damage-gated present loop never re-draws — so animation costs nothing when
 // nothing is loading.
 func (s *Scene) Animating() bool {
-	return s.loading || s.previewImgPending || s.previewWebPending
+	return s.loading || s.previewImgPending || s.browser.Loading()
 }
 
 // AdvanceAnim advances the animation clock by one frame and marks the scene
 // dirty. A present loop calls it once per tick while [Animating] is true; the
 // indeterminate indicator derives its position from the frame counter.
-func (s *Scene) AdvanceAnim() { s.animFrame++; s.touch() }
+func (s *Scene) AdvanceAnim() {
+	s.animFrame++
+	// Advance the embedded browser's indeterminate loading bar in step with the
+	// spinner cadence (one revolution per spinnerPeriod frames).
+	s.browser.Tick(1.0 / float64(spinnerPeriod))
+	s.touch()
+}
 
 // AnimFrame returns the current animation frame counter (for tests).
 func (s *Scene) AnimFrame() int { return s.animFrame }
@@ -621,9 +630,10 @@ func (s *Scene) Settings() *settings.Settings {
 	return &settings.Settings{
 		Profiles:  s.Profiles,
 		Active:    s.activeProf,
-		Theme:     s.themeName,
-		CachePath: s.cachePath,
-		Accounts:  s.EditedAccounts(),
+		Theme:           s.themeName,
+		CachePath:       s.cachePath,
+		Accounts:        s.EditedAccounts(),
+		BrowserSingleTab: s.BrowserSingleTab(),
 	}
 }
 
@@ -715,11 +725,6 @@ func (s *Scene) TypeRune(r rune) {
 		}
 		return
 	}
-	if s.webURLFocused {
-		s.webURLBuf += string(r) // typing in the preview's address field
-		s.touch()
-		return
-	}
 	if s.searchFocused {
 		// Feed the printable rune through the SearchEntry widget itself, so the
 		// widget's OnChange (bound to vm.Search) fires exactly as a real widget
@@ -751,11 +756,6 @@ func (s *Scene) Backspace() {
 			s.browseScroll.offset = 0
 			s.touch()
 		}
-		return
-	}
-	if s.webURLFocused && s.webURLBuf != "" {
-		s.webURLBuf = trimLastRune(s.webURLBuf) // editing the preview's address field
-		s.touch()
 		return
 	}
 	if s.searchFocused && s.searchEntry.Text != "" {

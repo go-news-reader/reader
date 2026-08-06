@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/go-widgets/toolkit"
+
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/window"
@@ -283,7 +285,8 @@ func TestMouseDownProfileAndSettings(t *testing.T) {
 	if s.Focus() != ui.FocusCache {
 		t.Fatal("cache not focused")
 	}
-	click(t, h, ui.HitTheme) // pick a theme
+	click(t, h, ui.HitTheme)       // pick a theme
+	click(t, h, ui.HitBrowserTabs) // switch the web-preview browser tab mode
 	click(t, h, ui.HitDeleteProfile)
 	// Close the editor -> back to the feed.
 	click(t, h, ui.HitCloseSettings)
@@ -595,60 +598,48 @@ func TestMouseDownFixAuthOpensAccounts(t *testing.T) {
 	}
 }
 
-// TestMouseDownWebLinkAndBack covers routing a rendered-page link click to
-// in-pane navigation and the "‹ Back" chip to WebBack. The scene's web state is
-// set directly and the async fetch is stubbed to a no-op, so no network runs.
-func TestMouseDownWebLinkAndBack(t *testing.T) {
+// TestWebPreviewEventForwarding covers routing raw mouse / scroll / key events
+// into the embedded web-preview browser (a link click, a wheel, address-field
+// typing) versus falling through to the feed. The async render is stubbed to a
+// no-op so no network runs; a canned page is delivered directly.
+func TestWebPreviewEventForwarding(t *testing.T) {
 	a := app.New(app.Config{Registry: source.NewRegistry(), Width: 1000, Height: 700})
-	a.SetWebFetchHook(func(string, string, int) {}) // no-op: navigation must not hit the network
+	a.Scene().SetScale(1)
+	a.SetWebFetchHook(func(string, int) {}) // no-op: navigation must not hit the network
 	s := a.Scene()
 	it := source.Item{ID: "w", Source: source.HackerNews, Title: "T", Link: "https://site/"}
-	s.SelectPreview(it)
-	s.InitWebHistory("w", "https://site/")
-	img := image.NewRGBA(image.Rect(0, 0, 400, 1200))
-	s.SetPreviewWeb("w", img, []ui.WebLink{{Rect: image.Rect(0, 0, 220, 40), Href: "https://site/next"}}, 400)
-	a.Frame() // draw so the web image box (previewImgR) is recorded
+	s.SelectPreview(it) // opens the browser tab (OnNavigate → the no-op fetch)
+	page := image.NewRGBA(image.Rect(0, 0, 400, 1200))
+	s.Browser().Deliver("https://site/", page.Pix, 400, 1200, 400,
+		[]toolkit.BrowserLink{{Rect: image.Rect(0, 0, 400, 1200), Href: "https://site/next"}}, "T")
+	a.Frame() // lay out the browser bounds
 
 	h := New(a)
-	click(t, h, ui.HitWebLink) // → NavigateWeb (stubbed), pushes history
+	b := s.Browser().Bounds()
 
-	a.Frame()                  // back chip now shown (history depth > 1)
-	click(t, h, ui.HitWebBack) // → WebBack (stubbed): steps to the root
-
-	a.Frame()                 // forward chip now active (we stepped back)
-	click(t, h, ui.HitWebFwd) // → WebForward (stubbed)
-
-	a.Frame()
-	click(t, h, ui.HitWebReload) // → WebReload (stubbed)
-
-	// The address field focuses on click, accepts typed keys, and Enter commits
-	// it (navigating). A click elsewhere in the pane defocuses it.
-	a.Frame()
-	click(t, h, ui.HitWebURL) // → FocusWebURL(true)
-	if !s.WebURLFocused() {
-		t.Fatal("clicking the address field should focus it")
-	}
-	h.Key("Backspace", 0)
-	h.Key("", 'q')
-	h.Key("Enter", 0) // ModeFeed + WebURLFocused → CommitWebURL (stubbed fetch)
-	if s.WebURLFocused() {
-		t.Fatal("Enter should commit + defocus the address field")
-	}
-	// Re-focus, then a click on empty pane space (HitNone) defocuses via default.
-	a.Frame()
-	click(t, h, ui.HitWebURL)
-	h.MouseDown(s.W-2, s.H-2) // bottom-right corner → not any web control
-	if s.WebURLFocused() {
-		t.Fatal("a click off the address field should defocus it")
+	// A click in the browser's content area is forwarded (a link → in-pane nav).
+	h.MouseDown(b.X+b.W/2, b.Y+b.H-4)
+	if !s.BrowserFocused() {
+		t.Fatal("a click inside the browser should focus + be forwarded to it")
 	}
 
-	// Open a second web page so the tab strip appears, then switch/close via clicks.
-	it2 := source.Item{ID: "w2", Source: source.HackerNews, Title: "Second", Link: "https://site2/"}
-	s.SelectPreview(it2)
-	s.InitWebHistory("w2", "https://site2/")
-	s.SetPreviewWeb("w2", image.NewRGBA(image.Rect(0, 0, 400, 900)), nil, 400)
-	a.Frame() // strip now shown (two tabs: w, w2)
-	click(t, h, ui.HitWebTab)      // → SelectWebTab (switch to the other tab)
-	a.Frame()
-	click(t, h, ui.HitWebTabClose) // → CloseWebTab
+	// A wheel with the pointer over the browser scrolls the page (forwarded);
+	// with the pointer over the feed it scrolls the feed instead.
+	h.MouseMove(b.X+b.W/2, b.Y+b.H/2)
+	h.Scroll(60)
+	h.MouseMove(2, s.H/2)
+	h.Scroll(60)
+
+	// Focus the address field, then keys route to the browser; Enter commits it.
+	h.MouseDown(b.X+b.W*3/4, b.Y+toolkit.BrowserToolbarH/2)
+	h.Key("", 'q')       // → EventChar into the address buffer
+	h.Key("Backspace", 0) // → EventKeyDown Backspace
+	h.Key("Enter", 0)     // → commit/navigate (stubbed fetch)
+
+	// A click on empty pane / feed space is NOT forwarded and blurs the browser.
+	h.MouseDown(b.X+b.W/2, b.Y+b.H-4) // re-focus first
+	h.MouseDown(2, s.H-2)             // bottom-left (feed) → default, not forwarded
+	if s.BrowserFocused() {
+		t.Fatal("a click off the browser should blur its focus")
+	}
 }

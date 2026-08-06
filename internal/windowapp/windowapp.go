@@ -68,6 +68,13 @@ func (h *Handler) Resize(w, height int, scale float64) {
 // item, follow a link, switch a filter or profile, or drive the settings editor.
 func (h *Handler) MouseDown(x, y int) {
 	s, vm := h.a.Scene(), h.a.VM()
+	// A click inside the embedded web-preview browser is forwarded to it (a link,
+	// a toolbar button, the address field, a tab) and consumes the event; a click
+	// anywhere else blurs the browser's keyboard focus and falls through to the
+	// normal hit-testing below.
+	if s.ForwardBrowserClick(x, y) {
+		return
+	}
 	switch hit := s.HitTest(x, y); hit.Kind {
 	case ui.HitItem:
 		h.a.SelectPreview(hit.Item) // show it in the right preview pane (fetch image if any)
@@ -75,20 +82,6 @@ func (h *Handler) MouseDown(x, y int) {
 		h.a.PreviewGroup(hit.Value) // preview a Usenet post: reconstruct its image into the pane
 	case ui.HitOpenPreview:
 		vm.OpenDetail(hit.Item) // the pane's "Open" button → full-screen reading view
-	case ui.HitWebLink:
-		h.a.NavigateWeb(hit.Item.ID, hit.Value) // click a link in the rendered page → navigate in-pane
-	case ui.HitWebBack:
-		h.a.WebBack(hit.Item.ID) // the web preview's "‹ Back" chip
-	case ui.HitWebFwd:
-		h.a.WebForward(hit.Item.ID) // the web preview's "Fwd ›" chip
-	case ui.HitWebReload:
-		h.a.WebReload(hit.Item.ID) // the web preview's "↻" reload chip
-	case ui.HitWebTab:
-		h.a.SelectWebTab(hit.Value) // switch to an open web preview tab
-	case ui.HitWebTabClose:
-		h.a.CloseWebTab(hit.Value) // close an open web preview tab
-	case ui.HitWebURL:
-		s.FocusWebURL(true) // focus the web preview's address field for typing
 	case ui.HitBack:
 		vm.CloseView.Execute()
 	case ui.HitOpenExternal:
@@ -177,6 +170,9 @@ func (h *Handler) MouseDown(x, y int) {
 	case ui.HitTheme:
 		s.SetThemeName(hit.Value)
 		h.a.ApplySceneSettings()
+	case ui.HitBrowserTabs:
+		s.SetBrowserSingleTab(hit.Value == "single") // web-preview tab mode
+		h.a.ApplySceneSettings()
 	case ui.HitAccounts:
 		vm.OpenAccounts.Execute()
 	case ui.HitCloseAccounts:
@@ -190,7 +186,6 @@ func (h *Handler) MouseDown(x, y int) {
 		s.ToggleAccountBool(hit.Value)
 	default:
 		vm.FocusSearch(false)
-		s.FocusWebURL(false) // a click elsewhere commits/leaves the address field
 	}
 }
 
@@ -205,8 +200,15 @@ func (h *Handler) MouseUp(x, y int) {
 	s.EndPreviewResize()
 }
 
-// Scroll scrolls the feed by a device-pixel wheel delta.
-func (h *Handler) Scroll(dy int) { h.a.Scene().Scroll(dy) }
+// Scroll scrolls the feed by a device-pixel wheel delta, unless the pointer is
+// over the embedded web-preview browser — then the wheel scrolls the page.
+func (h *Handler) Scroll(dy int) {
+	s := h.a.Scene()
+	if s.ForwardBrowserScroll(dy) {
+		return
+	}
+	s.Scroll(dy)
+}
 
 // SystemAppearance applies host look-and-feel harvested by the native back-end
 // (dark/light, accent, system font) to the app. This satisfies the optional
@@ -222,6 +224,11 @@ var _ window.AppearanceSink = (*Handler)(nil)
 // focused (topbar search in the feed, or the settings text fields).
 func (h *Handler) Key(name string, r rune) {
 	s, vm := h.a.Scene(), h.a.VM()
+	// In the feed view, an active + focused embedded browser captures editing keys
+	// and printable runes for its address field (Enter commits/navigates).
+	if s.Mode() == ui.ModeFeed && s.ForwardBrowserKey(name, r) {
+		return
+	}
 	switch name {
 	case "Backspace":
 		s.Backspace()
@@ -254,13 +261,9 @@ func (h *Handler) Key(name string, r rune) {
 		case ui.ModeBrowse:
 			h.activateBrowseSelection() // Enter expands a hierarchy or (un)subscribes a group
 		case ui.ModeFeed:
-			it, hasPrev := s.PreviewItem()
-			switch {
-			case s.WebURLFocused() && hasPrev:
-				h.a.CommitWebURL(it.ID) // Enter in the address field navigates to it
-			case hasPrev:
+			if _, hasPrev := s.PreviewItem(); hasPrev {
 				h.a.OpenSelected() // Enter opens the selected post's reading view
-			default:
+			} else {
 				vm.FocusSearch(false)
 			}
 		default:
