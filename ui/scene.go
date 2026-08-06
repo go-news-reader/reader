@@ -435,6 +435,13 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	// navigation / load / tab change requests a redraw through touch(). The app
 	// wires browser.OnNavigate to the async page render.
 	s.browser = toolkit.NewBrowser()
+	// Real Iconoir glyphs on the toolbar buttons (instead of the text-label
+	// fallback): Back / Forward / Reload + the two zoom magnifiers.
+	s.browser.BackIcon = drawBackNavIcon
+	s.browser.ForwardIcon = drawForwardNavIcon
+	s.browser.ReloadIcon = drawReloadNavIcon
+	s.browser.ZoomOutIcon = drawZoomOutIcon
+	s.browser.ZoomInIcon = drawZoomInIcon
 	s.browserVM, _ = tkbind.BindBrowser(s.browser, s.touch)
 	s.clampSize()
 	return s
