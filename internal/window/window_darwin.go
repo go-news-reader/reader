@@ -445,9 +445,41 @@ func viewKeyDown(_ objc.ID, _ objc.SEL, event objc.ID) {
 	if handler == nil {
 		return
 	}
+	// A command-style chord (Ctrl/Cmd + a base printable key) is a shortcut, not
+	// text: route it to a ShortcutSink and stop before decodeKey, which
+	// deliberately drops the modified rune (charactersIgnoringModifiers strips the
+	// modifier, so it would otherwise leak the bare key into the focused field).
+	if sink, ok := handler.(ShortcutSink); ok {
+		if r, ctrl, meta, ok := cocoaShortcutKey(event); ok {
+			sink.Shortcut(r, ctrl, meta)
+			present()
+			return
+		}
+	}
 	name, r := decodeKey(event)
 	handler.Key(name, r)
 	present()
+}
+
+// cocoaShortcutKey extracts a command-style shortcut from a keyDown NSEvent: the
+// base printable rune (from charactersIgnoringModifiers, filtered exactly like
+// decodeKey) held with Control or Command. ok is false for the named editing keys
+// (by keyCode), a bare/Shift-only key, or a non-printable / function-key rune —
+// those take the normal decodeKey path.
+func cocoaShortcutKey(event objc.ID) (r rune, ctrl, meta, ok bool) {
+	switch uint16(event.Send(selKeyCode)) {
+	case 51, 53, 36, 76, 126, 125, 123, 124: // Delete/Escape/Return/KPEnter/arrows
+		return 0, false, false, false
+	}
+	ctrl, meta, hasMod := cocoaShortcut(uint64(event.Send(selModifierFlags)))
+	if !hasMod {
+		return 0, false, false, false
+	}
+	rs := []rune(goString(event.Send(selCharsIgnoringMods)))
+	if len(rs) != 1 || rs[0] < 0x20 || rs[0] == 0x7f || (rs[0] >= 0xF700 && rs[0] <= 0xF8FF) {
+		return 0, false, false, false
+	}
+	return rs[0], ctrl, meta, true
 }
 
 // decodeKey maps an NSEvent keyDown to a symbolic editing-key name or a

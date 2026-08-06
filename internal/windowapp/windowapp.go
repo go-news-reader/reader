@@ -145,6 +145,7 @@ func (h *Handler) MouseDown(x, y int) {
 	case ui.HitCloseSettings:
 		s.CommitRename()
 		s.CommitCache()
+		s.CommitZoomKeys()
 		vm.CloseView.Execute()
 		h.a.ApplySceneSettings()
 	case ui.HitSelectProfile:
@@ -167,6 +168,10 @@ func (h *Handler) MouseDown(x, y int) {
 		s.FocusChannel()
 	case ui.HitFocusCache:
 		s.FocusCache()
+	case ui.HitFocusZoomIn:
+		s.FocusZoomIn()
+	case ui.HitFocusZoomOut:
+		s.FocusZoomOut()
 	case ui.HitTheme:
 		s.SetThemeName(hit.Value)
 		h.a.ApplySceneSettings()
@@ -220,6 +225,30 @@ func (h *Handler) SystemAppearance(a window.SystemAppearance) {
 
 var _ window.AppearanceSink = (*Handler)(nil)
 
+// Shortcut handles a command-style modifier chord (Ctrl/Cmd + a base key)
+// forwarded by the native back-end. In the feed view with the embedded web
+// preview active, a chord whose base rune matches the configured zoom-in /
+// zoom-out key zooms the browser through its MVVM commands; every other chord is
+// ignored so ordinary shortcuts fall through untouched. This satisfies the
+// optional window.ShortcutSink capability (asserted below).
+func (h *Handler) Shortcut(r rune, ctrl, meta bool) {
+	if !(ctrl || meta) {
+		return
+	}
+	s := h.a.Scene()
+	if s.Mode() != ui.ModeFeed || !s.WebPreviewActive() {
+		return
+	}
+	switch s.ZoomKeyDir(r) {
+	case 1:
+		s.ZoomBrowserIn()
+	case -1:
+		s.ZoomBrowserOut()
+	}
+}
+
+var _ window.ShortcutSink = (*Handler)(nil)
+
 // Key handles editing keys and printable runes for whichever view/field is
 // focused (topbar search in the feed, or the settings text fields).
 func (h *Handler) Key(name string, r rune) {
@@ -241,6 +270,7 @@ func (h *Handler) Key(name string, r rune) {
 		case ui.ModeSettings:
 			s.CommitRename()
 			s.CommitCache()
+			s.CommitZoomKeys()
 			vm.CloseView.Execute()
 			h.a.ApplySceneSettings()
 		case ui.ModeAccounts:
@@ -327,6 +357,9 @@ func (h *Handler) commitSettingsField() {
 		h.a.ApplySceneSettings()
 	case ui.FocusCache:
 		s.CommitCache()
+		h.a.ApplySceneSettings()
+	case ui.FocusZoomIn, ui.FocusZoomOut:
+		s.CommitZoomKeys()
 		h.a.ApplySceneSettings()
 	}
 }
