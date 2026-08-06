@@ -246,7 +246,8 @@ func New(cfg Config) *App {
 	// address / Back / Forward / Reload asks the host to render a page; run it
 	// through the (test-substitutable) webFetch.
 	a.scene.Browser().OnNavigate = func(target string, width int) { a.webFetch(target, width) }
-	a.scene.SetBrowserSingleTab(set.BrowserSingleTab) // apply the persisted tab-mode preference
+	a.scene.SetBrowserSingleTab(set.BrowserSingleTab)         // apply the persisted tab-mode preference
+	a.scene.SetBrowserZoomKeys(set.ZoomInKey, set.ZoomOutKey) // apply the persisted browser zoom keybindings
 	a.groupStatsFetch = func(name string) {
 		go a.loadGroupStats(context.Background(), name)
 	}

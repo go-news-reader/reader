@@ -43,6 +43,7 @@ var (
 	procLoadCursorW        = user32.NewProc("LoadCursorW")
 	procGetDpiForWindow    = user32.NewProc("GetDpiForWindow")
 	procSetProcessDpiAware = user32.NewProc("SetProcessDPIAware")
+	procGetKeyState        = user32.NewProc("GetKeyState")
 
 	procStretchDIBits = gdi32.NewProc("StretchDIBits")
 
@@ -66,6 +67,10 @@ const (
 	wmLButtonUp   = 0x0202
 	wmMouseWheel  = 0x020A
 	wmTimer       = 0x0113
+
+	vkControl = 0x11
+	vkLWin    = 0x5B
+	vkRWin    = 0x5C
 
 	idcArrow    = 32512
 	csHRedraw   = 0x0002
@@ -284,6 +289,23 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 				if present() {
 					procInvalidateRect.Call(hwnd, 0, 0)
 				}
+				return 0
+			}
+			// A Ctrl (or Win) chord with a base key is a shortcut: WM_CHAR would
+			// deliver a control code, not the base rune, so route the chord to a
+			// ShortcutSink here (the normal typed rune still arrives via WM_CHAR when
+			// no command modifier is held).
+			if sink, ok := wHandler.(ShortcutSink); ok {
+				if r := winShortcutRune(uint32(wparam)); r != 0 {
+					ctrl := winModDown(vkControl)
+					meta := winModDown(vkLWin) || winModDown(vkRWin)
+					if ctrl || meta {
+						sink.Shortcut(r, ctrl, meta)
+						if present() {
+							procInvalidateRect.Call(hwnd, 0, 0)
+						}
+					}
+				}
 			}
 		}
 		return 0
@@ -306,6 +328,13 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	}
 	ret, _, _ := procDefWindowProcW.Call(hwnd, msg, wparam, lparam)
 	return ret
+}
+
+// winModDown reports whether the given virtual-key modifier is currently held,
+// via GetKeyState's high-order bit (see winKeyDown).
+func winModDown(vk uintptr) bool {
+	state, _, _ := procGetKeyState.Call(vk)
+	return winKeyDown(uint16(state))
 }
 
 // dpiScale returns the window's DPI scale factor (device pixels per point),

@@ -217,7 +217,18 @@ func (x *x11) handleEvent(ev xgb.Event) {
 		if x.handler == nil {
 			return
 		}
-		name, r := x11KeyDecodeState(x.keysyms.lookup(xproto.Keycode(e.Detail)), uint32(e.State))
+		ks := x.keysyms.lookup(xproto.Keycode(e.Detail))
+		// A command-style chord (Ctrl/Super + a base key) is a shortcut, routed to
+		// a ShortcutSink; x11KeyDecodeState drops the modified rune from the text
+		// path, so without this the app would never see it.
+		if sink, ok := x.handler.(ShortcutSink); ok {
+			if r, ctrl, meta, ok := x11Shortcut(ks, uint32(e.State)); ok {
+				sink.Shortcut(r, ctrl, meta)
+				x.present()
+				return
+			}
+		}
+		name, r := x11KeyDecodeState(ks, uint32(e.State))
 		if name != "" || r != 0 {
 			x.handler.Key(name, r)
 			x.present()

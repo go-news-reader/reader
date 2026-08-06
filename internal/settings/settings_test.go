@@ -32,6 +32,38 @@ func TestDefault(t *testing.T) {
 	}
 }
 
+func TestZoomKeyDefaultsAndRoundTrip(t *testing.T) {
+	// Default seeds the real-browser zoom keys.
+	if d := Default(); d.ZoomInKey != DefaultZoomInKey || d.ZoomOutKey != DefaultZoomOutKey {
+		t.Fatalf("default zoom keys = %q / %q", d.ZoomInKey, d.ZoomOutKey)
+	}
+	// Normalize backfills blanks (e.g. a settings file predating these fields).
+	s := &Settings{Active: 0}
+	s.Normalize()
+	if s.ZoomInKey != DefaultZoomInKey || s.ZoomOutKey != DefaultZoomOutKey {
+		t.Fatalf("normalized zoom keys = %q / %q", s.ZoomInKey, s.ZoomOutKey)
+	}
+	// A non-default value survives Normalize.
+	s2 := &Settings{Profiles: []Profile{{Name: "x"}}, Theme: ThemeDark, CachePath: "/c", ZoomInKey: "+", ZoomOutKey: "_"}
+	s2.Normalize()
+	if s2.ZoomInKey != "+" || s2.ZoomOutKey != "_" {
+		t.Fatalf("normalize clobbered custom zoom keys: %q / %q", s2.ZoomInKey, s2.ZoomOutKey)
+	}
+	// Save/Load round-trips the two keys.
+	p := filepath.Join(t.TempDir(), "s.json")
+	st := NewStore(p)
+	if err := st.Save(&Settings{Profiles: []Profile{{Name: "P"}}, Theme: ThemeSystem, CachePath: "/c", ZoomInKey: "+", ZoomOutKey: "_"}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := st.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.ZoomInKey != "+" || out.ZoomOutKey != "_" {
+		t.Fatalf("round-trip zoom keys = %q / %q", out.ZoomInKey, out.ZoomOutKey)
+	}
+}
+
 func TestActiveProfile(t *testing.T) {
 	s := &Settings{Profiles: []Profile{{Name: "A"}, {Name: "B"}}}
 	if s.ActiveProfile().Name != "A" {

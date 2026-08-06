@@ -40,6 +40,15 @@ type AppearanceSink interface {
 	SystemAppearance(SystemAppearance)
 }
 
+// ShortcutSink is an optional [Handler] capability: a key pressed with a
+// command-style modifier (Ctrl/Cmd) arrives here as a shortcut, r is the base
+// rune (modifiers stripped), ctrl/meta report which modifier was held. Back-ends
+// route a modifier chord here instead of through Key (which drops the modified
+// rune) so the app can act on real-browser-style shortcuts like Cmd+=.
+type ShortcutSink interface {
+	Shortcut(r rune, ctrl, meta bool)
+}
+
 // Handler is the presenter's data source and input sink. The window calls Frame
 // each tick (and after each event) and blits the returned buffer only when it
 // reports changed. Input coordinates are device pixels (points × backing scale)
