@@ -9,11 +9,13 @@ package ui
 
 import (
 	"image"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-widgets/mvvm"
 	"github.com/go-widgets/mvvm/tkbind"
+	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/internal/settings"
@@ -266,6 +268,9 @@ type Scene struct {
 	browser        *toolkit.Browser
 	browserVM      *tkbind.BrowserVM
 	browserFocused bool
+	// bookmarks is the set of bookmarked page URLs (persisted via Settings); the
+	// address bar's star reflects/toggles membership for the current page.
+	bookmarks map[string]bool
 	// zoomInKey / zoomOutKey are the base runes that, with a command-style modifier
 	// (Ctrl/Cmd), zoom the embedded web preview in / out. Seeded to '='/'-' and
 	// overridable via SetBrowserZoomKeys from the persisted settings.
@@ -442,6 +447,21 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	s.browser.ReloadIcon = drawReloadNavIcon
 	s.browser.ZoomOutIcon = drawZoomOutIcon
 	s.browser.ZoomInIcon = drawZoomInIcon
+	// Address-bar status/bookmark icons: a leading padlock (secure https vs a
+	// crossed lock otherwise) and a trailing bookmark star (accent when saved).
+	s.browser.LeadingIcon = func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
+		ic := iconLockSlash
+		if strings.HasPrefix(s.browser.CurrentURL(), "https://") {
+			ic = iconLock
+		}
+		drawIcon(p, r, ic, ink)
+	}
+	s.browser.BookmarkIcon = func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA, on bool) {
+		if on {
+			ink = s.theme.Accent
+		}
+		drawIcon(p, r, iconStar, ink)
+	}
 	s.browserVM, _ = tkbind.BindBrowser(s.browser, s.touch)
 	s.clampSize()
 	return s
@@ -454,6 +474,46 @@ func (s *Scene) Browser() *toolkit.Browser { return s.browser }
 // BrowserVM exposes the browser's MVVM view-model (observable URL / loading /
 // history-guards and the Back/Forward/Reload commands).
 func (s *Scene) BrowserVM() *tkbind.BrowserVM { return s.browserVM }
+
+// SetBookmarks seeds the bookmarked-URL set from the persisted settings.
+func (s *Scene) SetBookmarks(urls []string) {
+	s.bookmarks = make(map[string]bool, len(urls))
+	for _, u := range urls {
+		s.bookmarks[u] = true
+	}
+}
+
+// IsBookmarked reports whether url is in the bookmark set.
+func (s *Scene) IsBookmarked(url string) bool { return s.bookmarks[url] }
+
+// SetBookmarked adds or removes url from the bookmark set (lazily allocating).
+func (s *Scene) SetBookmarked(url string, on bool) {
+	if s.bookmarks == nil {
+		s.bookmarks = map[string]bool{}
+	}
+	if on {
+		s.bookmarks[url] = true
+	} else {
+		delete(s.bookmarks, url)
+	}
+}
+
+// BookmarkedURLs returns the bookmarked URLs in sorted order (stable snapshot
+// for persistence).
+func (s *Scene) BookmarkedURLs() []string {
+	out := make([]string, 0, len(s.bookmarks))
+	for u := range s.bookmarks {
+		out = append(out, u)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// SyncBookmarkStar sets the address-bar star to reflect whether the browser's
+// current page is bookmarked (called after each navigation).
+func (s *Scene) SyncBookmarkStar() {
+	s.browser.Bookmarked = s.IsBookmarked(s.browser.CurrentURL())
+}
 
 // SetBrowserSingleTab selects the embedded browser's tab mode: single-tab reuses
 // one tab per page (no strip), multi-tab (the default) keeps a switchable strip.
@@ -694,6 +754,7 @@ func (s *Scene) Settings() *settings.Settings {
 		BrowserSingleTab: s.BrowserSingleTab(),
 		ZoomInKey:        s.BrowserZoomInKey(),
 		ZoomOutKey:       s.BrowserZoomOutKey(),
+		Bookmarks:        s.BookmarkedURLs(),
 	}
 }
 
