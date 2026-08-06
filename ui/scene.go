@@ -112,6 +112,8 @@ const (
 	HitRemoveSub     // Profile = index, Sub = subscription index
 	HitFocusChannel  // focus the add-channel input
 	HitFocusCache    // focus the media-cache path input
+	HitFocusZoomIn   // focus the zoom-in browser-shortcut key input
+	HitFocusZoomOut  // focus the zoom-out browser-shortcut key input
 	HitTheme         // Value = "system"|"light"|"dark"
 	HitBrowserTabs   // Value = "multi"|"single" (web-preview browser tab mode)
 	HitCloseSettings // leave the settings view
@@ -186,6 +188,8 @@ type Scene struct {
 	channelInput string       // add-subscription channel buffer
 	renameInput  string       // rename-profile buffer
 	cacheInput   string       // cache-path buffer
+	zoomInInput  string       // zoom-in shortcut key buffer (single rune)
+	zoomOutInput string       // zoom-out shortcut key buffer (single rune)
 	newKind      source.Kind  // selected source for the add-subscription palette
 	sButtons     []sButton    // clickable regions in the settings view
 	sLabels      []sLabel     // section labels in the settings view
@@ -193,6 +197,8 @@ type Scene struct {
 	sChannelR    toolkit.Rect // add-channel input rect
 	sCacheR      toolkit.Rect // cache-path input rect
 	sRenameR     toolkit.Rect // rename input rect
+	sZoomInR     toolkit.Rect // zoom-in shortcut key input rect
+	sZoomOutR    toolkit.Rect // zoom-out shortcut key input rect
 	sDoneR       toolkit.Rect // "Done" button rect
 
 	// Accounts editor (ModeAccounts) state. accBuf holds the editable credential
@@ -257,9 +263,14 @@ type Scene struct {
 	// the finished render back. browserFocused records that a click landed inside
 	// the browser so subsequent keystrokes route to it (its address field) rather
 	// than to the topbar search.
-	browser       *toolkit.Browser
-	browserVM     *tkbind.BrowserVM
+	browser        *toolkit.Browser
+	browserVM      *tkbind.BrowserVM
 	browserFocused bool
+	// zoomInKey / zoomOutKey are the base runes that, with a command-style modifier
+	// (Ctrl/Cmd), zoom the embedded web preview in / out. Seeded to '='/'-' and
+	// overridable via SetBrowserZoomKeys from the persisted settings.
+	zoomInKey  rune
+	zoomOutKey rune
 	// previewUserW is the user-dragged pane width in device px (0 => default),
 	// clamped at read time; draggingPreview is set while its divider is dragged.
 	previewUserW    int
@@ -413,6 +424,7 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	}
 	s := &Scene{W: w, H: h, theme: theme, Active: AllFilter, Scale: 1,
 		themeName: settings.ThemeSystem, newKind: source.Reddit,
+		zoomInKey: '=', zoomOutKey: '-',
 		searchEntry: toolkit.NewSearchEntry(""),
 		browseEntry: toolkit.NewSearchEntry("")}
 	// The topbar SearchEntry paints its left prefix with a real Iconoir
@@ -449,6 +461,45 @@ func (s *Scene) SetBrowserSingleTab(v bool) {
 
 // BrowserSingleTab reports whether the embedded browser is in single-tab mode.
 func (s *Scene) BrowserSingleTab() bool { return s.browser.Mode() == toolkit.SingleTab }
+
+// SetBrowserZoomKeys configures the base runes that, held with a command-style
+// modifier (Ctrl/Cmd), zoom the embedded web preview in / out. A blank or
+// multi-rune string leaves the corresponding binding unchanged, so a missing
+// persisted value keeps the '='/'-' default.
+func (s *Scene) SetBrowserZoomKeys(in, out string) {
+	if r, ok := singleRune(in); ok {
+		s.zoomInKey = r
+	}
+	if r, ok := singleRune(out); ok {
+		s.zoomOutKey = r
+	}
+	s.touch()
+}
+
+// BrowserZoomInKey / BrowserZoomOutKey return the configured base keys as 1-rune
+// strings ("" when unset) for the settings snapshot and the settings editor.
+func (s *Scene) BrowserZoomInKey() string  { return runeStr(s.zoomInKey) }
+func (s *Scene) BrowserZoomOutKey() string { return runeStr(s.zoomOutKey) }
+
+// ZoomKeyDir reports the zoom direction bound to rune r: +1 for the zoom-in key,
+// -1 for the zoom-out key, and 0 for anything else (including the zero rune). If
+// the two keys are misconfigured to the same rune, zoom-in wins.
+func (s *Scene) ZoomKeyDir(r rune) int {
+	switch {
+	case r != 0 && r == s.zoomInKey:
+		return 1
+	case r != 0 && r == s.zoomOutKey:
+		return -1
+	default:
+		return 0
+	}
+}
+
+// ZoomBrowserIn / ZoomBrowserOut zoom the embedded web preview through its MVVM
+// commands — the same path the toolbar +/- buttons drive — so the zoom stays
+// clamped and mirrors into the view-model.
+func (s *Scene) ZoomBrowserIn()  { s.browserVM.ZoomIn.Execute() }
+func (s *Scene) ZoomBrowserOut() { s.browserVM.ZoomOut.Execute() }
 
 // SetTheme swaps the palette.
 func (s *Scene) SetTheme(t *toolkit.Theme) {
@@ -628,12 +679,14 @@ func (s *Scene) SetCachePath(p string) { s.cachePath = p; s.touch() }
 // Settings snapshots the editor state for persistence.
 func (s *Scene) Settings() *settings.Settings {
 	return &settings.Settings{
-		Profiles:  s.Profiles,
-		Active:    s.activeProf,
-		Theme:           s.themeName,
-		CachePath:       s.cachePath,
-		Accounts:        s.EditedAccounts(),
+		Profiles:         s.Profiles,
+		Active:           s.activeProf,
+		Theme:            s.themeName,
+		CachePath:        s.cachePath,
+		Accounts:         s.EditedAccounts(),
 		BrowserSingleTab: s.BrowserSingleTab(),
+		ZoomInKey:        s.BrowserZoomInKey(),
+		ZoomOutKey:       s.BrowserZoomOutKey(),
 	}
 }
 
@@ -704,9 +757,20 @@ func (s *Scene) FocusSearch(v bool) { s.searchFocused = v; s.touch() }
 // search (feed view) or the channel/rename/cache field (settings view).
 func (s *Scene) TypeRune(r rune) {
 	if s.mode == ModeSettings {
-		if f := s.focusedField(); f != nil {
-			*f += string(r)
+		// The zoom-key fields hold exactly one printable rune, so a keystroke
+		// replaces the buffer instead of appending.
+		switch s.sf {
+		case FocusZoomIn:
+			s.zoomInInput = string(r)
 			s.touch()
+		case FocusZoomOut:
+			s.zoomOutInput = string(r)
+			s.touch()
+		default:
+			if f := s.focusedField(); f != nil {
+				*f += string(r)
+				s.touch()
+			}
 		}
 		return
 	}
@@ -774,9 +838,32 @@ func (s *Scene) focusedField() *string {
 		return &s.renameInput
 	case FocusCache:
 		return &s.cacheInput
+	case FocusZoomIn:
+		return &s.zoomInInput
+	case FocusZoomOut:
+		return &s.zoomOutInput
 	default:
 		return nil
 	}
+}
+
+// singleRune returns the sole rune of str with ok=true, or (0,false) when str is
+// empty or holds more than one rune — so a blank or malformed value leaves a
+// binding unchanged.
+func singleRune(str string) (rune, bool) {
+	rs := []rune(str)
+	if len(rs) != 1 {
+		return 0, false
+	}
+	return rs[0], true
+}
+
+// runeStr renders a base rune as a 1-rune string, or "" for the zero rune.
+func runeStr(r rune) string {
+	if r == 0 {
+		return ""
+	}
+	return string(r)
 }
 
 // trimLastRune drops the final rune of str.

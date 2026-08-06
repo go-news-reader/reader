@@ -27,6 +27,8 @@ const (
 	FocusChannel
 	FocusRename
 	FocusCache
+	FocusZoomIn  // the "zoom in" browser-shortcut key field
+	FocusZoomOut // the "zoom out" browser-shortcut key field
 )
 
 // sButton is one clickable pill in the settings view.
@@ -93,6 +95,8 @@ func (s *Scene) OpenSettings() {
 	s.channelInput = ""
 	s.renameInput = s.selEditName()
 	s.cacheInput = s.cachePath
+	s.zoomInInput = s.BrowserZoomInKey()
+	s.zoomOutInput = s.BrowserZoomOutKey()
 	s.touch()
 }
 
@@ -157,6 +161,14 @@ func (s *Scene) DeleteProfile(i int) {
 func (s *Scene) FocusRename()  { s.sf = FocusRename; s.touch() }
 func (s *Scene) FocusChannel() { s.sf = FocusChannel; s.touch() }
 func (s *Scene) FocusCache()   { s.sf = FocusCache; s.touch() }
+
+// FocusZoomIn / FocusZoomOut give keyboard focus to a zoom-key field.
+func (s *Scene) FocusZoomIn()  { s.sf = FocusZoomIn; s.touch() }
+func (s *Scene) FocusZoomOut() { s.sf = FocusZoomOut; s.touch() }
+
+// CommitZoomKeys applies the two zoom-key buffers (each a single printable rune)
+// to the browser zoom bindings. A blank buffer leaves that binding unchanged.
+func (s *Scene) CommitZoomKeys() { s.SetBrowserZoomKeys(s.zoomInInput, s.zoomOutInput) }
 
 // CommitRename applies the rename buffer to the edited profile (blank ignored).
 func (s *Scene) CommitRename() {
@@ -309,6 +321,21 @@ func (s *Scene) layoutSettings() {
 	})
 	y += btnH + pad
 
+	// ZOOM SHORTCUT KEYS: two single-rune fields for the Ctrl/Cmd + key binding
+	// that zooms the web preview in / out.
+	label(pad, y, "ZOOM SHORTCUT KEYS (with Ctrl/Cmd)")
+	y += m.side.height + gap
+	kw := rpxOf(s, 54)
+	labelY := y + (btnH-m.side.height)/2
+	label(pad, labelY, "Zoom in")
+	fx := pad + m.tab.width("Zoom in") + gap
+	s.sZoomInR = toolkit.Rect{X: fx, Y: y, W: kw, H: btnH}
+	fx += kw + rpxOf(s, 18)
+	label(fx, labelY, "Zoom out")
+	fx += m.tab.width("Zoom out") + gap
+	s.sZoomOutR = toolkit.Rect{X: fx, Y: y, W: kw, H: btnH}
+	y += btnH + pad
+
 	// MEDIA CACHE: editable path.
 	label(pad, y, "MEDIA CACHE")
 	y += m.side.height + gap
@@ -334,6 +361,8 @@ func (s *Scene) layoutSettings() {
 		s.sRenameR.Y += dy
 		s.sChannelR.Y += dy
 		s.sCacheR.Y += dy
+		s.sZoomInR.Y += dy
+		s.sZoomOutR.Y += dy
 	}
 }
 
@@ -385,6 +414,8 @@ func (s *Scene) drawSettings(buf []byte) {
 		{s.sRenameR, s.renameInput, "profile name", s.sf == FocusRename},
 		{s.sChannelR, s.channelInput, "channel…", s.sf == FocusChannel},
 		{s.sCacheR, s.cacheInput, "media cache path", s.sf == FocusCache},
+		{s.sZoomInR, s.zoomInInput, "=", s.sf == FocusZoomIn},
+		{s.sZoomOutR, s.zoomOutInput, "-", s.sf == FocusZoomOut},
 	} {
 		// Text fields are generic toolkit.Entry (placeholder from the toolkit's own
 		// Entry.Placeholder), with the caret parked at the end since the reader
@@ -419,6 +450,12 @@ func (s *Scene) hitSettings(x, y int) Hit {
 	}
 	if inRect(s.sCacheR, x, y) {
 		return Hit{Kind: HitFocusCache}
+	}
+	if inRect(s.sZoomInR, x, y) {
+		return Hit{Kind: HitFocusZoomIn}
+	}
+	if inRect(s.sZoomOutR, x, y) {
+		return Hit{Kind: HitFocusZoomOut}
 	}
 	for _, c := range s.sChips {
 		if inRect(c.rect, x, y) {

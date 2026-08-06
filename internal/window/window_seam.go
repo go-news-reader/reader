@@ -103,6 +103,38 @@ func winKeyName(vk uint32) string {
 	return ""
 }
 
+// win32 OEM virtual-key codes for the punctuation keys usable as a shortcut base
+// (the US-layout '=' and '-' keys). Digits and letters use their ASCII VK codes.
+const (
+	vkOemPlus  = 0xBB // '=' / '+'
+	vkOemMinus = 0xBD // '-' / '_'
+)
+
+// winShortcutRune maps a WM_KEYDOWN virtual-key code to the base (unmodified,
+// US-layout) printable rune used to match a configurable shortcut: the OEM
+// plus/minus keys and the ASCII digit/letter VKs (which equal their rune, with
+// letters normalised to lower case so they match a typed character). It returns
+// 0 for keys that are not shortcut bases (so the caller ignores the chord).
+func winShortcutRune(vk uint32) rune {
+	switch vk {
+	case vkOemPlus:
+		return '='
+	case vkOemMinus:
+		return '-'
+	}
+	if vk >= '0' && vk <= '9' {
+		return rune(vk)
+	}
+	if vk >= 'A' && vk <= 'Z' {
+		return rune(vk - 'A' + 'a')
+	}
+	return 0
+}
+
+// winKeyDown reports whether a GetKeyState return value marks the key as
+// currently held (its high-order bit set).
+func winKeyDown(state uint16) bool { return state&0x8000 != 0 }
+
 // winCharRune maps a WM_CHAR code unit to a printable rune, or 0 for control
 // characters (handled as named keys via WM_KEYDOWN) and for surrogate halves
 // (0xD800..0xDFFF), which are UTF-16 fragments that only form a rune in pairs —
@@ -218,6 +250,22 @@ func x11KeyDecodeState(ks, state uint32) (name string, r rune) {
 	return name, r
 }
 
+// x11Shortcut decodes a command-style shortcut from an X11 keysym + modifier
+// state: r is the base printable rune, ctrl reports Control, meta reports Super
+// (Mod4) — the Linux/X11 command-style modifiers. ok is true only when a base
+// rune resolves (not a named editing key) AND at least one command modifier is
+// held, so an ordinary keystroke stays on the [x11KeyDecodeState] text path. Alt
+// (Mod1) is not a shortcut modifier here; it keeps its suppressed-rune behaviour.
+func x11Shortcut(ks, state uint32) (r rune, ctrl, meta, ok bool) {
+	name, base := x11KeyDecode(ks)
+	if name != "" || base == 0 {
+		return 0, false, false, false
+	}
+	ctrl = state&x11Control != 0
+	meta = state&x11Mod4 != 0
+	return base, ctrl, meta, ctrl || meta
+}
+
 // macOS NSEvent modifier-flag bits (the relevant device-independent flags).
 const (
 	nsControl = 1 << 18
@@ -233,6 +281,17 @@ const (
 // suppressed too. Shift is not command-style and does not suppress.
 func cocoaSuppressesRune(modFlags uint64) bool {
 	return modFlags&(nsCommand|nsControl|nsOption) != 0
+}
+
+// cocoaShortcut decodes the command-style modifiers of an NSEvent flag mask for
+// the shortcut path: ctrl for Control, meta for Command. ok is true when either
+// is held, so a printable key becomes a shortcut rather than text. Option is not
+// treated as a shortcut modifier here (it composes symbols), matching how
+// cocoaSuppressesRune keeps it on the suppressed-text path.
+func cocoaShortcut(mod uint64) (ctrl, meta, ok bool) {
+	ctrl = mod&nsControl != 0
+	meta = mod&nsCommand != 0
+	return ctrl, meta, ctrl || meta
 }
 
 // putImageRows returns how many scanline rows of a stride-byte-wide image fit

@@ -39,7 +39,18 @@ type Settings struct {
 	// BrowserSingleTab makes the web-preview browser reuse a single tab instead of
 	// keeping a switchable multi-tab strip (default: multi-tab).
 	BrowserSingleTab bool `json:"browserSingleTab,omitempty"`
+	// ZoomInKey / ZoomOutKey are the base keys (each a single printable rune,
+	// stored as a 1-rune string) that, held with a command-style modifier
+	// (Ctrl/Cmd), zoom the web preview in / out. Default "=" / "-".
+	ZoomInKey  string `json:"zoomInKey,omitempty"`
+	ZoomOutKey string `json:"zoomOutKey,omitempty"`
 }
+
+// Default zoom-shortcut base keys (a real-browser feel: Ctrl/Cmd + "="/"-").
+const (
+	DefaultZoomInKey  = "="
+	DefaultZoomOutKey = "-"
+)
 
 // Account holds a user's credentials for one provider. Fields are keyed by the
 // well-known names from [CredentialSchema] (e.g. "client_id", "instance",
@@ -158,10 +169,12 @@ func defaultCachePath() string {
 // includes Reddit and Hacker News, the system theme, and the OS media cache.
 func Default() *Settings {
 	return &Settings{
-		Profiles:  []Profile{{Name: "Home", Subs: defaultSubs()}},
-		Active:    0,
-		Theme:     ThemeSystem,
-		CachePath: defaultCachePath(),
+		Profiles:   []Profile{{Name: "Home", Subs: defaultSubs()}},
+		Active:     0,
+		Theme:      ThemeSystem,
+		CachePath:  defaultCachePath(),
+		ZoomInKey:  DefaultZoomInKey,
+		ZoomOutKey: DefaultZoomOutKey,
 	}
 }
 
@@ -193,6 +206,12 @@ func (s *Settings) Normalize() {
 	}
 	if s.CachePath == "" {
 		s.CachePath = defaultCachePath()
+	}
+	if s.ZoomInKey == "" {
+		s.ZoomInKey = DefaultZoomInKey
+	}
+	if s.ZoomOutKey == "" {
+		s.ZoomOutKey = DefaultZoomOutKey
 	}
 	s.dedupAccounts()
 }
