@@ -254,3 +254,45 @@ func TestWebPreviewAnimationTick(t *testing.T) {
 		t.Fatal("pending image preview should animate")
 	}
 }
+
+// TestSceneBookmarkModelAndDraw covers the bookmark set + the address-bar
+// leading (SSL) and trailing (bookmark) icon hooks, both branches each.
+func TestSceneBookmarkModelAndDraw(t *testing.T) {
+	s := New(1100, 700, ThemeFor(OSMac, false))
+	s.SetBookmarks([]string{"https://a/", "https://b/"})
+	if !s.IsBookmarked("https://a/") || s.IsBookmarked("https://z/") {
+		t.Fatal("SetBookmarks/IsBookmarked")
+	}
+	s.SetBookmarked("https://c/", true)
+	s.SetBookmarked("https://a/", false)
+	if got := s.BookmarkedURLs(); len(got) != 2 || got[0] != "https://b/" || got[1] != "https://c/" {
+		t.Fatalf("BookmarkedURLs = %v, want [https://b/ https://c/]", got)
+	}
+	// Lazy-alloc: SetBookmarked on a fresh (nil-map) scene.
+	fresh := New(400, 300, ThemeFor(OSMac, false))
+	fresh.SetBookmarked("https://x/", true)
+	if !fresh.IsBookmarked("https://x/") {
+		t.Fatal("SetBookmarked should lazily allocate the set")
+	}
+	if len(New(400, 300, ThemeFor(OSMac, false)).BookmarkedURLs()) != 0 {
+		t.Fatal("a fresh scene has no bookmarks")
+	}
+
+	// Draw the address icons: https (lock) + bookmarked (accent star).
+	s.SelectPreview(webTestItem())
+	deliverPage(s, "https://ex/page", "P", 400, 900)
+	s.SetBookmarks([]string{"https://ex/page"})
+	s.SyncBookmarkStar()
+	if !s.Browser().Bookmarked {
+		t.Fatal("SyncBookmarkStar should mark the bookmarked page")
+	}
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf) // LeadingIcon https→lock, BookmarkIcon on
+	// Non-https page (lock-slash) + not bookmarked (plain star).
+	deliverPage(s, "http://insecure/", "I", 400, 900)
+	s.SyncBookmarkStar()
+	if s.Browser().Bookmarked {
+		t.Fatal("http page is not bookmarked → star off")
+	}
+	s.Draw(buf) // LeadingIcon http→lock-slash, BookmarkIcon off
+}
