@@ -29,6 +29,27 @@ type Renderer interface {
 	Render(ctx context.Context, url string, width int) (img *image.RGBA, links []Link, finalURL string, err error)
 }
 
+// Frame is one progressive render result: a fully styled snapshot the reader
+// can show immediately. The first frame (a styled first paint) arrives well
+// before Final, then refinements, then the Final frame (identical to what
+// [Renderer.Render] would return). Img is an independent allocation per frame.
+type Frame struct {
+	Img      *image.RGBA
+	Links    []Link
+	FinalURL string
+	Final    bool
+}
+
+// ProgressiveRenderer is an optional capability: it renders in stages, calling
+// onFrame for each (a fast styled first paint, then refinements, then the final
+// frame), so the host can display content progressively instead of waiting for
+// the whole page. onFrame always fires at least once; the last call has
+// Final==true. A renderer that lacks this capability delivers only the final
+// image via [Renderer.Render].
+type ProgressiveRenderer interface {
+	RenderProgressive(ctx context.Context, url string, width int, onFrame func(Frame)) error
+}
+
 // defaultWidth is used when a caller passes a non-positive width.
 const defaultWidth = 900
 
@@ -75,4 +96,26 @@ func (r *Engine) Render(ctx context.Context, url string, width int) (*image.RGBA
 		finalURL = info.URL
 	}
 	return img, links, finalURL, nil
+}
+
+// RenderProgressive renders url at width pixels wide in stages, invoking onFrame
+// for each styled frame as it becomes available (a fast first paint, then
+// refinements, then the final frame). It satisfies [ProgressiveRenderer]. A
+// non-positive width uses the default.
+func (r *Engine) RenderProgressive(ctx context.Context, url string, width int, onFrame func(Frame)) error {
+	if width <= 0 {
+		width = defaultWidth
+	}
+	_, err := r.e.RenderProgressive(ctx, url, image.Rect(0, 0, width, minViewportH), func(f engine.ProgressiveFrame) {
+		links := make([]Link, len(f.Links))
+		for i, l := range f.Links {
+			links[i] = Link{Rect: l.Rect, Href: l.Href}
+		}
+		finalURL := url
+		if f.Info != nil && f.Info.URL != "" {
+			finalURL = f.Info.URL
+		}
+		onFrame(Frame{Img: f.Img, Links: links, FinalURL: finalURL, Final: f.Final})
+	})
+	return err
 }

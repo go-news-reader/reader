@@ -2,39 +2,59 @@ package app
 
 import (
 	"context"
+	"image"
 
 	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/internal/webrender"
 )
 
-// loadPreviewPage renders target (via webRender) and delivers the finished
-// render — pixels, dimensions, clickable link map and title — into the embedded
-// browser on the UI thread (through post). It is the body of the browser's
-// OnNavigate seam: the widget marks the tab loading and calls OnNavigate, this
-// renders off-thread, and Deliver clears the loading state when the page lands.
-// A render error delivers an empty page for the same target, which clears the
-// spinner (the tab shows blank rather than spinning forever). The default
-// webFetch runs this on its own goroutine; tests call it directly for
-// determinism.
+// loadPreviewPage renders target (via webRender) and delivers the render into
+// the embedded browser on the UI thread (through post). It is the body of the
+// browser's OnNavigate seam: the widget marks the tab loading and calls
+// OnNavigate, this renders off-thread, and Deliver clears the loading state when
+// the page lands.
+//
+// When the renderer is progressive (the default go-webengine one), each staged
+// frame is delivered as it arrives — a fast styled first paint, then
+// refinements, then the final frame — so the pane shows content well before the
+// whole page (scripts, all resources) finishes instead of staying blank. A
+// plain renderer (or a render error) delivers a single frame; an error delivers
+// an empty page for the same target so the spinner clears rather than spinning
+// forever. The default webFetch runs this on its own goroutine; tests call it
+// directly for determinism.
 func (a *App) loadPreviewPage(ctx context.Context, target string, width int) {
-	img, links, _, err := a.webRender.Render(ctx, target, width)
-	if err != nil {
+	deliver := func(img *image.RGBA, links []webrender.Link) {
+		bl := toBrowserLinks(links)
+		var pix []byte
+		var iw, ih int
+		if img != nil {
+			bnd := img.Bounds()
+			iw, ih, pix = bnd.Dx(), bnd.Dy(), img.Pix
+		}
 		a.post(func() {
 			b := a.scene.Browser()
-			b.Deliver(target, nil, 0, 0, width, nil, b.ActiveTitle())
+			// Preserve the tab title the widget already carries (seeded from the feed
+			// item) — the renderer does not extract a page <title>.
+			b.Deliver(target, pix, iw, ih, width, bl, b.ActiveTitle())
 		})
+	}
+	if pr, ok := a.webRender.(webrender.ProgressiveRenderer); ok {
+		// Progressive: deliver every staged frame (first paint → refine → final).
+		if err := pr.RenderProgressive(ctx, target, width, func(f webrender.Frame) {
+			deliver(f.Img, f.Links)
+		}); err != nil {
+			deliver(nil, nil) // clear the spinner on a fetch failure (no frames)
+		}
 		return
 	}
-	bl := toBrowserLinks(links)
-	bnd := img.Bounds()
-	iw, ih := bnd.Dx(), bnd.Dy()
-	a.post(func() {
-		b := a.scene.Browser()
-		// Preserve the tab title the widget already carries (seeded from the feed
-		// item) — the renderer does not extract a page <title>.
-		b.Deliver(target, img.Pix, iw, ih, width, bl, b.ActiveTitle())
-	})
+	// Non-progressive fallback: one render, one delivery.
+	img, links, _, err := a.webRender.Render(ctx, target, width)
+	if err != nil {
+		deliver(nil, nil)
+		return
+	}
+	deliver(img, links)
 }
 
 // toBrowserLinks converts webrender links to the toolkit.Browser's link type
