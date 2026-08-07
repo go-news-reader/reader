@@ -178,6 +178,9 @@ func (h *Handler) MouseDown(x, y int) {
 	case ui.HitBrowserTabs:
 		s.SetBrowserSingleTab(hit.Value == "single") // web-preview tab mode
 		h.a.ApplySceneSettings()
+	case ui.HitBrowserChrome:
+		s.SetBrowserChromeHidden(hit.Value == "hidden") // web-preview toolbar visibility
+		h.a.ApplySceneSettings()
 	case ui.HitAccounts:
 		vm.OpenAccounts.Execute()
 	case ui.HitCloseAccounts:

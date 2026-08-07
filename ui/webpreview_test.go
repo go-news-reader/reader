@@ -115,6 +115,19 @@ func TestBrowserTabModeSetting(t *testing.T) {
 	if s.BrowserSingleTab() {
 		t.Fatal("SetBrowserSingleTab(false) should return to multi-tab")
 	}
+
+	// Browser chrome (toolbar/urlbar) visibility is off by default and round-trips.
+	if s.BrowserChromeHidden() || s.Settings().HideBrowserChrome {
+		t.Fatal("browser chrome is shown by default")
+	}
+	s.SetBrowserChromeHidden(true)
+	if !s.BrowserChromeHidden() || !s.Settings().HideBrowserChrome {
+		t.Fatal("SetBrowserChromeHidden(true) should hide the chrome and persist")
+	}
+	s.SetBrowserChromeHidden(false)
+	if s.BrowserChromeHidden() {
+		t.Fatal("SetBrowserChromeHidden(false) should show the chrome again")
+	}
 }
 
 func TestForwardBrowserClick(t *testing.T) {
