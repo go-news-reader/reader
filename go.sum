@@ -74,6 +74,8 @@ github.com/go-widgets/toolkit v0.122.0 h1:r1z7pfgOgpbkmagavt9iP9etmyP5+dUVu5DIOh
 github.com/go-widgets/toolkit v0.122.0/go.mod h1:uBYcJJeBA2hqHiTlKaLsPZ9t/NsBA6DFtpp33i5l5/8=
 github.com/go-widgets/toolkit v0.123.0 h1:ftcFLOPrOYjtJ86zC49sVtQet2+rQka0SgJnhB1ewsU=
 github.com/go-widgets/toolkit v0.123.0/go.mod h1:uBYcJJeBA2hqHiTlKaLsPZ9t/NsBA6DFtpp33i5l5/8=
+github.com/go-widgets/toolkit v0.124.0 h1:o+DOb6jZdEuq2y4yWNLKwXSxlbdPaFjBYO918HAXPCc=
+github.com/go-widgets/toolkit v0.124.0/go.mod h1:RfJFcIy5JU/klT40+hC1U6qB5DCOh3W92mi7pBvnfe0=
 github.com/go-widgets/tray v0.1.1 h1:6wpYFpfkObLbxmrI8IyqcP528Ml+OrVT+msRjSpncDg=
 github.com/go-widgets/tray v0.1.1/go.mod h1:qftThNTUbYYsk/oWCjDvwDNRIojtYhY6zRZLP6c001A=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
