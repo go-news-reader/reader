@@ -285,8 +285,9 @@ func TestMouseDownProfileAndSettings(t *testing.T) {
 	if s.Focus() != ui.FocusCache {
 		t.Fatal("cache not focused")
 	}
-	click(t, h, ui.HitTheme)       // pick a theme
-	click(t, h, ui.HitBrowserTabs) // switch the web-preview browser tab mode
+	click(t, h, ui.HitTheme)         // pick a theme
+	click(t, h, ui.HitBrowserTabs)   // switch the web-preview browser tab mode
+	click(t, h, ui.HitBrowserChrome) // toggle the web-preview toolbar visibility
 	click(t, h, ui.HitDeleteProfile)
 	// Close the editor -> back to the feed.
 	click(t, h, ui.HitCloseSettings)

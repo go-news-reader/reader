@@ -53,6 +53,10 @@ type Settings struct {
 	// Bookmarks are the saved web-preview page URLs (the address bar's star adds
 	// / removes the current page). Order is not significant.
 	Bookmarks []string `json:"bookmarks,omitempty"`
+
+	// HideBrowserChrome hides the web-preview browser's toolbar + address bar
+	// (nav / zoom / URL), rendering the page chrome-free. Default false (shown).
+	HideBrowserChrome bool `json:"hideBrowserChrome,omitempty"`
 }
 
 // Default zoom-shortcut base keys (a real-browser feel: Ctrl/Cmd + "="/"-").

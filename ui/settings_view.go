@@ -321,6 +321,14 @@ func (s *Scene) layoutSettings() {
 	})
 	y += btnH + pad
 
+	// Browser toolbar (address bar + nav) visibility.
+	hidden := s.BrowserChromeHidden()
+	s.layoutBtnRow(pad, y, []sButton{
+		{label: "Toolbar shown", kind: HitBrowserChrome, value: "shown", active: !hidden},
+		{label: "Toolbar hidden", kind: HitBrowserChrome, value: "hidden", active: hidden},
+	})
+	y += btnH + pad
+
 	// ZOOM SHORTCUT KEYS: two single-rune fields for the Ctrl/Cmd + key binding
 	// that zooms the web preview in / out.
 	label(pad, y, "ZOOM SHORTCUT KEYS (with Ctrl/Cmd)")

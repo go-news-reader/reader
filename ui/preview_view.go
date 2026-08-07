@@ -428,6 +428,7 @@ func (s *Scene) layoutPreview() {
 		// the embedded browser fills the remaining pane. The browser owns its own
 		// chrome, scroll and progress bar, so the scrolling column is not used.
 		s.browser.SetFont(ttFont(false, rpxOf(s, 13)))
+		s.browser.Scale = s.Scale // scale the chrome (toolbar/tabs/buttons) to the display
 		hh := s.previewHeaderH()
 		// Inset the browser from the pane's left edge by a gutter so the resize
 		// grip stays visible on the pane surface — otherwise the browser's own
