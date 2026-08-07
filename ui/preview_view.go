@@ -429,9 +429,13 @@ func (s *Scene) layoutPreview() {
 		// chrome, scroll and progress bar, so the scrolling column is not used.
 		s.browser.SetFont(ttFont(false, rpxOf(s, 13)))
 		hh := s.previewHeaderH()
+		// Inset the browser from the pane's left edge by a gutter so the resize
+		// grip stays visible on the pane surface — otherwise the browser's own
+		// (often white) page background paints right up to the divider and hides it.
+		gut := rpxOf(s, 8)
 		// max guards the rare case where a tall download panel shrinks the pane
 		// below the header, which would otherwise hand SetBounds a negative height.
-		br := toolkit.Rect{X: s.previewR.X + 1, Y: s.previewR.Y + hh, W: s.previewR.W - 1, H: max(0, s.previewR.H-hh)}
+		br := toolkit.Rect{X: s.previewR.X + gut, Y: s.previewR.Y + hh, W: s.previewR.W - gut, H: max(0, s.previewR.H-hh)}
 		s.browser.SetBounds(br)
 		s.previewImgR = toolkit.Rect{}
 		s.previewScroll.contentH = 0

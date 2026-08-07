@@ -458,7 +458,7 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	}
 	s.browser.BookmarkIcon = func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA, on bool) {
 		if on {
-			ink = s.theme.Accent
+			ink = bookmarkGold // a saved page's star stays clearly visible (accent washed out)
 		}
 		drawIcon(p, r, iconStar, ink)
 	}
