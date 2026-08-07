@@ -3,29 +3,27 @@ package ui
 import (
 	"strings"
 
+	"github.com/go-widgets/toolkit"
+
 	"github.com/go-news-reader/reader/source"
 )
 
-// This file gives the reader "copy the text you see" support. The system
-// clipboard writer is installed by the native window back-end (which owns the
-// OS pasteboard); the scene calls it when the user presses the copy chord
-// (Cmd/Ctrl+C). Until a selection model lands, the copy target is the article
-// currently being read — the preview pane's item, or the full-screen detail
-// item — assembled as plain text suitable for pasting into a mail.
+// This file gives the reader "copy the text you see" support. Copy writes
+// through the toolkit's back-end-neutral clipboard (toolkit.SetClipboardText),
+// which the app has pointed at the real OS pasteboard via the native back-end
+// (window.ClipboardController); in headless / test builds it is the toolkit's
+// in-process clipboard. Until a cross-widget selection model lands, the copy
+// target is the article currently being read — the preview pane's item, or the
+// full-screen detail item — assembled as plain text suitable for a mail.
 
-// SetClipboardWriter installs the system-clipboard writer. The native back-end
-// hands it down through the app so a copy action reaches the real OS pasteboard;
-// a nil writer (headless / tests) makes copy a no-op.
-func (s *Scene) SetClipboardWriter(w func(string)) { s.clipboard = w }
-
-// copyToClipboard writes text to the system clipboard when a writer is installed
-// and text is non-empty, reporting whether it wrote. It is the single choke
-// point every copy action funnels through.
+// copyToClipboard writes non-empty text to the toolkit-wide clipboard,
+// reporting whether it wrote. It is the single choke point every copy action
+// funnels through.
 func (s *Scene) copyToClipboard(text string) bool {
-	if s.clipboard == nil || strings.TrimSpace(text) == "" {
+	if strings.TrimSpace(text) == "" {
 		return false
 	}
-	s.clipboard(text)
+	toolkit.SetClipboardText(text)
 	return true
 }
 
