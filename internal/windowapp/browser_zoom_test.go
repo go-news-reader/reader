@@ -50,39 +50,46 @@ func TestShortcutZoom(t *testing.T) {
 // article via the installed clipboard writer, works in any view, is ignored
 // without a modifier, and does nothing when there is nothing to copy.
 func TestShortcutCopy(t *testing.T) {
+	// A back-end that records what the app installs as the OS clipboard.
+	var buf memClip
 	a := webPreviewApp(t) // a preview item titled "T" is selected
 	h := New(a)
-	var got string
-	h.SetClipboardWriter(func(text string) { got = text })
+	h.SetSystemClipboard(&buf) // installs it toolkit-wide (window.ClipboardController)
 
 	// No modifier → not a shortcut, nothing copied.
+	buf.text = ""
 	h.Shortcut('c', false, false)
-	if got != "" {
-		t.Fatalf("copy without a modifier wrote %q", got)
+	if buf.text != "" {
+		t.Fatalf("copy without a modifier wrote %q", buf.text)
 	}
-	// Ctrl+C copies the previewed article.
+	// Ctrl+C copies the previewed article to the installed OS clipboard.
 	h.Shortcut('c', true, false)
-	if got == "" {
+	if buf.text == "" {
 		t.Fatal("Ctrl+C should copy the current article")
 	}
-	// Cmd+Shift+C (uppercase base rune) also copies.
-	got = ""
+	// Cmd+C (uppercase base rune) also copies.
+	buf.text = ""
 	h.Shortcut('C', false, true)
-	if got == "" {
+	if buf.text == "" {
 		t.Fatal("Cmd+C (uppercase base) should copy")
 	}
 
-	// A fresh app with nothing selected: the chord copies nothing and falls
-	// through harmlessly (no writer call).
+	// A fresh app with nothing selected: the chord copies nothing (clipboard
+	// stays whatever it held).
 	b := newApp(t)
 	hb := New(b)
-	var wrote bool
-	hb.SetClipboardWriter(func(string) { wrote = true })
+	buf.text = "keepme"
 	hb.Shortcut('c', true, false)
-	if wrote {
-		t.Fatal("copy with nothing selected should not write the clipboard")
+	if buf.text != "keepme" {
+		t.Fatalf("copy with nothing selected clobbered the clipboard: %q", buf.text)
 	}
 }
+
+// memClip is a test window.SystemClipboard: an in-memory string.
+type memClip struct{ text string }
+
+func (m *memClip) ClipboardText() string        { return m.text }
+func (m *memClip) SetClipboardText(text string) { m.text = text }
 
 // TestShortcutNoOps covers every branch that must NOT zoom: no modifier, an
 // unbound key, a non-feed mode, and no active web preview.
