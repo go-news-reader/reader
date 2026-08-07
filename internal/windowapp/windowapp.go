@@ -201,11 +201,13 @@ func (h *Handler) MouseDown(x, y int) {
 // sidebar-divider drag is in progress.
 func (h *Handler) MouseMove(x, y int) { h.a.Scene().MouseMove(x, y) }
 
-// MouseUp ends any in-progress sidebar-divider drag.
+// MouseUp ends any in-progress sidebar-divider drag and releases a pressed
+// web-preview toolbar button (clearing its click-feedback face).
 func (h *Handler) MouseUp(x, y int) {
 	s := h.a.Scene()
 	s.EndSidebarResize()
 	s.EndPreviewResize()
+	s.ForwardBrowserRelease(x, y)
 }
 
 // Scroll scrolls the feed by a device-pixel wheel delta, unless the pointer is

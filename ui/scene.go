@@ -442,26 +442,28 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	// wires browser.OnNavigate to the async page render.
 	s.browser = toolkit.NewBrowser()
 	// Real Iconoir glyphs on the toolbar buttons (instead of the text-label
-	// fallback): Back / Forward / Reload + the two zoom magnifiers.
-	s.browser.BackIcon = drawBackNavIcon
-	s.browser.ForwardIcon = drawForwardNavIcon
-	s.browser.ReloadIcon = drawReloadNavIcon
-	s.browser.ZoomOutIcon = drawZoomOutIcon
-	s.browser.ZoomInIcon = drawZoomInIcon
+	// fallback): Back / Forward / Reload + the two zoom magnifiers. Each is sized
+	// to the topbar burger (chromeIcon) so the preview chrome reads at one weight.
+	s.browser.BackIcon = s.chromeIcon(iconNavLeft)
+	s.browser.ForwardIcon = s.chromeIcon(iconNavRight)
+	s.browser.ReloadIcon = s.chromeIcon(iconRefresh)
+	s.browser.ZoomOutIcon = s.chromeIcon(iconZoomOut)
+	s.browser.ZoomInIcon = s.chromeIcon(iconZoomIn)
 	// Address-bar status/bookmark icons: a leading padlock (secure https vs a
-	// crossed lock otherwise) and a trailing bookmark star (accent when saved).
+	// crossed lock otherwise) and a trailing bookmark star (accent when saved),
+	// both burger-sized via chromeGlyphBox to match the toolbar buttons.
 	s.browser.LeadingIcon = func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
 		ic := iconLockSlash
 		if strings.HasPrefix(s.browser.CurrentURL(), "https://") {
 			ic = iconLock
 		}
-		drawIcon(p, r, ic, ink)
+		drawIcon(p, s.chromeGlyphBox(r), ic, ink)
 	}
 	s.browser.BookmarkIcon = func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA, on bool) {
 		if on {
 			ink = bookmarkGold // a saved page's star stays clearly visible (accent washed out)
 		}
-		drawIcon(p, r, iconStar, ink)
+		drawIcon(p, s.chromeGlyphBox(r), iconStar, ink)
 	}
 	s.browserVM, _ = tkbind.BindBrowser(s.browser, s.touch)
 	s.clampSize()

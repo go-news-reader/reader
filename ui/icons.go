@@ -96,14 +96,26 @@ func drawSearchIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
 	drawIcon(p, r, iconSearch, ink)
 }
 
-// Web-preview browser toolbar icons — assigned to toolkit.Browser's host icon
-// hooks (Back/Forward/Reload/ZoomOut/ZoomIn) so its buttons show real Iconoir
-// glyphs instead of the text-label fallback. Signature matches SearchEntry.Icon.
-func drawBackNavIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA)    { drawIcon(p, r, iconNavLeft, ink) }
-func drawForwardNavIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) { drawIcon(p, r, iconNavRight, ink) }
-func drawReloadNavIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA)  { drawIcon(p, r, iconRefresh, ink) }
-func drawZoomInIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA)     { drawIcon(p, r, iconZoomIn, ink) }
-func drawZoomOutIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA)    { drawIcon(p, r, iconZoomOut, ink) }
+// chromeGlyphBox centres a burger-sized (m.navIcon) square inside r so the
+// web-preview browser's toolbar / address icons render at the SAME visual size
+// as the topbar burger, instead of filling the (larger) toolbar-button square.
+// The size is clamped to r so a small address-bar slot never overflows.
+func (s *Scene) chromeGlyphBox(r toolkit.Rect) toolkit.Rect {
+	d := s.m.navIcon
+	if fit := min(r.W, r.H); d > fit {
+		d = fit
+	}
+	return toolkit.Rect{X: r.X + (r.W-d)/2, Y: r.Y + (r.H-d)/2, W: d, H: d}
+}
+
+// chromeIcon returns a toolkit.Browser icon hook that blits ic at burger size
+// (chromeGlyphBox) within the button rect. Wiring the toolbar buttons through it
+// keeps every preview-chrome glyph aligned to the topbar burger.
+func (s *Scene) chromeIcon(ic *iconoir.Icon) func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
+	return func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
+		drawIcon(p, s.chromeGlyphBox(r), ic, ink)
+	}
+}
 
 // drawPlusIcon paints the Iconoir "plus" glyph (sidebar Browse entry, subscribe).
 func drawPlusIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA, lineW int) {

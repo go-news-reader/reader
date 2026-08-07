@@ -162,6 +162,60 @@ func TestForwardBrowserClick(t *testing.T) {
 	}
 }
 
+func TestForwardBrowserRelease(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	// Not a web preview: a release is a safe no-op.
+	s.ForwardBrowserRelease(10, 10)
+
+	s.SelectPreview(webTestItem())
+	// Web active but the browser isn't laid out yet (bounds zero): no-op.
+	s.ForwardBrowserRelease(10, 10)
+
+	deliverPage(s, "https://example.com/a", "Title", 400, 1200)
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf) // lay out the browser bounds
+	b := s.Browser().Bounds()
+
+	// Press a toolbar button (a click inside the chrome), then release: the
+	// release is forwarded and requests a redraw (touch bumps the revision).
+	s.ForwardBrowserClick(b.X+b.W/2, b.Y+2)
+	before := s.Rev()
+	s.ForwardBrowserRelease(b.X+b.W/2, b.Y+2)
+	if s.Rev() == before {
+		t.Fatal("laid-out ForwardBrowserRelease should touch the scene")
+	}
+}
+
+func TestChromeGlyphBox(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf) // populate s.m (metrics, incl. navIcon)
+	nav := s.m.navIcon
+	if nav <= 12 {
+		t.Fatalf("navIcon = %d, too small for this test", nav)
+	}
+	// A cell larger than the burger glyph: the glyph is navIcon-sized and centred,
+	// so preview icons match the topbar burger rather than filling the big square.
+	big := toolkit.Rect{X: 100, Y: 50, W: nav + 40, H: nav + 20}
+	gb := s.chromeGlyphBox(big)
+	if gb.W != nav || gb.H != nav {
+		t.Fatalf("big-cell glyph = %dx%d, want navIcon %d", gb.W, gb.H, nav)
+	}
+	if gb.X != big.X+(big.W-nav)/2 || gb.Y != big.Y+(big.H-nav)/2 {
+		t.Fatalf("big-cell glyph not centred: %+v in %+v", gb, big)
+	}
+	// A cell smaller than the burger glyph: clamped to the smaller side (here a
+	// square, so it fills the cell), so a tight address-bar slot never overflows.
+	small := toolkit.Rect{X: 10, Y: 10, W: nav - 8, H: nav - 8}
+	gs := s.chromeGlyphBox(small)
+	if gs.W != nav-8 || gs.H != nav-8 {
+		t.Fatalf("small-cell glyph = %dx%d, want clamped to %d", gs.W, gs.H, nav-8)
+	}
+	if gs.X != small.X || gs.Y != small.Y {
+		t.Fatalf("clamped glyph should fill the square cell: %+v in %+v", gs, small)
+	}
+}
+
 func TestForwardBrowserScroll(t *testing.T) {
 	s := New(900, 560, ThemeFor(OSMac, false))
 	if s.ForwardBrowserScroll(40) {
