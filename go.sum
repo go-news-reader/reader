@@ -62,6 +62,8 @@ github.com/go-webengine/engine v0.1.0 h1:QcDhb4kLCFKzryhPHyItw/KiMy8UgdR/PKKQcqM
 github.com/go-webengine/engine v0.1.0/go.mod h1:bdJQHmEFn9ifn4+m9sVASYMipok6odMBWjTXrM5tRjA=
 github.com/go-webengine/engine v0.1.1 h1:BUTl4tNa5iV1G3umVoPz4OQW1ruGq1fOHCAYY0UszoA=
 github.com/go-webengine/engine v0.1.1/go.mod h1:bdJQHmEFn9ifn4+m9sVASYMipok6odMBWjTXrM5tRjA=
+github.com/go-webengine/engine v0.2.0 h1:vYCehIU8dazQ6Z5mJgSeqx7GKB73NgR4oq4B0QM+qaI=
+github.com/go-webengine/engine v0.2.0/go.mod h1:bdJQHmEFn9ifn4+m9sVASYMipok6odMBWjTXrM5tRjA=
 github.com/go-widgets/mvvm v0.5.0 h1:o5hh6HAxbApONcbZxmyV9q12pCAPGRd6L24aS3gaCbA=
 github.com/go-widgets/mvvm v0.5.0/go.mod h1:Phdrd434RLxXW1D6dL1PPQH1tABwYLIN2X7jQVC4TbY=
 github.com/go-widgets/painter v0.2.0 h1:C7anwlKLYnlTeCK90xKYvy0srxYXqhuvyDFismlf2Sc=
