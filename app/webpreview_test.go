@@ -92,6 +92,67 @@ func TestLoadPreviewPageError(t *testing.T) {
 	}
 }
 
+// fakeProgressive is a webrender.ProgressiveRenderer (also a Renderer) that
+// emits its frames in order — the last one Final — without touching the network.
+type fakeProgressive struct {
+	frames []*image.RGBA // emitted in order; last is the Final frame
+	err    error
+	calls  int
+}
+
+func (f *fakeProgressive) Render(_ context.Context, url string, _ int) (*image.RGBA, []webrender.Link, string, error) {
+	if len(f.frames) == 0 {
+		return nil, nil, url, f.err
+	}
+	return f.frames[len(f.frames)-1], nil, url, f.err
+}
+
+func (f *fakeProgressive) RenderProgressive(_ context.Context, url string, _ int, onFrame func(webrender.Frame)) error {
+	f.calls++
+	if f.err != nil {
+		return f.err
+	}
+	for i, img := range f.frames {
+		onFrame(webrender.Frame{Img: img, FinalURL: url, Final: i == len(f.frames)-1})
+	}
+	return nil
+}
+
+// TestLoadPreviewPageProgressive: a progressive renderer's frames (a styled
+// first paint, then the final) are each delivered; the last clears loading.
+func TestLoadPreviewPageProgressive(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	fp := &fakeProgressive{frames: []*image.RGBA{
+		image.NewRGBA(image.Rect(0, 0, 400, 200)),  // initial styled first paint
+		image.NewRGBA(image.Rect(0, 0, 400, 1200)), // final (taller once settled)
+	}}
+	a.SetWebRenderer(fp)
+	syncFetch(a)
+
+	a.SelectPreview(webItem("h1", "https://example.com/a"))
+	if fp.calls != 1 {
+		t.Fatalf("RenderProgressive calls = %d, want 1 (progressive path taken)", fp.calls)
+	}
+	if a.Scene().Browser().CurrentURL() != "https://example.com/a" {
+		t.Fatalf("browser URL = %q", a.Scene().Browser().CurrentURL())
+	}
+	if a.Scene().Browser().Loading() {
+		t.Fatal("the final frame should clear the loading state")
+	}
+}
+
+// TestLoadPreviewPageProgressiveError: a progressive render that errors before
+// any frame delivers an empty page, clearing the spinner.
+func TestLoadPreviewPageProgressiveError(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	a.SetWebRenderer(&fakeProgressive{err: errors.New("boom")})
+	syncFetch(a)
+	a.Scene().Browser().Open("https://x", "T")
+	if a.Scene().Browser().Loading() {
+		t.Fatal("a failed progressive render should clear the loading state")
+	}
+}
+
 // TestWebFetchDefaultAsync exercises the default (unhooked) webFetch closure —
 // the `go loadPreviewPage` line — with a fake renderer so no network is hit.
 func TestWebFetchDefaultAsync(t *testing.T) {
