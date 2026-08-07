@@ -282,6 +282,11 @@ type Scene struct {
 	previewUserW    int
 	draggingPreview bool
 
+	// clipboard writes text to the system clipboard; installed by the native
+	// back-end (window.ClipboardController) via the app. nil in headless/test
+	// builds, so copy actions are safe no-ops until a real writer is wired.
+	clipboard func(string)
+
 	// Download manager: a docked panel across the bottom of the feed/preview area
 	// showing queued/active/finished downloads. Populated by the app via
 	// SetDownloads; the feed and preview shrink vertically to make room (feedBottom).
