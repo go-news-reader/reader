@@ -44,6 +44,11 @@ func (s *Scene) MouseMove(x, y int) {
 		s.sidebarUserW = x // pointer x becomes the sidebar width
 	case s.draggingPreview:
 		s.previewUserW = s.W - x // pointer distance from the right edge is the pane width
+	case s.selecting:
+		// Extending a text selection: no card geometry changes, just repaint.
+		s.textSel.Drag(x, y)
+		s.touch()
+		return
 	default:
 		return
 	}

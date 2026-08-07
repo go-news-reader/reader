@@ -2,6 +2,7 @@ package windowapp
 
 import (
 	"image"
+	"strings"
 	"testing"
 
 	"github.com/go-widgets/toolkit"
@@ -90,6 +91,52 @@ type memClip struct{ text string }
 
 func (m *memClip) ClipboardText() string        { return m.text }
 func (m *memClip) SetClipboardText(text string) { m.text = text }
+
+// TestDetailSelectionRouting drives the full pointer path: a press-drag-release
+// in the detail reading view selects text, and Cmd/Ctrl+C copies the selection
+// to the installed OS clipboard (not the whole article).
+func TestDetailSelectionRouting(t *testing.T) {
+	a := newApp(t)
+	h := New(a)
+	var buf memClip
+	h.SetSystemClipboard(&buf)
+
+	s := a.Scene()
+	s.OpenDetail(source.Item{
+		Source: source.HackerNews, Title: "Routing Selection Title",
+		Body: "one two three four five six seven eight", Link: "https://ex.com/r",
+	})
+	frame := make([]byte, s.W*s.H*4)
+	s.Draw(frame) // lay out the reading view → selectable runs
+
+	// Press at the very top of the content (just below the 48px topbar, above the
+	// first run so the anchor lands at the start), drag to the end, release: the
+	// whole article body is selected.
+	h.MouseDown(0, 55)
+	h.MouseMove(3000, 3000)
+	h.MouseUp(3000, 3000)
+	if !s.HasSelection() {
+		t.Fatal("press-drag-release in the detail view should select text")
+	}
+	// Ctrl+C copies the selection (contains title + body words).
+	h.Shortcut('c', true, false)
+	if !strings.Contains(buf.text, "Routing") || !strings.Contains(buf.text, "eight") {
+		t.Fatalf("selection copy = %q", buf.text)
+	}
+
+	// A plain click (down+up, no drag) clears the selection; Ctrl+C then falls
+	// back to the whole article (includes the link).
+	h.MouseDown(60, 400)
+	h.MouseUp(60, 400)
+	if s.HasSelection() {
+		t.Fatal("a click without a drag should clear the selection")
+	}
+	buf.text = ""
+	h.Shortcut('c', true, false)
+	if !strings.Contains(buf.text, "https://ex.com/r") {
+		t.Fatalf("article fallback after click = %q", buf.text)
+	}
+}
 
 // TestShortcutNoOps covers every branch that must NOT zoom: no modifier, an
 // unbound key, a non-feed mode, and no active web preview.

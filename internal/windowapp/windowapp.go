@@ -196,6 +196,12 @@ func (h *Handler) MouseDown(x, y int) {
 		s.ToggleAccountBool(hit.Value)
 	default:
 		vm.FocusSearch(false)
+		// A press on the reading view's body (no interactive target here) starts a
+		// text selection; a release without a drag leaves it empty, so a plain
+		// click just clears any prior selection.
+		if s.Mode() == ui.ModeDetail {
+			s.SelectionBegin(x, y)
+		}
 	}
 }
 
@@ -209,6 +215,7 @@ func (h *Handler) MouseUp(x, y int) {
 	s := h.a.Scene()
 	s.EndSidebarResize()
 	s.EndPreviewResize()
+	s.SelectionEnd()
 	s.ForwardBrowserRelease(x, y)
 }
 
