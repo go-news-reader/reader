@@ -59,11 +59,19 @@ func (s *Scene) currentArticle() (source.Item, bool) {
 	return source.Item{}, false
 }
 
-// Copy copies the current reading context to the system clipboard, reporting
-// whether anything was copied. A non-empty text selection wins (the user picked
-// exactly what to copy); otherwise it falls back to the whole article being read
-// (detail item, else the preview item) as plain text.
+// Copy copies the current context to the system clipboard, reporting whether
+// anything was copied. Precedence, most specific first: the focused web-preview
+// address bar (so Cmd/Ctrl+C copies the URL you are editing, with a select-all
+// highlight); then a non-empty reading-view text selection (the user picked
+// exactly what to copy); then the whole article being read (detail item, else
+// the preview item) as plain text.
 func (s *Scene) Copy() bool {
+	if s.webPreviewItem() && s.browser.AddressFocused() {
+		if _, ok := s.browser.CopyAddress(); ok {
+			s.touch()
+			return true
+		}
+	}
 	if sel := s.textSel.SelectedText(); sel != "" {
 		return s.copyToClipboard(sel)
 	}

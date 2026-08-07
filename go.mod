@@ -25,7 +25,7 @@ require (
 	github.com/go-webengine/engine v0.1.1
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.2.0
-	github.com/go-widgets/toolkit v0.123.0
+	github.com/go-widgets/toolkit v0.124.0
 	github.com/go-widgets/tray v0.1.1
 	github.com/jezek/xgb v1.3.1
 	golang.org/x/image v0.44.0

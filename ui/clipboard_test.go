@@ -53,6 +53,39 @@ func TestCopyToClipboard(t *testing.T) {
 	}
 }
 
+func TestCopyAddressBarPrecedence(t *testing.T) {
+	toolkit.SetClipboard(nil)
+	s := New(900, 560, ThemeFor(OSMac, false))
+	s.SelectPreview(webTestItem()) // web preview active (Link https://example.com/a)
+	deliverPage(s, "https://example.com/a", "Title", 400, 1200)
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	b := s.Browser().Bounds()
+	_, _, addr := browserAddrRect(s, b)
+
+	// Focus the address field, then Cmd/Ctrl+C copies the URL (not the article).
+	s.ForwardBrowserClick(addr.X+addr.W/2, addr.Y+addr.H/2)
+	if !s.Browser().AddressFocused() {
+		t.Fatal("clicking the address field should focus it")
+	}
+	if !s.Copy() {
+		t.Fatal("copy from the focused address bar should report true")
+	}
+	if got := toolkit.ClipboardText(); got != "https://example.com/a" {
+		t.Fatalf("address-bar copy = %q, want the URL", got)
+	}
+
+	// Click into the page body (blurs the address): Copy now falls back to the
+	// whole article instead of the URL-only copy.
+	s.ForwardBrowserClick(b.X+b.W/2, b.Y+b.H-4)
+	if s.Browser().AddressFocused() {
+		t.Fatal("a content click should blur the address field")
+	}
+	if !s.Copy() {
+		t.Fatal("copy should fall back to the article")
+	}
+}
+
 func TestSceneCopyCurrentArticle(t *testing.T) {
 	toolkit.SetClipboard(nil) // fresh in-process clipboard
 	s := New(900, 560, ThemeFor(OSMac, false))
