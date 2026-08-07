@@ -46,6 +46,44 @@ func TestShortcutZoom(t *testing.T) {
 	}
 }
 
+// TestShortcutCopy checks the Cmd/Ctrl+C copy chord: it copies the current
+// article via the installed clipboard writer, works in any view, is ignored
+// without a modifier, and does nothing when there is nothing to copy.
+func TestShortcutCopy(t *testing.T) {
+	a := webPreviewApp(t) // a preview item titled "T" is selected
+	h := New(a)
+	var got string
+	h.SetClipboardWriter(func(text string) { got = text })
+
+	// No modifier → not a shortcut, nothing copied.
+	h.Shortcut('c', false, false)
+	if got != "" {
+		t.Fatalf("copy without a modifier wrote %q", got)
+	}
+	// Ctrl+C copies the previewed article.
+	h.Shortcut('c', true, false)
+	if got == "" {
+		t.Fatal("Ctrl+C should copy the current article")
+	}
+	// Cmd+Shift+C (uppercase base rune) also copies.
+	got = ""
+	h.Shortcut('C', false, true)
+	if got == "" {
+		t.Fatal("Cmd+C (uppercase base) should copy")
+	}
+
+	// A fresh app with nothing selected: the chord copies nothing and falls
+	// through harmlessly (no writer call).
+	b := newApp(t)
+	hb := New(b)
+	var wrote bool
+	hb.SetClipboardWriter(func(string) { wrote = true })
+	hb.Shortcut('c', true, false)
+	if wrote {
+		t.Fatal("copy with nothing selected should not write the clipboard")
+	}
+}
+
 // TestShortcutNoOps covers every branch that must NOT zoom: no modifier, an
 // unbound key, a non-feed mode, and no active web preview.
 func TestShortcutNoOps(t *testing.T) {
