@@ -53,6 +53,11 @@ var (
 	iconStar      = iconoir.MustGet("star")            // address bar: bookmark toggle (star)
 )
 
+// bookmarkGold is the fill for a saved (bookmarked) star — a warm gold that
+// stays clearly visible on the light address field, unlike the washed-out
+// accent that made the toggled state hard to see.
+var bookmarkGold = toolkit.RGBA{R: 0xF2, G: 0xA6, B: 0x1C, A: 0xFF}
+
 // drawIcon blits a cached Iconoir mask into r, inset slightly so the glyph keeps
 // a little breathing room within its cell (matching the previous ~80% weight).
 func drawIcon(p painter.Painter, r toolkit.Rect, ic *iconoir.Icon, col toolkit.RGBA) {
