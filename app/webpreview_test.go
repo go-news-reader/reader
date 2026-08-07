@@ -220,13 +220,28 @@ func TestToBrowserLinks(t *testing.T) {
 // TestBrowserSingleTabConfig covers applying the persisted single-tab preference
 // at construction.
 func TestBrowserSingleTabConfig(t *testing.T) {
+	single := true
 	set := &settings.Settings{
 		Profiles: []settings.Profile{{Name: "Home"}}, Active: 0,
-		Theme: settings.ThemeSystem, BrowserSingleTab: true,
+		Theme: settings.ThemeSystem, BrowserSingleTab: &single,
 	}
 	a := New(Config{Registry: newReg(), Settings: set})
 	if !a.Scene().BrowserSingleTab() {
 		t.Fatal("BrowserSingleTab from settings should apply to the scene")
+	}
+}
+
+// TestBrowserDefaultSingleTab covers the changed default: settings with an unset
+// tab-mode preference (a fresh install) apply as single-tab, so the preview
+// shows no tab strip out of the box.
+func TestBrowserDefaultSingleTab(t *testing.T) {
+	set := &settings.Settings{
+		Profiles: []settings.Profile{{Name: "Home"}}, Active: 0,
+		Theme: settings.ThemeSystem, // BrowserSingleTab left nil (unset)
+	}
+	a := New(Config{Registry: newReg(), Settings: set})
+	if !a.Scene().BrowserSingleTab() {
+		t.Fatal("a fresh install (unset preference) should default to single-tab")
 	}
 }
 

@@ -18,10 +18,13 @@ import (
 )
 
 // rowHeight returns the laid-out height of a display entry: a standard card, a
-// collapsed group header, or an expanded group header plus its member rows.
-func (s *Scene) rowHeight(e feedEntry) int {
+// collapsed group header, or an expanded group header plus its member rows. A
+// standard card's height depends on cardW because the title wraps to as many
+// lines as the width demands (a narrow feed → a taller card), so the caller
+// threads in the same width the draw loop blits at.
+func (s *Scene) rowHeight(e feedEntry, cardW int) int {
 	if e.group == nil {
-		return s.m.rowH
+		return s.cardHeight(e.item, cardW)
 	}
 	h := s.m.groupHeadH
 	if s.GroupExpanded(e.group.Base) {
