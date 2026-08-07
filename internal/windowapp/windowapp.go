@@ -241,6 +241,13 @@ func (h *Handler) Shortcut(r rune, ctrl, meta bool) {
 		return
 	}
 	s := h.a.Scene()
+	// Copy chord (Cmd/Ctrl+C) works in every view: copy the current selection /
+	// article to the system clipboard. Consume it when something was copied.
+	if r == 'c' || r == 'C' {
+		if s.Copy() {
+			return
+		}
+	}
 	if s.Mode() != ui.ModeFeed || !s.WebPreviewActive() {
 		return
 	}
@@ -253,6 +260,15 @@ func (h *Handler) Shortcut(r rune, ctrl, meta bool) {
 }
 
 var _ window.ShortcutSink = (*Handler)(nil)
+
+// SetClipboardWriter installs the native back-end's system-clipboard writer,
+// forwarding it to the scene so a copy chord reaches the OS pasteboard. It
+// satisfies the optional window.ClipboardController capability.
+func (h *Handler) SetClipboardWriter(write func(string)) {
+	h.a.Scene().SetClipboardWriter(write)
+}
+
+var _ window.ClipboardController = (*Handler)(nil)
 
 // Key handles editing keys and printable runes for whichever view/field is
 // focused (topbar search in the feed, or the settings text fields).

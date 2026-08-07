@@ -49,6 +49,16 @@ type ShortcutSink interface {
 	Shortcut(r rune, ctrl, meta bool)
 }
 
+// ClipboardController is an optional [Handler] capability. A back-end that can
+// write the system clipboard installs its writer here at startup (the mirror of
+// [AppearanceSink]: this one flows a capability OUT to the handler). The app
+// then copies text to the OS pasteboard by calling the installed writer, e.g.
+// on a Cmd/Ctrl+C chord. A back-end without clipboard support installs nothing,
+// leaving copy a no-op.
+type ClipboardController interface {
+	SetClipboardWriter(write func(text string))
+}
+
 // Handler is the presenter's data source and input sink. The window calls Frame
 // each tick (and after each event) and blits the returned buffer only when it
 // reports changed. Input coordinates are device pixels (points × backing scale)

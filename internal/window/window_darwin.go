@@ -82,7 +82,14 @@ var (
 	selInitWithData              = objc.RegisterName("initWithData:")
 	selSetApplicationIconImage   = objc.RegisterName("setApplicationIconImage:")
 	selTerminate                 = objc.RegisterName("terminate:")
+	selGeneralPasteboard         = objc.RegisterName("generalPasteboard")
+	selClearContents             = objc.RegisterName("clearContents")
+	selSetStringForType          = objc.RegisterName("setString:forType:")
 )
+
+// nsPasteboardTypeString is the UTI for plain UTF-8 text on NSPasteboard
+// (NSPasteboardTypeString == "public.utf8-plain-text").
+const nsPasteboardTypeString = "public.utf8-plain-text"
 
 // NSWindowStyleMask bits.
 const (
@@ -573,6 +580,18 @@ func disabledItem(label string) *tray.MenuItem {
 	return it
 }
 
+// cocoaSetClipboard replaces the general pasteboard's contents with text as
+// plain UTF-8 (NSPasteboard: clearContents then setString:forType:). Installed
+// as the app's clipboard writer so a copy chord reaches the OS pasteboard.
+func cocoaSetClipboard(text string) {
+	pb := objc.ID(objc.GetClass("NSPasteboard")).Send(selGeneralPasteboard)
+	if pb == 0 {
+		return
+	}
+	pb.Send(selClearContents)
+	pb.Send(selSetStringForType, nsString(text), nsString(nsPasteboardTypeString))
+}
+
 func Run(cfg Config, h Handler) error {
 	if err := loadFrameworks(); err != nil {
 		return err
@@ -588,6 +607,12 @@ func Run(cfg Config, h Handler) error {
 		cfg.Height = 700
 	}
 	handler = h
+	// Install the system-clipboard writer (Cmd/Ctrl+C copy support) when the
+	// handler wants it. NSPasteboard writes are main-thread work; the copy chord
+	// arrives synchronously on the Cocoa event thread, so this is safe.
+	if c, ok := h.(ClipboardController); ok {
+		c.SetClipboardWriter(cocoaSetClipboard)
+	}
 
 	app := objc.ID(objc.GetClass("NSApplication")).Send(selSharedApplication)
 	app.Send(selSetActivationPolicy, activationPolicyReg)
