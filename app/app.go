@@ -254,7 +254,7 @@ func New(cfg Config) *App {
 		a.scene.SetBookmarked(a.scene.Browser().CurrentURL(), on)
 		a.persistSettings()
 	}
-	a.scene.SetBrowserSingleTab(set.BrowserSingleTab)         // apply the persisted tab-mode preference
+	a.scene.SetBrowserSingleTab(set.SingleTab())              // apply the persisted tab-mode preference (default single-tab)
 	a.scene.SetBrowserZoomKeys(set.ZoomInKey, set.ZoomOutKey) // apply the persisted browser zoom keybindings
 	a.scene.SetBookmarks(set.Bookmarks)                       // apply the persisted bookmarks
 	a.groupStatsFetch = func(name string) {

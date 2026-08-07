@@ -102,11 +102,13 @@ func TestBrowserTabModeSetting(t *testing.T) {
 	if s.BrowserSingleTab() {
 		t.Fatal("default tab mode is multi-tab")
 	}
-	if s.Settings().BrowserSingleTab {
+	// The snapshot persists the tab mode explicitly (a *bool), so the scene's
+	// multi-tab default round-trips as an explicit false rather than nil.
+	if snap := s.Settings().BrowserSingleTab; snap == nil || *snap {
 		t.Fatal("default settings snapshot should report multi-tab")
 	}
 	s.SetBrowserSingleTab(true)
-	if !s.BrowserSingleTab() || !s.Settings().BrowserSingleTab {
+	if snap := s.Settings().BrowserSingleTab; !s.BrowserSingleTab() || snap == nil || !*snap {
 		t.Fatal("SetBrowserSingleTab(true) should switch to single-tab and persist")
 	}
 	s.SetBrowserSingleTab(false)
