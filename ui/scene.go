@@ -118,6 +118,7 @@ const (
 	HitFocusZoomOut  // focus the zoom-out browser-shortcut key input
 	HitTheme         // Value = "system"|"light"|"dark"
 	HitBrowserTabs   // Value = "multi"|"single" (web-preview browser tab mode)
+	HitBrowserChrome // Value = "shown"|"hidden" (web-preview toolbar/urlbar visibility)
 	HitCloseSettings // leave the settings view
 
 	// Accounts-view actions (Mode == ModeAccounts):
@@ -529,6 +530,13 @@ func (s *Scene) SetBrowserSingleTab(v bool) {
 // BrowserSingleTab reports whether the embedded browser is in single-tab mode.
 func (s *Scene) BrowserSingleTab() bool { return s.browser.Mode() == toolkit.SingleTab }
 
+// SetBrowserChromeHidden hides (v=true) or shows the embedded browser's toolbar
+// + tab strip, so a page can render chrome-free in the preview.
+func (s *Scene) SetBrowserChromeHidden(v bool) { s.browser.HideChrome = v; s.touch() }
+
+// BrowserChromeHidden reports whether the embedded browser's chrome is hidden.
+func (s *Scene) BrowserChromeHidden() bool { return s.browser.HideChrome }
+
 // SetBrowserZoomKeys configures the base runes that, held with a command-style
 // modifier (Ctrl/Cmd), zoom the embedded web preview in / out. A blank or
 // multi-rune string leaves the corresponding binding unchanged, so a missing
@@ -754,10 +762,11 @@ func (s *Scene) Settings() *settings.Settings {
 		Theme:            s.themeName,
 		CachePath:        s.cachePath,
 		Accounts:         s.EditedAccounts(),
-		BrowserSingleTab: &singleTab,
-		ZoomInKey:        s.BrowserZoomInKey(),
-		ZoomOutKey:       s.BrowserZoomOutKey(),
-		Bookmarks:        s.BookmarkedURLs(),
+		BrowserSingleTab:  &singleTab,
+		HideBrowserChrome: s.BrowserChromeHidden(),
+		ZoomInKey:         s.BrowserZoomInKey(),
+		ZoomOutKey:        s.BrowserZoomOutKey(),
+		Bookmarks:         s.BookmarkedURLs(),
 	}
 }
 
