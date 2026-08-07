@@ -282,6 +282,13 @@ type Scene struct {
 	previewUserW    int
 	draggingPreview bool
 
+	// textSel is the cross-widget text selection over the reading surfaces. It is
+	// refilled each frame with the runs actually drawn (via toolkit.CollectRuns),
+	// so a resize / scroll / re-layout keeps it consistent. selecting is set while
+	// a pointer drag is extending it (so MouseMove routes to it).
+	textSel   toolkit.TextSelection
+	selecting bool
+
 	// Download manager: a docked panel across the bottom of the feed/preview area
 	// showing queued/active/finished downloads. Populated by the app via
 	// SetDownloads; the feed and preview shrink vertically to make room (feedBottom).

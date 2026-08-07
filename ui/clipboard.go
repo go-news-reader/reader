@@ -60,9 +60,13 @@ func (s *Scene) currentArticle() (source.Item, bool) {
 }
 
 // Copy copies the current reading context to the system clipboard, reporting
-// whether anything was copied. With no active selection model yet, it copies the
-// article being read (detail item, else the preview item) as plain text.
+// whether anything was copied. A non-empty text selection wins (the user picked
+// exactly what to copy); otherwise it falls back to the whole article being read
+// (detail item, else the preview item) as plain text.
 func (s *Scene) Copy() bool {
+	if sel := s.textSel.SelectedText(); sel != "" {
+		return s.copyToClipboard(sel)
+	}
 	it, ok := s.currentArticle()
 	if !ok {
 		return false
