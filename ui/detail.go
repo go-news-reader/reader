@@ -149,6 +149,10 @@ func (s *Scene) drawDetail(buf []byte) {
 		col.AddFixed(mkLabel(ln, bodyFont, th.OnSurface), d.bodyFace.height+rpxOf(s, 3))
 	}
 	col.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad - s.detailScroll.offset, W: d.w, H: d.height})
+	// Text selection: collect the runs just laid out, paint the highlight behind
+	// the text (opaque tint reads clean under the glyphs), then draw the text.
+	s.setSelectableRuns(toolkit.CollectRuns(col))
+	s.drawSelectionHighlight(p)
 	col.Draw(p, th)
 
 	// Scrollbar down the right edge when the article overflows the viewport.
