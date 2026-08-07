@@ -192,9 +192,15 @@ func (s *Scene) layout() {
 	// group card; everything else is a standalone card. A group's height grows
 	// when expanded so scrolling accounts for the listed members.
 	s.rows = s.rows[:0]
+	// Cards wrap their title to the width they are drawn at, so measure row
+	// heights with the same card width the draw loop blits at (feedGeom → the
+	// scrollbar-gutter clamp). previewR/contentH are this frame's prior values —
+	// the one-frame scrollbar-gutter lag already inherent in feedCardW, and fine.
+	_, feedW := s.feedGeom()
+	cardW := s.feedCardW(feedW)
 	for _, e := range groupItems(fil) {
 		r := feedRow{top: top, item: e.item, group: e.group}
-		r.height = s.rowHeight(e)
+		r.height = s.rowHeight(e, cardW)
 		s.rows = append(s.rows, r)
 		top += r.height + m.cardGap
 	}
@@ -544,8 +550,9 @@ func (c *cardThumb) Draw(_ painter.Painter, _ *toolkit.Theme) {
 func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Item, x, y, w int, onAccent, muteS toolkit.RGBA) {
 	m := s.m
 	th := s.theme
-	p.FillRoundRect(painter.Rect{X: x, Y: y, W: w, H: m.rowH}, rpxOf(s, 6), th.Surface)
-	p.StrokeRoundRect(painter.Rect{X: x, Y: y, W: w, H: m.rowH}, rpxOf(s, 6), th.Border, 1)
+	h := s.cardHeight(it, w)
+	p.FillRoundRect(painter.Rect{X: x, Y: y, W: w, H: h}, rpxOf(s, 6), th.Surface)
+	p.StrokeRoundRect(painter.Rect{X: x, Y: y, W: w, H: h}, rpxOf(s, 6), th.Border, 1)
 
 	pad := m.pad
 	hasThumb := len(it.Media) > 0
@@ -566,33 +573,89 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 	channel.Ink = muteS
 	badgeRow.AddFlex(channel, 1)
 
-	title := toolkit.NewLabel(truncate(m.title, it.Title, textW))
-	title.Font = ttFont(true, rpxOf(s, 15))
-	title.Ink = th.OnSurface
-
 	meta := toolkit.NewLabel(truncate(m.meta, metaLine(it), textW))
 	meta.Font = ttFont(false, rpxOf(s, 12))
 	meta.Ink = muteS
 
-	// Content column: badge row, title, flexible gap (pushes meta to the bottom),
-	// meta line.
+	// Content column: badge row, then one title Label per wrapped line (so a long
+	// title reads across several lines instead of being clipped), a flexible gap
+	// that pushes the meta to the bottom, and the meta line. Each title line is
+	// titleLineH tall — the same slot the single-line card used — so a one-line
+	// card lays out byte-for-byte as before.
+	titleFont := ttFont(true, rpxOf(s, 15))
 	col := toolkit.NewVBox()
 	col.Spacing = -1
 	col.AddFixed(badgeRow, m.badgeH)
-	col.AddFixed(title, m.title.height+rpxOf(s, 4))
+	for _, ln := range s.cardTitleLines(it, w) {
+		tl := toolkit.NewLabel(ln)
+		tl.Font = titleFont
+		tl.Ink = th.OnSurface
+		col.AddFixed(tl, s.titleLineH())
+	}
 	col.AddFlex(toolkit.NewLabel(""), 1)
 	col.AddFixed(meta, m.meta.height+rpxOf(s, 8))
 
-	// Card row: content column (flex) then the optional thumbnail (fixed).
+	// Card row: content column (flex) then the optional thumbnail (fixed). The
+	// thumbnail is pinned to its natural thumbW×thumbH at the top of a flexible
+	// column, so a taller (multi-line) card leaves blank space below the thumb
+	// rather than stretching the image to the whole card height.
 	row := toolkit.NewHBox()
 	row.Spacing = pad
 	row.AddFlex(col, 1)
 	if hasThumb {
-		row.AddFixed(&cardThumb{s: s, it: it, p: p, img: img, mute: muteS}, m.thumbW)
+		thumbCol := toolkit.NewVBox()
+		thumbCol.AddFixed(&cardThumb{s: s, it: it, p: p, img: img, mute: muteS}, m.thumbH)
+		thumbCol.AddFlex(toolkit.NewLabel(""), 1)
+		row.AddFixed(thumbCol, m.thumbW)
 	}
-	row.SetBounds(toolkit.Rect{X: x + pad, Y: y + pad, W: w - 2*pad, H: m.rowH - 2*pad})
+	row.SetBounds(toolkit.Rect{X: x + pad, Y: y + pad, W: w - 2*pad, H: h - 2*pad})
 	row.Draw(p, th)
 	_ = onAccent
+}
+
+// cardTitleMaxLines caps how many lines a wrapped card title occupies; beyond
+// it the last shown line is ellipsised, so a pathologically long title can only
+// grow a card so far.
+const cardTitleMaxLines = 3
+
+// titleLineH is the vertical slot one card-title line occupies — the same slot
+// the former single-line title used, so a one-line card is unchanged.
+func (s *Scene) titleLineH() int { return s.m.title.height + rpxOf(s, 4) }
+
+// cardTitleLines word-wraps it.Title to the card's text width (the card width w
+// less the horizontal padding, and the thumbnail column when the item has
+// media). It measures with m.title, whose pixel width equals the ttFont the
+// title Labels render with (same embedded Go bold face at the same size), so the
+// wrap the layout measures is exactly what draws. It never returns zero lines,
+// and caps at cardTitleMaxLines, ellipsising the last shown line so the cut is
+// visible.
+func (s *Scene) cardTitleLines(it source.Item, w int) []string {
+	m := s.m
+	textW := w - 2*m.pad
+	if len(it.Media) > 0 {
+		textW -= m.thumbW + m.pad
+	}
+	lines := wrapText(m.title, it.Title, textW)
+	if len(lines) == 0 {
+		return []string{it.Title} // whitespace/empty title still occupies one line
+	}
+	if len(lines) > cardTitleMaxLines {
+		last := lines[cardTitleMaxLines-1]
+		lines = lines[:cardTitleMaxLines]
+		lines[cardTitleMaxLines-1] = truncate(m.title, last+"…", textW)
+	}
+	return lines
+}
+
+// cardHeight is THE height of a standard feed card at width w: one title line
+// fits the fixed rowH, and each extra wrapped line grows the card by one line's
+// height. cardSprite, drawCard and rowHeight all derive from it, so the laid-out
+// height, the rasterised sprite and the drawn card never diverge. cardTitleLines
+// never returns fewer than one line, so this is always ≥ rowH — a one-line card
+// is exactly the old fixed-height card.
+func (s *Scene) cardHeight(it source.Item, w int) int {
+	n := len(s.cardTitleLines(it, w))
+	return s.m.rowH + (n-1)*s.titleLineH()
 }
 
 // truncateFont clips s with a trailing ellipsis to fit maxW pixels in the
@@ -730,7 +793,11 @@ func (s *Scene) cardSprite(it source.Item, w int, onAccent, muteS toolkit.RGBA) 
 	if sp, ok := s.cardCache[k]; ok {
 		return sp
 	}
-	h := s.m.rowH
+	// Height is a pure function of the fields the key already carries: the title
+	// (its wrapped line count), the width w, the scale, and — via the item's
+	// Media, fixed per id+src — whether a thumbnail column is reserved. So the
+	// existing key needs no height field; two keys never disagree on height.
+	h := s.cardHeight(it, w)
 	buf := make([]byte, w*h*4)
 	p := painter.NewPixelPainter(buf, w, h)
 	img := &image.RGBA{Pix: buf, Stride: w * 4, Rect: image.Rect(0, 0, w, h)}

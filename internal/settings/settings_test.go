@@ -64,6 +64,44 @@ func TestZoomKeyDefaultsAndRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBrowserSingleTabDefaultAndRoundTrip(t *testing.T) {
+	// Default seeds single-tab, so a fresh install shows no preview tab strip.
+	d := Default()
+	if d.BrowserSingleTab == nil || !*d.BrowserSingleTab || !d.SingleTab() {
+		t.Fatalf("default tab mode = %v, want single-tab", d.BrowserSingleTab)
+	}
+	// Normalize backfills an unset field (a settings file predating it) to
+	// single-tab.
+	s := &Settings{}
+	if s.SingleTab() != DefaultBrowserSingleTab {
+		t.Fatal("SingleTab() on an unset field should apply the default")
+	}
+	s.Normalize()
+	if s.BrowserSingleTab == nil || !*s.BrowserSingleTab {
+		t.Fatal("Normalize should backfill an unset tab mode to single-tab")
+	}
+	// An explicit opt-out to multiple tabs survives Normalize and Save/Load,
+	// rather than being re-defaulted to single-tab.
+	multi := false
+	s2 := &Settings{Profiles: []Profile{{Name: "x"}}, Theme: ThemeDark, CachePath: "/c", BrowserSingleTab: &multi}
+	s2.Normalize()
+	if s2.BrowserSingleTab == nil || *s2.BrowserSingleTab || s2.SingleTab() {
+		t.Fatal("Normalize clobbered an explicit multi-tab opt-out")
+	}
+	p := filepath.Join(t.TempDir(), "s.json")
+	st := NewStore(p)
+	if err := st.Save(s2); err != nil {
+		t.Fatal(err)
+	}
+	out, err := st.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.BrowserSingleTab == nil || *out.BrowserSingleTab {
+		t.Fatalf("round-trip tab mode = %v, want persisted multi-tab", out.BrowserSingleTab)
+	}
+}
+
 func TestActiveProfile(t *testing.T) {
 	s := &Settings{Profiles: []Profile{{Name: "A"}, {Name: "B"}}}
 	if s.ActiveProfile().Name != "A" {

@@ -37,8 +37,13 @@ type Settings struct {
 	CachePath string    `json:"cachePath,omitempty"` // media cache dir (repositionable)
 	Accounts  []Account `json:"accounts,omitempty"`  // per-provider credentials
 	// BrowserSingleTab makes the web-preview browser reuse a single tab instead of
-	// keeping a switchable multi-tab strip (default: multi-tab).
-	BrowserSingleTab bool `json:"browserSingleTab,omitempty"`
+	// keeping a switchable multi-tab strip. It is a tri-state pointer so an unset
+	// preference (a fresh install, or a settings file predating this field) can be
+	// told apart from an explicit false: nil defaults to single-tab
+	// (DefaultBrowserSingleTab) so no tab strip shows out of the box, while a user
+	// who opts into multiple tabs persists an explicit false that survives reload.
+	// Read it through [Settings.SingleTab], which applies that default.
+	BrowserSingleTab *bool `json:"browserSingleTab,omitempty"`
 	// ZoomInKey / ZoomOutKey are the base keys (each a single printable rune,
 	// stored as a 1-rune string) that, held with a command-style modifier
 	// (Ctrl/Cmd), zoom the web preview in / out. Default "=" / "-".
@@ -55,6 +60,23 @@ const (
 	DefaultZoomInKey  = "="
 	DefaultZoomOutKey = "-"
 )
+
+// DefaultBrowserSingleTab is the web-preview tab mode a fresh install uses:
+// single-tab, so no tab strip shows in the preview until the user opts into
+// multiple tabs.
+const DefaultBrowserSingleTab = true
+
+// boolPtr returns a pointer to b, for the tri-state BrowserSingleTab field.
+func boolPtr(b bool) *bool { return &b }
+
+// SingleTab reports the effective web-preview tab mode, applying the
+// single-tab default when the preference is unset (nil).
+func (s *Settings) SingleTab() bool {
+	if s.BrowserSingleTab == nil {
+		return DefaultBrowserSingleTab
+	}
+	return *s.BrowserSingleTab
+}
 
 // Account holds a user's credentials for one provider. Fields are keyed by the
 // well-known names from [CredentialSchema] (e.g. "client_id", "instance",
@@ -173,12 +195,13 @@ func defaultCachePath() string {
 // includes Reddit and Hacker News, the system theme, and the OS media cache.
 func Default() *Settings {
 	return &Settings{
-		Profiles:   []Profile{{Name: "Home", Subs: defaultSubs()}},
-		Active:     0,
-		Theme:      ThemeSystem,
-		CachePath:  defaultCachePath(),
-		ZoomInKey:  DefaultZoomInKey,
-		ZoomOutKey: DefaultZoomOutKey,
+		Profiles:         []Profile{{Name: "Home", Subs: defaultSubs()}},
+		Active:           0,
+		Theme:            ThemeSystem,
+		CachePath:        defaultCachePath(),
+		BrowserSingleTab: boolPtr(DefaultBrowserSingleTab),
+		ZoomInKey:        DefaultZoomInKey,
+		ZoomOutKey:       DefaultZoomOutKey,
 	}
 }
 
@@ -216,6 +239,11 @@ func (s *Settings) Normalize() {
 	}
 	if s.ZoomOutKey == "" {
 		s.ZoomOutKey = DefaultZoomOutKey
+	}
+	if s.BrowserSingleTab == nil {
+		// A settings file predating this field (or a fresh one) defaults to
+		// single-tab so the preview shows no tab strip.
+		s.BrowserSingleTab = boolPtr(DefaultBrowserSingleTab)
 	}
 	s.dedupAccounts()
 }

@@ -745,13 +745,16 @@ func (s *Scene) SetCachePath(p string) { s.cachePath = p; s.touch() }
 
 // Settings snapshots the editor state for persistence.
 func (s *Scene) Settings() *settings.Settings {
+	// Persist the tab mode explicitly (a *bool) so an opt-out to multiple tabs is
+	// stored as false and is not re-defaulted to single-tab on the next load.
+	singleTab := s.BrowserSingleTab()
 	return &settings.Settings{
 		Profiles:         s.Profiles,
 		Active:           s.activeProf,
 		Theme:            s.themeName,
 		CachePath:        s.cachePath,
 		Accounts:         s.EditedAccounts(),
-		BrowserSingleTab: s.BrowserSingleTab(),
+		BrowserSingleTab: &singleTab,
 		ZoomInKey:        s.BrowserZoomInKey(),
 		ZoomOutKey:       s.BrowserZoomOutKey(),
 		Bookmarks:        s.BookmarkedURLs(),
