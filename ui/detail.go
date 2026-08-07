@@ -179,6 +179,17 @@ func (s *Scene) detailHitTest(x, y int) Hit {
 // wrapText greedily word-wraps text to maxW pixels in face, preserving paragraph
 // breaks ("\n"). A word longer than maxW is left un-broken on its own line.
 func wrapText(face textFace, text string, maxW int) []string {
+	return wrapMeasured(face.width, text, maxW)
+}
+
+// wrapMeasured is the width-measurer-agnostic core of wrapText: it greedily
+// word-wraps text to maxW pixels, deciding each break with measure(s). Callers
+// whose text is rendered by a toolkit.Font (not a textFace) must pass that
+// font's Measure so the wrap is computed against the SAME metrics the glyphs
+// draw with — otherwise a line that "fits" the measurer can still overflow (and
+// be clipped mid-word by) the render font. Paragraph breaks ("\n") are kept; a
+// word wider than maxW is left un-broken on its own line.
+func wrapMeasured(measure func(string) int, text string, maxW int) []string {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
@@ -194,7 +205,7 @@ func wrapText(face textFace, text string, maxW int) []string {
 			if line != "" {
 				try = line + " " + word
 			}
-			if line == "" || face.width(try) <= maxW {
+			if line == "" || measure(try) <= maxW {
 				line = try
 			} else {
 				out = append(out, line)

@@ -624,25 +624,28 @@ func (s *Scene) titleLineH() int { return s.m.title.height + rpxOf(s, 4) }
 
 // cardTitleLines word-wraps it.Title to the card's text width (the card width w
 // less the horizontal padding, and the thumbnail column when the item has
-// media). It measures with m.title, whose pixel width equals the ttFont the
-// title Labels render with (same embedded Go bold face at the same size), so the
-// wrap the layout measures is exactly what draws. It never returns zero lines,
-// and caps at cardTitleMaxLines, ellipsising the last shown line so the cut is
-// visible.
+// media). It wraps with the exact toolkit font the title Labels render with (the
+// embedded Go bold face at rpx(15) via ttFont), measured through that font's own
+// Measure — NOT the getFace textFace — so the wrap decision matches the glyphs
+// that draw. A width mismatch between the two rasterisers would otherwise let a
+// line "fit" the wrap yet overflow the (ellipsis-less) Label and clip mid-word.
+// It never returns zero lines, and caps at cardTitleMaxLines, ellipsising the
+// last shown line so the cut is visible.
 func (s *Scene) cardTitleLines(it source.Item, w int) []string {
 	m := s.m
 	textW := w - 2*m.pad
 	if len(it.Media) > 0 {
 		textW -= m.thumbW + m.pad
 	}
-	lines := wrapText(m.title, it.Title, textW)
+	titleFont := ttFont(true, rpxOf(s, 15))
+	lines := wrapMeasured(titleFont.Measure, it.Title, textW)
 	if len(lines) == 0 {
 		return []string{it.Title} // whitespace/empty title still occupies one line
 	}
 	if len(lines) > cardTitleMaxLines {
 		last := lines[cardTitleMaxLines-1]
 		lines = lines[:cardTitleMaxLines]
-		lines[cardTitleMaxLines-1] = truncate(m.title, last+"…", textW)
+		lines[cardTitleMaxLines-1] = truncateFont(titleFont, last+"…", textW)
 	}
 	return lines
 }

@@ -226,6 +226,22 @@ func (s *Scene) ForwardBrowserClick(x, y int) bool {
 	return true
 }
 
+// ForwardBrowserRelease forwards a mouse-button release into the embedded
+// browser when the web preview is active, so a toolbar button pressed on the
+// preceding click clears its press-feedback face. Coordinates are screen-space
+// (translated to widget-local); a release anywhere clears the press.
+func (s *Scene) ForwardBrowserRelease(x, y int) {
+	if !s.webPreviewItem() {
+		return
+	}
+	b := s.browser.Bounds()
+	if b.W <= 0 {
+		return
+	}
+	s.browser.OnEvent(toolkit.Event{Kind: toolkit.EventMouseUp, X: x - b.X, Y: y - b.Y})
+	s.touch()
+}
+
 // browserWheelStep is how many device pixels of wheel travel map to one browser
 // content row (the widget scrolls BrowserScrollStep px per row).
 const browserWheelStep = 20
