@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-widgets/toolkit"
+
 	"github.com/go-news-reader/reader/source"
 )
 
@@ -36,30 +38,24 @@ func TestArticlePlainText(t *testing.T) {
 }
 
 func TestCopyToClipboard(t *testing.T) {
+	toolkit.SetClipboard(nil) // fresh in-process clipboard
 	s := New(800, 600, ThemeFor(OSMac, false))
-	// No writer installed → no-op, reports false.
-	if s.copyToClipboard("x") {
-		t.Fatal("copy with no writer should report false")
-	}
-	var got string
-	s.SetClipboardWriter(func(text string) { got = text })
-	// Blank text is not written.
+	// Blank text is not written and reports false.
 	if s.copyToClipboard("   \n ") {
 		t.Fatal("blank text should not be copied")
 	}
-	if got != "" {
-		t.Fatalf("blank copy wrote %q", got)
+	if toolkit.ClipboardText() != "" {
+		t.Fatalf("blank copy wrote %q", toolkit.ClipboardText())
 	}
-	// Real text is written and reported.
-	if !s.copyToClipboard("hello") || got != "hello" {
-		t.Fatalf("copy wrote %q, ok?", got)
+	// Real text is written to the toolkit clipboard and reported.
+	if !s.copyToClipboard("hello") || toolkit.ClipboardText() != "hello" {
+		t.Fatalf("copy wrote %q", toolkit.ClipboardText())
 	}
 }
 
 func TestSceneCopyCurrentArticle(t *testing.T) {
+	toolkit.SetClipboard(nil) // fresh in-process clipboard
 	s := New(900, 560, ThemeFor(OSMac, false))
-	var got string
-	s.SetClipboardWriter(func(text string) { got = text })
 
 	// Nothing selected → nothing to copy.
 	if s.Copy() {
@@ -71,14 +67,13 @@ func TestSceneCopyCurrentArticle(t *testing.T) {
 	if !s.Copy() {
 		t.Fatal("copy with a preview item should report true")
 	}
-	if !strings.Contains(got, "Prev") || !strings.Contains(got, "https://ex.com/p") {
+	if got := toolkit.ClipboardText(); !strings.Contains(got, "Prev") || !strings.Contains(got, "https://ex.com/p") {
 		t.Fatalf("preview copy = %q", got)
 	}
 
 	// The detail (reading) view takes precedence over the preview pane.
 	s.OpenDetail(source.Item{Source: source.Reddit, Title: "Detail", Permalink: "https://ex.com/d"})
-	got = ""
-	if !s.Copy() || !strings.Contains(got, "Detail") {
-		t.Fatalf("detail copy = %q", got)
+	if !s.Copy() || !strings.Contains(toolkit.ClipboardText(), "Detail") {
+		t.Fatalf("detail copy = %q", toolkit.ClipboardText())
 	}
 }

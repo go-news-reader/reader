@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"runtime"
 
+	"github.com/go-widgets/toolkit"
+
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
@@ -261,11 +263,13 @@ func (h *Handler) Shortcut(r rune, ctrl, meta bool) {
 
 var _ window.ShortcutSink = (*Handler)(nil)
 
-// SetClipboardWriter installs the native back-end's system-clipboard writer,
-// forwarding it to the scene so a copy chord reaches the OS pasteboard. It
-// satisfies the optional window.ClipboardController capability.
-func (h *Handler) SetClipboardWriter(write func(string)) {
-	h.a.Scene().SetClipboardWriter(write)
+// SetSystemClipboard installs the native back-end's OS pasteboard as the
+// toolkit-wide clipboard, so every text widget's copy/cut/paste and the app's
+// copy actions go through it. It satisfies the optional
+// window.ClipboardController capability. window.SystemClipboard has the same
+// method set as toolkit.Clipboard, so it installs directly.
+func (h *Handler) SetSystemClipboard(c window.SystemClipboard) {
+	toolkit.SetClipboard(c)
 }
 
 var _ window.ClipboardController = (*Handler)(nil)

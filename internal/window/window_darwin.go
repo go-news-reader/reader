@@ -85,6 +85,7 @@ var (
 	selGeneralPasteboard         = objc.RegisterName("generalPasteboard")
 	selClearContents             = objc.RegisterName("clearContents")
 	selSetStringForType          = objc.RegisterName("setString:forType:")
+	selStringForType             = objc.RegisterName("stringForType:")
 )
 
 // nsPasteboardTypeString is the UTI for plain UTF-8 text on NSPasteboard
@@ -580,9 +581,15 @@ func disabledItem(label string) *tray.MenuItem {
 	return it
 }
 
+// cocoaClipboard is the macOS NSPasteboard-backed [SystemClipboard], installed
+// as the toolkit-wide clipboard so copy/paste reach the OS pasteboard.
+type cocoaClipboard struct{}
+
+func (cocoaClipboard) SetClipboardText(text string) { cocoaSetClipboard(text) }
+func (cocoaClipboard) ClipboardText() string        { return cocoaClipboardText() }
+
 // cocoaSetClipboard replaces the general pasteboard's contents with text as
-// plain UTF-8 (NSPasteboard: clearContents then setString:forType:). Installed
-// as the app's clipboard writer so a copy chord reaches the OS pasteboard.
+// plain UTF-8 (NSPasteboard: clearContents then setString:forType:).
 func cocoaSetClipboard(text string) {
 	pb := objc.ID(objc.GetClass("NSPasteboard")).Send(selGeneralPasteboard)
 	if pb == 0 {
@@ -590,6 +597,20 @@ func cocoaSetClipboard(text string) {
 	}
 	pb.Send(selClearContents)
 	pb.Send(selSetStringForType, nsString(text), nsString(nsPasteboardTypeString))
+}
+
+// cocoaClipboardText reads the general pasteboard's plain-text contents, or ""
+// when it holds no string (stringForType: returns nil).
+func cocoaClipboardText() string {
+	pb := objc.ID(objc.GetClass("NSPasteboard")).Send(selGeneralPasteboard)
+	if pb == 0 {
+		return ""
+	}
+	s := pb.Send(selStringForType, nsString(nsPasteboardTypeString))
+	if s == 0 {
+		return ""
+	}
+	return goString(s)
 }
 
 func Run(cfg Config, h Handler) error {
@@ -607,11 +628,12 @@ func Run(cfg Config, h Handler) error {
 		cfg.Height = 700
 	}
 	handler = h
-	// Install the system-clipboard writer (Cmd/Ctrl+C copy support) when the
-	// handler wants it. NSPasteboard writes are main-thread work; the copy chord
-	// arrives synchronously on the Cocoa event thread, so this is safe.
+	// Install the NSPasteboard-backed system clipboard when the handler wants it,
+	// so the toolkit's copy/paste and the app's copy actions reach the OS
+	// pasteboard. Pasteboard access is main-thread work; the copy/paste chords
+	// arrive synchronously on the Cocoa event thread, so this is safe.
 	if c, ok := h.(ClipboardController); ok {
-		c.SetClipboardWriter(cocoaSetClipboard)
+		c.SetSystemClipboard(cocoaClipboard{})
 	}
 
 	app := objc.ID(objc.GetClass("NSApplication")).Send(selSharedApplication)
