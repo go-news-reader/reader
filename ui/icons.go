@@ -36,15 +36,15 @@ func iconInset(r toolkit.Rect, frac int) toolkit.Rect {
 // Cached Iconoir icon lookups. Get is cheap, but caching avoids a registry
 // lookup per frame. Names verified present in iconoir v0.1.0.
 var (
-	iconMenu     = iconoir.MustGet("menu")           // burger / open-sidebar
-	iconLock     = iconoir.MustGet("lock")           // auth-banner padlock
-	iconUser     = iconoir.MustGet("user")           // sidebar Accounts
-	iconList     = iconoir.MustGet("list")           // sidebar Network log
-	iconSettings = iconoir.MustGet("settings")       // sidebar Settings (gear)
-	iconSearch   = iconoir.MustGet("search")         // topbar SearchEntry magnifier
-	iconPlus     = iconoir.MustGet("plus")           // sidebar "Browse newsgroups" + subscribe
-	iconRefresh  = iconoir.MustGet("refresh-double") // browse view Refresh control + web preview Reload
-	iconCheck    = iconoir.MustGet("check")          // subscribed / complete marker
+	iconMenu      = iconoir.MustGet("menu")            // burger / open-sidebar
+	iconLock      = iconoir.MustGet("lock")            // auth-banner padlock
+	iconUser      = iconoir.MustGet("user")            // sidebar Accounts
+	iconList      = iconoir.MustGet("list")            // sidebar Network log
+	iconSettings  = iconoir.MustGet("settings")        // sidebar Settings (gear)
+	iconSearch    = iconoir.MustGet("search")          // topbar SearchEntry magnifier
+	iconPlus      = iconoir.MustGet("plus")            // sidebar "Browse newsgroups" + subscribe
+	iconRefresh   = iconoir.MustGet("refresh-double")  // browse view Refresh control + web preview Reload
+	iconCheck     = iconoir.MustGet("check")           // subscribed / complete marker
 	iconNavLeft   = iconoir.MustGet("nav-arrow-left")  // web preview Back
 	iconNavRight  = iconoir.MustGet("nav-arrow-right") // web preview Forward
 	iconZoomIn    = iconoir.MustGet("zoom-in")         // web preview zoom in

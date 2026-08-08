@@ -770,11 +770,11 @@ func (s *Scene) Settings() *settings.Settings {
 	// stored as false and is not re-defaulted to single-tab on the next load.
 	singleTab := s.BrowserSingleTab()
 	return &settings.Settings{
-		Profiles:         s.Profiles,
-		Active:           s.activeProf,
-		Theme:            s.themeName,
-		CachePath:        s.cachePath,
-		Accounts:         s.EditedAccounts(),
+		Profiles:          s.Profiles,
+		Active:            s.activeProf,
+		Theme:             s.themeName,
+		CachePath:         s.cachePath,
+		Accounts:          s.EditedAccounts(),
 		BrowserSingleTab:  &singleTab,
 		HideBrowserChrome: s.BrowserChromeHidden(),
 		ZoomInKey:         s.BrowserZoomInKey(),
