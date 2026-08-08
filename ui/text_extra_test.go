@@ -14,55 +14,34 @@ import (
 // synthetic-bold pass), while the Latin fast path stays byte-identical.
 func TestGetFaceCJKFallback(t *testing.T) {
 	f := getFace(16, false)
-	if len(f.faces) < 2 {
-		t.Fatal("getFace should build a primary + fallback faces")
+
+	// Coverage routing is now observable only through what it renders: a script
+	// the Latin primary lacks must still measure and paint.
+	if f.width("\u4E2D") <= 0 {
+		t.Fatal("CJK should render through a fallback face")
 	}
-	// Coverage routing.
-	if !f.primaryCovers("Hi!") || f.primaryCovers("中") {
-		t.Fatal("primaryCovers: Latin yes, CJK no")
-	}
-	if f.faceFor('A') != f.face {
-		t.Fatal("Latin routes to the primary face")
-	}
-	if f.faceFor('中') == f.face {
-		t.Fatal("CJK routes to a fallback face")
-	}
-	// U+E000 is a Private Use Area codepoint: no bundled face maps it, and none
-	// ever will, so it is a stable stand-in for "nothing covers this". (Emoji
-	// used to play that role here, until the chain gained Noto Emoji — they are
-	// now covered, which is what ui/emoji_test.go asserts.)
-	if f.faceFor('\uE000') != f.face {
-		t.Fatal("an uncovered rune falls back to the primary")
-	}
-	// Width: the fallback sum is positive and mixed text is wider than its Latin
-	// prefix alone.
-	if f.width("中文") <= 0 || f.width("Hi 中文") <= f.width("Hi ") {
+	if f.width("Hi \u4E2D\u6587") <= f.width("Hi ") {
 		t.Fatal("CJK width should be measured through the fallback")
 	}
-	// A rune no face covers alongside CJK still measures (uncovered → the
-	// primary's .notdef advance) without panicking.
-	if f.width("中\uE000") < f.width("中") {
+	// U+E000 is a Private Use Area codepoint: no bundled face maps it, and none
+	// ever will, so it is a stable stand-in for "nothing covers this". It must not
+	// shrink the measured width, and must not panic.
+	if f.width("\u4E2D\uE000") < f.width("\u4E2D") {
 		t.Fatal("an uncovered rune must not shrink the measured width")
 	}
 	// Draw the mixed run (fallback path) — expect painted pixels.
 	img := image.NewRGBA(image.Rect(0, 0, 220, 30))
-	f.draw(img, 2, 4, "Hi 中文", toolkit.RGBA{R: 0, G: 0, B: 0, A: 255})
-	if !anyPainted(img.Pix) {
-		t.Fatal("mixed Latin+CJK drew nothing")
+	f.draw(img, 2, 4, "Hi \u4E2D\u6587", toolkit.RGBA{R: 0, G: 0, B: 0, A: 255})
+	painted := false
+	for i := 3; i < len(img.Pix); i += 4 {
+		if img.Pix[i] > 0 {
+			painted = true
+			break
+		}
 	}
-	// The synthetic-bold fallback branch (a system font exposes only Regular).
-	bold := textFace{face: f.face, faces: f.faces, ascent: f.ascent, height: f.height, synthBold: true}
-	img2 := image.NewRGBA(image.Rect(0, 0, 120, 30))
-	bold.draw(img2, 2, 4, "中A", toolkit.RGBA{R: 0, G: 0, B: 0, A: 255})
-	if !anyPainted(img2.Pix) {
-		t.Fatal("synth-bold mixed draw painted nothing")
+	if !painted {
+		t.Fatal("mixed Latin+CJK text drew nothing")
 	}
-	// A face with no fallback chain uses the primary-only fast path.
-	primaryOnly := textFace{face: f.face, ascent: f.ascent, height: f.height}
-	if primaryOnly.width("中") < 0 { // no panic; measures via the primary
-		t.Fatal("unreachable")
-	}
-	primaryOnly.draw(image.NewRGBA(image.Rect(0, 0, 30, 30)), 0, 0, "A", toolkit.RGBA{A: 255})
 }
 
 func anyPainted(pix []byte) bool {

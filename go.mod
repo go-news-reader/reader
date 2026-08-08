@@ -25,7 +25,7 @@ require (
 	github.com/go-webengine/engine v0.3.3
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.2.0
-	github.com/go-widgets/toolkit v0.127.0
+	github.com/go-widgets/toolkit v0.129.0
 	github.com/go-widgets/tray v0.1.1
 	github.com/jezek/xgb v1.3.1
 	golang.org/x/image v0.44.0
@@ -42,7 +42,7 @@ require (
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-opentype/bidi v0.2.1 // indirect
 	github.com/go-opentype/opentype v0.5.0 // indirect
-	github.com/go-opentype/shape v0.3.3 // indirect
+	github.com/go-opentype/shape v0.4.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect

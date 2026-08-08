@@ -571,8 +571,8 @@ func TestTextFace(t *testing.T) {
 	}
 	a := getFace(14, true)
 	b := getFace(14, true) // cache hit
-	if a.face != b.face {
-		t.Fatal("face not cached")
+	if a.font != b.font {
+		t.Fatal("font not cached")
 	}
 	if a.width("hello") <= 0 {
 		t.Fatal("width")

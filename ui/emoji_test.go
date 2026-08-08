@@ -5,175 +5,123 @@ import (
 	"testing"
 
 	"github.com/go-widgets/toolkit"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 // feedEmoji is a spread of the pictographs a real feed actually carries — moon
-// phases, a rocket, gestures, a person, and two BMP dingbats — plus a ZWJ
-// sequence's base rune.
-var feedEmoji = []rune{'🚀', '🌔', '🌘', '🧑', '👏', '👍', '✨', '🔥', '🗞', '⚠', '🎉'}
+// phases, a rocket, gestures, a person, and two BMP dingbats.
+var feedEmoji = []rune{'\U0001F680', '\U0001F314', '\U0001F318', '\U0001F9D1', '\U0001F44F',
+	'\U0001F44D', '\u2728', '\U0001F525', '\U0001F5DE', '\u26A0', '\U0001F389'}
 
-// TestEmojiHaveAFaceInTheGetFaceChain is the regression this exists for: with no
-// emoji family in the chain, every one of these runes fell through to the
-// primary's .notdef and drew a blank gap. Live @NASA tweets are full of them.
-func TestEmojiHaveAFaceInTheGetFaceChain(t *testing.T) {
-	tf := getFace(16, false)
-	for _, r := range feedEmoji {
-		f := tf.faceFor(r)
-		adv, ok := f.GlyphAdvance(r)
-		if !ok {
-			t.Errorf("U+%04X %q: no face in the chain covers it", r, r)
-			continue
-		}
-		if adv <= 0 {
-			t.Errorf("U+%04X %q: advance = %v, want > 0", r, r, adv)
-		}
-		// The chosen face must NOT be the primary: the primary is the Latin Go
-		// face, and it reporting coverage would mean we measured .notdef.
-		if f == tf.face {
-			t.Errorf("U+%04X %q resolved to the primary Latin face", r, r)
-		}
-	}
-}
-
-// TestEmojiAreMeasuredAndDrawn checks the whole text path, not just coverage:
-// an emoji string measures wider than nothing and actually puts ink on the
-// surface.
-func TestEmojiAreMeasuredAndDrawn(t *testing.T) {
-	tf := getFace(24, false)
-	const s = "go 🚀 now"
-
-	if got := tf.width(s); got <= tf.width("go  now") {
-		t.Fatalf("width(%q) = %d, should exceed the same string without the emoji", s, got)
-	}
-
-	img := image.NewRGBA(image.Rect(0, 0, 200, 48))
-	tf.draw(img, 4, 4, "🚀", toolkit.RGBA{R: 0, G: 0, B: 0, A: 0xFF})
-	inked := 0
+// inkOf counts the pixels a string paints on a blank surface.
+func inkOf(t *testing.T, tf textFace, s string) int {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 600, 90))
+	tf.draw(img, 4, 4, s, toolkit.RGBA{R: 0, G: 0, B: 0, A: 0xFF})
+	n := 0
 	for i := 3; i < len(img.Pix); i += 4 {
 		if img.Pix[i] > 0 {
-			inked++
+			n++
 		}
 	}
-	if inked == 0 {
-		t.Fatal("drawing 🚀 left the surface blank")
-	}
+	return n
 }
 
-// TestEmojiRenderInTheToolkitChain covers the OTHER font path — the toolkit
-// fallback font that stock widgets (Label, Button, the feed card) render with.
-// Both paths derive from scriptFallbackTTFs, and both must carry emoji.
-func TestEmojiRenderInTheToolkitChain(t *testing.T) {
-	f := ttFont(false, 20)
+// TestEmojiRender is the regression this exists for: with no emoji family in the
+// chain every one of these runes drew a blank gap. Live @NASA tweets are full of
+// them.
+func TestEmojiRender(t *testing.T) {
+	tf := getFace(24, false)
 	for _, r := range feedEmoji {
-		if w := f.Measure(string(r)); w <= 0 {
-			t.Errorf("U+%04X %q measures %d in the toolkit chain, want > 0", r, r, w)
+		s := string(r)
+		if w := tf.width(s); w <= 0 {
+			t.Errorf("U+%04X %q measures %d, want > 0", r, r, w)
+			continue
+		}
+		if inkOf(t, tf, s) == 0 {
+			t.Errorf("U+%04X %q painted nothing", r, r)
 		}
 	}
 	// An emoji genuinely widens a string rather than measuring as nothing.
-	if f.Measure("ab🚀") <= f.Measure("ab") {
-		t.Fatal("the toolkit chain measures 🚀 as zero-width")
+	if tf.width("go \U0001F680 now") <= tf.width("go  now") {
+		t.Fatal("the emoji added no width")
+	}
+}
+
+// TestEmojiRenderInTheToolkitChain covers the same font as widgets see it: the
+// reader hands ttFont to stock Labels, and textFace wraps that very font, so the
+// two can never disagree — this pins that they don't.
+func TestEmojiRenderInTheToolkitChain(t *testing.T) {
+	f := ttFont(false, 20)
+	tf := getFace(20, false)
+	for _, r := range feedEmoji {
+		if got, want := f.Measure(string(r)), tf.width(string(r)); got != want {
+			t.Fatalf("U+%04X: widget font measures %d, textFace %d", r, got, want)
+		}
 	}
 }
 
 // TestZWJSequencesComposeToOneGlyph is the payoff of routing whole graphemes to
-// one face (toolkit v0.127.0): the sequence reaches the shaper intact, so the
-// GSUB ligature fires and 🧑‍🚀 is ONE astronaut rather than a person standing
-// next to a rocket. Before, the joiner was claimed by the Thai face — which
-// ships U+200D for its own shaping and sits earlier in the chain — and the
-// sequence arrived as three separate runs.
+// one face: the sequence reaches the shaper intact, so the GSUB ligature fires
+// and 🧑‍🚀 is ONE astronaut rather than a person standing next to a rocket.
 func TestZWJSequencesComposeToOneGlyph(t *testing.T) {
-	f := ttFont(false, 32)
+	tf := getFace(32, false)
 	const (
 		person = "\U0001F9D1"
 		rocket = "\U0001F680"
-		zwj    = "‍"
+		zwj    = "\u200D"
 	)
-	one := f.Measure(person)
+	one := tf.width(person)
 	if one <= 0 {
 		t.Fatal("the emoji face measured nothing")
 	}
-	if got := f.Measure(person + zwj + rocket); got != one {
-		t.Fatalf("🧑‍🚀 measures %d, want one glyph's %d (un-composed would be %d)",
-			got, one, f.Measure(person+rocket))
+	if got := tf.width(person + zwj + rocket); got != one {
+		t.Fatalf("astronaut measures %d, want one glyph's %d (un-composed would be %d)",
+			got, one, tf.width(person+rocket))
 	}
-	// A three-part family sequence composes too.
 	family := "\U0001F468" + zwj + "\U0001F469" + zwj + "\U0001F466"
-	if got := f.Measure(family); got != one {
-		t.Fatalf("👨‍👩‍👦 measures %d, want one glyph's %d", got, one)
+	if got := tf.width(family); got != one {
+		t.Fatalf("family sequence measures %d, want one glyph's %d", got, one)
 	}
-	// The card wraps with this very measurer, so a composed sequence costs one
-	// glyph of line width rather than two.
-	if f.Measure("a"+person+zwj+rocket+"b") != f.Measure("a"+person+"b") {
+	// Embedded in text, it still costs one glyph of line width.
+	if tf.width("a"+person+zwj+rocket+"b") != tf.width("a"+person+"b") {
 		t.Fatal("a sequence embedded in text did not compose")
 	}
 }
 
-// TestFormatCharactersAreNeverRasterised covers the defect that only becomes
-// visible once emoji render: an emoji sequence is held together by invisible
-// controls (🧑‍🚀 is person + ZWJ + rocket), and nothing in the chain has a glyph
-// for some of them, so routing fell through to the primary's .notdef and painted
-// a box mid-word. U+2060 WORD JOINER did exactly that.
-func TestFormatCharactersAreNeverRasterised(t *testing.T) {
-	tf := getFace(16, false)
-	// Every one of these is category Cf: an invisible control, never a glyph.
+// TestDefaultIgnorablesLeaveNoMark checks the invisible controls an emoji
+// sequence carries by construction cost neither width nor a pixel — the shaper
+// hides the ones it did not consume, and the toolkit skips them.
+func TestDefaultIgnorablesLeaveNoMark(t *testing.T) {
+	tf := getFace(20, false)
+	baseW := tf.width("abcd")
+	baseInk := inkOf(t, tf, "abcd")
 	for _, r := range []rune{'\u200D', '\uFE0F', '\uFE0E', '\u200B', '\u2060', '\u00AD', '\uFEFF'} {
-		if !isFormatRune(r) {
-			t.Errorf("U+%04X should be recognised as a format character", r)
+		s := "ab" + string(r) + "cd"
+		if got := tf.width(s); got != baseW {
+			t.Errorf("U+%04X: width %d, want %d — an invisible control must take no space", r, got, baseW)
 		}
-		if got := tf.width(string(r)); got != 0 {
-			t.Errorf("U+%04X measures %d px, want 0 — it must not rasterise", r, got)
+		if got := inkOf(t, tf, s); got != baseInk {
+			t.Errorf("U+%04X: painted %d px, want the plain word's %d", r, got, baseInk)
 		}
-	}
-	// A ZWJ sequence measures exactly as its visible components do.
-	if joined, bare := tf.width("🧑‍🚀"), tf.width("🧑🚀"); joined != bare {
-		t.Fatalf("ZWJ sequence measures %d, bare pair measures %d — the joiner took space", joined, bare)
-	}
-	// And it draws no extra ink.
-	ink := func(s string) int {
-		img := image.NewRGBA(image.Rect(0, 0, 240, 40))
-		tf.draw(img, 2, 2, s, toolkit.RGBA{R: 0, G: 0, B: 0, A: 0xFF})
-		n := 0
-		for i := 3; i < len(img.Pix); i += 4 {
-			if img.Pix[i] > 0 {
-				n++
-			}
-		}
-		return n
-	}
-	if withWJ, without := ink("ab⁠cd"), ink("abcd"); withWJ != without {
-		t.Fatalf("a word joiner added ink: %d px vs %d px", withWJ, without)
 	}
 }
 
-// TestStripFormatKeepsOrdinaryTextIdentical checks the fast path: text with no
-// format characters is returned as-is, so ordinary rendering is untouched.
-func TestStripFormatKeepsOrdinaryTextIdentical(t *testing.T) {
-	const plain = "Total solar eclipses, 2026 — 中文 🚀"
-	if got := stripFormat(plain); got != plain {
-		t.Fatalf("stripFormat rewrote text that has nothing to strip: %q", got)
-	}
-	if got := stripFormat("a‍b️c"); got != "abc" {
-		t.Fatalf("stripFormat = %q, want %q", got, "abc")
-	}
-	if got := stripFormat(""); got != "" {
-		t.Fatalf("stripFormat(empty) = %q", got)
-	}
-}
-
-// TestEmojiFaceIsLastAndNeverShadowsText is the invariant that keeps the emoji
-// family safe to chain: it maps "#", "*" and the digits (the keycap-sequence
+// TestEmojiFaceNeverShadowsText is the invariant that keeps the emoji family
+// safe to chain last: it maps "#", "*" and the digits (the keycap-sequence
 // bases), so were it ordered before a text face, ordinary digits would start
-// rendering as emoji glyphs. Routing picks the FIRST covering face, so the
-// primary must still win for all of them.
-func TestEmojiFaceIsLastAndNeverShadowsText(t *testing.T) {
-	tf := getFace(16, false)
-	for _, r := range []rune{'0', '5', '9', '#', '*', ' ', '©', '®', 'A', 'z'} {
-		if f := tf.faceFor(r); f != tf.face {
-			t.Errorf("U+%04X %q resolved to a fallback face; the primary must serve it", r, r)
-		}
+// rendering as emoji glyphs. Measuring against the bare Latin primary proves the
+// chain never reaches the emoji face for them.
+func TestEmojiFaceNeverShadowsText(t *testing.T) {
+	latinOnly, err := toolkit.NewTrueTypeFont(goregular.TTF, 16)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// And a pure-Latin string still takes the kerned fast path.
-	if !tf.primaryCovers("Total solar eclipses, 2026.") {
-		t.Fatal("a plain Latin string should be fully covered by the primary")
+	tf := getFace(16, false)
+	for _, s := range []string{"0123456789", "#", "*", " ", "\u00A9", "\u00AE", "Az"} {
+		if got, want := tf.width(s), latinOnly.Measure(s); got != want {
+			t.Errorf("%q measures %d through the chain, %d through the Latin face alone — "+
+				"a later face claimed it", s, got, want)
+		}
 	}
 }

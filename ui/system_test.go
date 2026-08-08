@@ -9,21 +9,21 @@ import (
 )
 
 // withSysFont installs a system font for the duration of a test and restores the
-// embedded Go fonts (clearing the face cache) afterwards, so the other tests in
+// embedded Go fonts (clearing the font cache) afterwards, so the other tests in
 // the package keep rendering with the deterministic bundled typeface.
 func withSysFont(t *testing.T, ttf []byte) {
 	t.Helper()
-	faceMu.Lock()
-	old := sysFontSrc
-	faceMu.Unlock()
+	ttMu.Lock()
+	old := sysFontTTF
+	ttMu.Unlock()
 	if !SetSystemFont(ttf) {
 		t.Fatal("SetSystemFont returned false for a valid font")
 	}
 	t.Cleanup(func() {
-		faceMu.Lock()
-		sysFontSrc = old
-		faceCache = map[faceKey]textFace{}
-		faceMu.Unlock()
+		ttMu.Lock()
+		sysFontTTF = old
+		ttCache = map[faceKey]toolkit.Font{}
+		ttMu.Unlock()
 	})
 }
 
@@ -31,34 +31,62 @@ func TestSetSystemFontInvalid(t *testing.T) {
 	if SetSystemFont([]byte("not a font")) {
 		t.Fatal("expected false for unparseable bytes")
 	}
-	faceMu.Lock()
-	got := sysFontSrc
-	faceMu.Unlock()
+	ttMu.Lock()
+	got := sysFontTTF
+	ttMu.Unlock()
 	if got != nil {
 		t.Fatal("a failed parse must leave the embedded fonts in place")
 	}
 }
 
-func TestSystemFontFacesAndSynthBold(t *testing.T) {
+// TestSystemFontSynthesisesBold checks the host-typeface path. A system font is
+// one variable font for every weight and the rasteriser reaches only its Regular
+// master, so "bold" has to be over-struck — otherwise every heading would draw
+// at body weight. goregular stands in for SFNS here: what matters is that the
+// SAME face is asked for both weights.
+func TestSystemFontSynthesisesBold(t *testing.T) {
 	withSysFont(t, goregular.TTF)
-	if reg := getFace(15, false); reg.synthBold {
-		t.Fatal("regular face must not synthesise bold")
+	const s = "Bold"
+	reg, bold := getFace(15, false), getFace(15, true)
+
+	// The over-strike widens the run by exactly the extra column it paints.
+	if bold.width(s) != reg.width(s)+1 {
+		t.Fatalf("bold width %d, regular %d — want one over-strike column more",
+			bold.width(s), reg.width(s))
 	}
-	bold := getFace(15, true)
-	if !bold.synthBold {
-		t.Fatal("bold from a single-instance system font must synthesise bold")
+	if bold.height != reg.height {
+		t.Fatal("over-striking must not change the line height")
 	}
-	// The synth-bold over-strike pass must actually render.
-	img := image.NewRGBA(image.Rect(0, 0, 120, 24))
-	bold.draw(img, 2, 2, "Bold", toolkit.RGBA{R: 0xFF, A: 0xFF})
-	lit := 0
-	for i := 0; i < len(img.Pix); i += 4 {
-		if img.Pix[i] != 0 {
-			lit++
+
+	ink := func(tf textFace) int {
+		img := image.NewRGBA(image.Rect(0, 0, 160, 30))
+		tf.draw(img, 2, 2, s, toolkit.RGBA{R: 0xFF, A: 0xFF})
+		n := 0
+		for i := 0; i < len(img.Pix); i += 4 {
+			if img.Pix[i] != 0 {
+				n++
+			}
 		}
+		return n
 	}
-	if lit == 0 {
-		t.Fatal("synth-bold draw produced no pixels")
+	regInk, boldInk := ink(reg), ink(bold)
+	if regInk == 0 {
+		t.Fatal("the system face drew nothing")
+	}
+	if boldInk <= regInk {
+		t.Fatalf("synth bold painted %d px, regular %d — it must be heavier", boldInk, regInk)
+	}
+}
+
+// TestSystemFontIsActuallyUsed checks the installed typeface really replaces the
+// embedded primary, rather than being accepted and ignored.
+func TestSystemFontIsActuallyUsed(t *testing.T) {
+	before := getFace(15, true).width("Heading")
+	withSysFont(t, goregular.TTF)
+	// The embedded bold face and goregular-as-system differ in weight, so the
+	// same string cannot measure the same through both.
+	if after := getFace(15, true).width("Heading"); after == before {
+		t.Fatal("installing a system font did not change what the bold face renders")
 	}
 }
 

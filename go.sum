@@ -52,6 +52,8 @@ github.com/go-opentype/opentype v0.5.0 h1:++VoqgbXgYACyTTNzUAivoxW9M3m2gxWMAn6bI
 github.com/go-opentype/opentype v0.5.0/go.mod h1:AOixevJf7XQaH7+WG+OMIOZEbYPXfMqklVk26Y6YTUU=
 github.com/go-opentype/shape v0.3.3 h1:oo6e/cnA4VYmQ7T8epr6OoO3mQS4zC2PrT2jMx2orAE=
 github.com/go-opentype/shape v0.3.3/go.mod h1:oVq3kFGx6kIHKrFXfxqnp8JUYR7k9NzeY+E17LYHhrU=
+github.com/go-opentype/shape v0.4.0 h1:Yz8ooo9+7HlzuzS72YWjJVM22GNGFf6jcxWfNNJOsng=
+github.com/go-opentype/shape v0.4.0/go.mod h1:7kybm69yrtRgQnjaxPyYI9nPRFFdBdzlrmjcYCBfCbg=
 github.com/go-reddit/reddit v0.1.0 h1:/b6+4BKEBSnSIVAuWEYaLU4d01tjfcsu+LQea3OFSw4=
 github.com/go-reddit/reddit v0.1.0/go.mod h1:/zGZliQ8lN+iGyVAiGzeGGkY+rQBZNlF4JwAnRaYEGI=
 github.com/go-sourcemap/sourcemap v2.1.3+incompatible h1:W1iEw64niKVGogNgBN3ePyLFfuisuzeidWPMPWmECqU=
@@ -72,6 +74,10 @@ github.com/go-widgets/toolkit v0.124.0 h1:o+DOb6jZdEuq2y4yWNLKwXSxlbdPaFjBYO918H
 github.com/go-widgets/toolkit v0.124.0/go.mod h1:RfJFcIy5JU/klT40+hC1U6qB5DCOh3W92mi7pBvnfe0=
 github.com/go-widgets/toolkit v0.127.0 h1:8ldvVeRiOQOBvTQXoSu1w8CmEnYLOlU3ZTK/gtqwQBw=
 github.com/go-widgets/toolkit v0.127.0/go.mod h1:hekxU+C0moasoJPAI366VWNiZBbRSAjloC0tKnwXkWY=
+github.com/go-widgets/toolkit v0.128.0 h1:P+aj+oy1xFd8zRGVJnTyYe0smqTvXKYEL5X5z9IaW/c=
+github.com/go-widgets/toolkit v0.128.0/go.mod h1:RLuErcjKAA5AbWOw9/FfVakvaDk8faeWaL7ZkKRZi3I=
+github.com/go-widgets/toolkit v0.129.0 h1:Byw4tL1Kj9ugNBdKPAYSMJOBIhYRwTCdNwH/BW6Kq90=
+github.com/go-widgets/toolkit v0.129.0/go.mod h1:RLuErcjKAA5AbWOw9/FfVakvaDk8faeWaL7ZkKRZi3I=
 github.com/go-widgets/tray v0.1.1 h1:6wpYFpfkObLbxmrI8IyqcP528Ml+OrVT+msRjSpncDg=
 github.com/go-widgets/tray v0.1.1/go.mod h1:qftThNTUbYYsk/oWCjDvwDNRIojtYhY6zRZLP6c001A=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
