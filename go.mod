@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/ebitengine/purego v0.10.2
 	github.com/go-atproto/atproto v0.1.0
-	github.com/go-birdsite/twitter v0.1.0
+	github.com/go-birdsite/twitter v0.2.0
 	github.com/go-browserhttp/browserhttp v0.2.0
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-iconoir/iconoir v0.1.0
