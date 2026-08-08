@@ -4,8 +4,8 @@ import (
 	"image"
 	"testing"
 
+	"github.com/go-opentype/fonts/goregular"
 	"github.com/go-widgets/toolkit"
-	"golang.org/x/image/font/gofont/goregular"
 )
 
 // withSysFont installs a system font for the duration of a test and restores the

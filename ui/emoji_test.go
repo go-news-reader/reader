@@ -4,8 +4,8 @@ import (
 	"image"
 	"testing"
 
+	"github.com/go-opentype/fonts/goregular"
 	"github.com/go-widgets/toolkit"
-	"golang.org/x/image/font/gofont/goregular"
 )
 
 // feedEmoji is a spread of the pictographs a real feed actually carries — moon

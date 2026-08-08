@@ -4,6 +4,7 @@ import (
 	"image"
 	"sync"
 
+	"github.com/go-opentype/fonts/goregular"
 	"github.com/go-opentype/fonts/notoemoji"
 	"github.com/go-opentype/fonts/notosansarabic"
 	"github.com/go-opentype/fonts/notosansarmenian"
@@ -16,8 +17,6 @@ import (
 	"github.com/go-opentype/fonts/notosansthai"
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
-	"golang.org/x/image/font/gofont/gobold"
-	"golang.org/x/image/font/gofont/goregular"
 )
 
 // This file gives the reader real, anti-aliased text. The go-widgets toolkit
@@ -149,7 +148,7 @@ func uiPrimary(bold bool, px int) (f toolkit.Font, synthBold bool) {
 	}
 	src := goregular.TTF
 	if bold {
-		src = gobold.TTF
+		src = goregular.BoldTTF
 	}
 	p, _ := toolkit.NewTrueTypeFont(src, px)
 	return p, false

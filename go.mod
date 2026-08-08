@@ -18,7 +18,7 @@ require (
 	github.com/go-newsgroups/nzb v0.1.0
 	github.com/go-newsgroups/par2 v0.1.0
 	github.com/go-newsgroups/yenc v0.1.0
-	github.com/go-opentype/fonts v0.6.0
+	github.com/go-opentype/fonts v0.7.0
 	github.com/go-reddit/reddit v0.1.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
@@ -28,7 +28,6 @@ require (
 	github.com/go-widgets/toolkit v0.129.0
 	github.com/go-widgets/tray v0.1.1
 	github.com/jezek/xgb v1.3.1
-	golang.org/x/image v0.44.0
 	golang.org/x/sys v0.47.0
 )
 
@@ -51,6 +50,7 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/image v0.44.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 )
