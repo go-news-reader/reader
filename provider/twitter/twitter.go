@@ -3,7 +3,9 @@
 // channel is a public account screen name (with or without a leading "@").
 //
 // This provider is inherently fragile: Twitter/X locks these endpoints and
-// often needs an auth token; blocked requests surface as errors.
+// changes their shape without notice. It does NOT need an auth token for public
+// timelines — it needs a browser-fingerprinting HTTP client, which is what the
+// endpoint actually checks.
 package twitter
 
 import (
@@ -11,14 +13,20 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	gotw "github.com/go-birdsite/twitter"
+	"github.com/go-browserhttp/browserhttp"
 
 	"github.com/go-news-reader/reader/source"
 )
 
 // ErrNoChannel is returned when Feed is called without a screen name.
 var ErrNoChannel = errors.New("twitter: Query.Channel must be a screen name")
+
+// defaultTimeout bounds a timeline read on the client this package builds for
+// itself (when the caller supplies none).
+const defaultTimeout = 30 * time.Second
 
 // client is the slice of *gotw.Client the adapter uses; an interface for tests.
 type client interface {
@@ -27,12 +35,11 @@ type client interface {
 
 // Provider fetches a public account's tweets as normalized items.
 type Provider struct {
-	client  client
-	hasCred bool // an auth token was configured
+	client client
 }
 
-// New returns a provider. authToken is an optional bearer token for
-// authenticated reads (empty for anonymous, best-effort).
+// New returns a provider. authToken is an optional bearer token; public
+// timelines do not need one.
 func New(authToken string) *Provider { return newWith(nil, authToken) }
 
 // NewWithHTTPClient returns a provider whose reads go through hc (e.g. the
@@ -41,16 +48,20 @@ func NewWithHTTPClient(hc *http.Client, authToken string) *Provider {
 	return newWith(hc, authToken)
 }
 
-// newWith builds the provider, wiring hc when non-nil.
+// newWith builds the provider. When the caller supplies no client this builds a
+// browser-fingerprint one rather than falling back to net/http's default: the
+// syndication endpoint answers 429 to Go's stock transport whatever the account
+// quota says, because it fingerprints the TLS/HTTP2 handshake. The stock client
+// is not a degraded path here, it is a guaranteed failure.
 func newWith(hc *http.Client, authToken string) *Provider {
-	var opts []gotw.Option
-	if hc != nil {
-		opts = append(opts, gotw.WithHTTPClient(hc))
+	if hc == nil {
+		hc = browserhttp.NewClient(defaultTimeout)
 	}
+	opts := []gotw.Option{gotw.WithHTTPClient(hc)}
 	if authToken != "" {
 		opts = append(opts, gotw.WithAuthToken(authToken))
 	}
-	return &Provider{client: gotw.New(opts...), hasCred: authToken != ""}
+	return &Provider{client: gotw.New(opts...)}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
@@ -68,39 +79,85 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	}
 	tl, err := p.client.UserTweets(ctx, name)
 	if err != nil {
-		// Heuristic for this best-effort scraper: X locks these endpoints and
-		// usually needs an auth token, so any failure with no token configured
-		// (or an explicit 401/403) is really "give me a token". Transient errors
-		// with a token set pass through untouched.
-		if !p.hasCred || source.ErrHasAuthStatus(err) {
-			return source.Result{}, source.NeedsAuth(source.Twitter, "session/token required")
-		}
-		return source.Result{}, err
+		return source.Result{}, mapErr(name, err)
 	}
 
 	items := make([]source.Item, 0, len(tl.Tweets))
 	for _, tw := range tl.Tweets {
-		items = append(items, mapTweet(tw))
+		items = append(items, mapTweet(tw, name))
 	}
 	return source.Result{Items: items}, nil
 }
 
-func mapTweet(tw gotw.Tweet) source.Item {
+// mapErr translates a client failure into what the user should actually do
+// about it. Only a genuinely non-public account is a sign-in problem; a
+// fingerprint refusal and a missing account are not, and reporting either as
+// "session/token required" (as this provider used to, for every error) sends the
+// user off to find a credential that would not have helped.
+func mapErr(name string, err error) error {
+	switch {
+	case errors.Is(err, gotw.ErrProtected):
+		return source.NeedsAuth(source.Twitter, "@"+name+" is not public")
+	case errors.Is(err, gotw.ErrNotFound):
+		return errors.New("twitter: no such account @" + name)
+	case errors.Is(err, gotw.ErrFingerprinted):
+		return errors.New("twitter: X refused the request (429) — it fingerprints the HTTP client; " +
+			"this provider must run on a browser-fingerprinting client")
+	default:
+		return err
+	}
+}
+
+// mapTweet normalizes one tweet into a feed item, keyed to the subscribed
+// account name.
+//
+// A retweet is unwrapped: its content, author, media, counts and permalink all
+// come from the ORIGINAL tweet, because the wrapper carries only a truncated
+// "RT @x: …" stub with zero likes and zero replies — which is what the feed used
+// to show. The timestamp stays the retweet's own, so the item sorts where it
+// actually appeared in the timeline, exactly as a Twitter client orders it.
+func mapTweet(tw gotw.Tweet, channel string) source.Item {
+	o := tw.Original()
 	it := source.Item{
 		ID:        tw.ID,
 		Source:    source.Twitter,
-		Channel:   tw.Author,
-		Author:    tw.Author,
-		Body:      tw.Text,
-		Permalink: tw.Permalink,
-		Score:     tw.Likes,
-		Comments:  tw.Replies,
+		Channel:   channel,
+		Author:    displayName(o.User),
+		Body:      body(o),
+		Permalink: o.Permalink,
+		Link:      o.PrimaryLink(),
+		Score:     o.Likes,
+		Comments:  o.Replies,
 		Created:   source.UnixOrZero(tw.CreatedAt),
+		NSFW:      o.Sensitive,
 	}
-	for _, m := range tw.Media {
+	for _, m := range o.Media {
+		// URL stays the still image even for a video: it is the preview frame
+		// (media_url_https), which is what a card thumbnail needs. Kind records
+		// what the attachment really is.
 		it.Media = append(it.Media, source.Media{URL: m.URL, Kind: mediaKind(m.Type)})
 	}
 	return it
+}
+
+// body is the tweet's readable text: every t.co resolved to its destination,
+// with a quoted tweet appended so the reply is not left dangling without the
+// thing it replies to.
+func body(t gotw.Tweet) string {
+	out := t.ExpandedText()
+	if q := t.Quoted; q != nil {
+		out = strings.TrimRight(out, "\n") + "\n\n— @" + q.User.ScreenName + ": " + q.ExpandedText()
+	}
+	return out
+}
+
+// displayName prefers the author's real name over the handle, falling back to
+// the handle when the payload carries no name.
+func displayName(u gotw.User) string {
+	if n := strings.TrimSpace(u.Name); n != "" {
+		return n
+	}
+	return u.ScreenName
 }
 
 func mediaKind(t string) source.MediaKind {
