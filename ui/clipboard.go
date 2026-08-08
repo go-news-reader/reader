@@ -66,6 +66,13 @@ func (s *Scene) currentArticle() (source.Item, bool) {
 // exactly what to copy); then the whole article being read (detail item, else
 // the preview item) as plain text.
 func (s *Scene) Copy() bool {
+	// A focused topbar search field copies its query (with a select-all
+	// highlight), so Cmd/Ctrl+C works there like any text field.
+	if s.searchFocused && s.searchEntry.Text != "" {
+		s.searchCopied = true
+		s.touch()
+		return s.copyToClipboard(s.searchEntry.Text)
+	}
 	if s.webPreviewItem() && s.browser.AddressFocused() {
 		if _, ok := s.browser.CopyAddress(); ok {
 			s.touch()

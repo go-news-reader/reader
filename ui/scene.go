@@ -227,6 +227,10 @@ type Scene struct {
 	// reflects vm.SearchFocus onto (SearchEntry is itself focus-agnostic).
 	searchEntry   *toolkit.SearchEntry
 	searchFocused bool
+	// searchCopied marks that Cmd/Ctrl+C just copied the search query, so the
+	// topbar paints a select-all highlight over it (visual feedback of what was
+	// copied). Cleared on any edit or focus change.
+	searchCopied bool
 
 	// Detail (reading) view: ModeDetail shows a single opened item in-app.
 	mode         Mode
@@ -839,8 +843,9 @@ func (s *Scene) InvalidateSearch() { s.touch() }
 // SearchFocused reports whether the search field has keyboard focus.
 func (s *Scene) SearchFocused() bool { return s.searchFocused }
 
-// FocusSearch gives (or removes) keyboard focus to the search field.
-func (s *Scene) FocusSearch(v bool) { s.searchFocused = v; s.touch() }
+// FocusSearch gives (or removes) keyboard focus to the search field. A focus
+// change dismisses the copied-highlight.
+func (s *Scene) FocusSearch(v bool) { s.searchFocused = v; s.searchCopied = false; s.touch() }
 
 // TypeRune appends r to whichever text field currently has focus: the topbar
 // search (feed view) or the channel/rename/cache field (settings view).
@@ -882,6 +887,7 @@ func (s *Scene) TypeRune(r rune) {
 		// Feed the printable rune through the SearchEntry widget itself, so the
 		// widget's OnChange (bound to vm.Search) fires exactly as a real widget
 		// keypress would.
+		s.searchCopied = false // an edit dismisses the copied-highlight
 		s.searchEntry.OnEvent(toolkit.Event{Kind: toolkit.EventChar, Code: string(r)})
 		s.touch()
 	}
@@ -912,6 +918,7 @@ func (s *Scene) Backspace() {
 		return
 	}
 	if s.searchFocused && s.searchEntry.Text != "" {
+		s.searchCopied = false // an edit dismisses the copied-highlight
 		s.searchEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
 		s.touch()
 	}
