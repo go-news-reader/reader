@@ -1,0 +1,234 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"image"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/go-news-reader/reader/source"
+	"github.com/go-news-reader/reader/ui"
+)
+
+// webPost is a non-Usenet item carrying one remote image, the shape whose
+// thumbnail nothing used to fetch.
+func webPost(id, url string) source.Item {
+	return source.Item{ID: id, Source: source.Twitter, Channel: "NASA", Score: -1, Comments: -1,
+		Body: "post " + id, Media: []source.Media{{URL: url, Kind: source.MediaImage}}}
+}
+
+// imageServer serves a real PNG at /ok, a 404 at /missing and non-image bytes at
+// /notimage, and reports how many requests it saw.
+func imageServer(t *testing.T) (*httptest.Server, func() int) {
+	t.Helper()
+	var mu sync.Mutex
+	n := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		n++
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/missing":
+			w.WriteHeader(http.StatusNotFound)
+		case "/notimage":
+			io.WriteString(w, "this is not an image")
+		default:
+			w.Header().Set("Content-Type", "image/png")
+			w.Write(pngBytes(8, 6))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() int { mu.Lock(); defer mu.Unlock(); return n }
+}
+
+// TestPrefetchMediaFetchesAndSetsThumbs is the end-to-end check: a feed of
+// remote-image posts ends up with decoded thumbnails in the scene.
+func TestPrefetchMediaFetchesAndSetsThumbs(t *testing.T) {
+	srv, hits := imageServer(t)
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+	// Synchronous fetch so the assertion does not race the goroutines.
+	a.SetMediaFetchHook(func(reqs []ui.MediaRequest) { a.loadMediaThumbs(context.Background(), reqs) })
+
+	a.scene.SetItems([]source.Item{
+		webPost("a", srv.URL+"/a.png"),
+		webPost("b", srv.URL+"/b.png"),
+	})
+	a.PrefetchMedia()
+
+	for _, id := range []string{"a", "b"} {
+		if !a.scene.HasThumb(id) {
+			t.Fatalf("item %q has no thumbnail after prefetch", id)
+		}
+		img := a.scene.Thumbs[id]
+		if img == nil || img.Bounds().Dx() != 8 || img.Bounds().Dy() != 6 {
+			t.Fatalf("item %q thumbnail = %v, want the served 8x6 image", id, img)
+		}
+	}
+	if got := hits(); got != 2 {
+		t.Fatalf("server saw %d requests, want 2", got)
+	}
+
+	// A second prefetch asks for nothing: both items are already decoded.
+	a.PrefetchMedia()
+	if got := hits(); got != 2 {
+		t.Fatalf("server saw %d requests after re-prefetch, want no refetch", got)
+	}
+}
+
+// TestPrefetchMediaNoRequestsIsNoOp checks an empty feed never reaches the hook.
+func TestPrefetchMediaNoRequestsIsNoOp(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	called := false
+	a.SetMediaFetchHook(func([]ui.MediaRequest) { called = true })
+	a.PrefetchMedia() // no items at all
+	if called {
+		t.Fatal("prefetch with nothing to fetch should not call the hook")
+	}
+}
+
+// TestPrefetchMediaUsesHook checks PrefetchMedia routes through the seam, with
+// the requests the scene derived.
+func TestPrefetchMediaUsesHook(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	var got []ui.MediaRequest
+	a.SetMediaFetchHook(func(reqs []ui.MediaRequest) { got = reqs })
+	a.scene.SetItems([]source.Item{webPost("x", "https://i/x.png")})
+	a.PrefetchMedia()
+	if len(got) != 1 || got[0].ID != "x" || got[0].URL != "https://i/x.png" {
+		t.Fatalf("hook got %+v", got)
+	}
+}
+
+// TestLoadMediaThumbsSkipsFailures checks a failing item leaves the scene alone
+// rather than failing the batch: only the good one gets a thumbnail.
+func TestLoadMediaThumbsSkipsFailures(t *testing.T) {
+	srv, _ := imageServer(t)
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+
+	a.loadMediaThumbs(context.Background(), []ui.MediaRequest{
+		{ID: "good", URL: srv.URL + "/ok.png"},
+		{ID: "gone", URL: srv.URL + "/missing"},
+		{ID: "junk", URL: srv.URL + "/notimage"},
+	})
+	if !a.scene.HasThumb("good") {
+		t.Fatal("the decodable image should have produced a thumbnail")
+	}
+	for _, id := range []string{"gone", "junk"} {
+		if a.scene.HasThumb(id) {
+			t.Fatalf("item %q should have no thumbnail", id)
+		}
+	}
+}
+
+func TestFetchThumbRejectsUnusableResponses(t *testing.T) {
+	srv, _ := imageServer(t)
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+	ctx := context.Background()
+
+	// A URL that cannot even be turned into a request.
+	if img := a.fetchThumb(ctx, "://\x7f bad"); img != nil {
+		t.Fatal("a malformed URL should yield no thumbnail")
+	}
+	// A transport failure (nothing listening).
+	if img := a.fetchThumb(ctx, "http://127.0.0.1:1/x.png"); img != nil {
+		t.Fatal("an unreachable host should yield no thumbnail")
+	}
+	// A non-200 answer.
+	if img := a.fetchThumb(ctx, srv.URL+"/missing"); img != nil {
+		t.Fatal("a 404 should yield no thumbnail")
+	}
+	// A 200 that is not an image.
+	if img := a.fetchThumb(ctx, srv.URL+"/notimage"); img != nil {
+		t.Fatal("non-image bytes should yield no thumbnail")
+	}
+	// The happy path, for contrast.
+	if img := a.fetchThumb(ctx, srv.URL+"/ok.png"); img == nil {
+		t.Fatal("a served PNG should decode")
+	}
+}
+
+// TestFetchThumbBodyReadError covers the read failure mid-body, which no real
+// server reproduces on demand.
+func TestFetchThumbBodyReadError(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = &http.Client{Transport: brokenBodyRT{}}
+	if img := a.fetchThumb(context.Background(), "https://example.invalid/x.png"); img != nil {
+		t.Fatal("a body that fails to read should yield no thumbnail")
+	}
+}
+
+// TestFetchThumbReDecodeError covers the "bounded fine, re-decode failed"
+// branch, unreachable without the decodeImage seam.
+func TestFetchThumbReDecodeError(t *testing.T) {
+	srv, _ := imageServer(t)
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+
+	orig := decodeImage
+	decodeImage = func(io.Reader) (image.Image, string, error) {
+		return nil, "", errors.New("decode boom")
+	}
+	defer func() { decodeImage = orig }()
+
+	if img := a.fetchThumb(context.Background(), srv.URL+"/ok.png"); img != nil {
+		t.Fatal("a failed re-decode should yield no thumbnail")
+	}
+}
+
+// TestSetMediaSyncBlocksUntilFetched checks the one-shot CLI seam: after
+// SetMediaSync, PrefetchMedia returns with the thumbnail already in the scene,
+// so a PNG rendered straight afterwards carries the image rather than a
+// placeholder.
+func TestSetMediaSyncBlocksUntilFetched(t *testing.T) {
+	srv, _ := imageServer(t)
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+	a.SetMediaSync()
+
+	a.scene.SetItems([]source.Item{webPost("sync", srv.URL+"/s.png")})
+	a.PrefetchMedia()
+
+	if !a.scene.HasThumb("sync") {
+		t.Fatal("SetMediaSync must leave the thumbnail decoded when PrefetchMedia returns")
+	}
+}
+
+// TestDefaultMediaFetchIsAsync exercises the production seam installed by New:
+// it runs the download on its own goroutine and lands the thumbnail in the
+// scene. The scene write goes through post, so drain it as the render thread.
+func TestDefaultMediaFetchIsAsync(t *testing.T) {
+	srv, _ := imageServer(t)
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+	a.DeferSceneWrites() // queue scene writes instead of applying them inline
+
+	a.scene.SetItems([]source.Item{webPost("async", srv.URL+"/a.png")})
+	a.PrefetchMedia() // default hook: go loadMediaThumbs(...)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for !a.scene.HasThumb("async") {
+		if time.Now().After(deadline) {
+			t.Fatal("async fetch never delivered a thumbnail")
+		}
+		a.drainScene()
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+type brokenBodyRT struct{}
+
+func (brokenBodyRT) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: 200, Body: io.NopCloser(errBody{}), Header: make(http.Header)}, nil
+}
+
+type errBody struct{}
+
+func (errBody) Read([]byte) (int, error) { return 0, errors.New("read boom") }

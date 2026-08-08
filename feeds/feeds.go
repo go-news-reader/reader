@@ -127,6 +127,19 @@ func loggedClient(rec *httplog.Recorder) *http.Client {
 	return hc
 }
 
+// MediaClient returns the HTTP client to fetch media bytes with (feed
+// thumbnails), logging into rec when non-nil. It is deliberately the same
+// browser-fingerprint client the providers use: media hosts fingerprint the TLS
+// handshake exactly as the API hosts do, so a stock http.Client would silently
+// fetch nothing. Unlike loggedClient it always returns a usable client, because
+// a caller without a recorder still has to download.
+func MediaClient(rec *httplog.Recorder) *http.Client {
+	if hc := loggedClient(rec); hc != nil {
+		return hc
+	}
+	return browserhttp.NewClient(30 * time.Second)
+}
+
 // newX registers provider X on the shared logged client hc when present, else on
 // the provider's own default constructor (unchanged behaviour).
 
