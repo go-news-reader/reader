@@ -370,10 +370,13 @@ func (s *Scene) previewContent() previewBody {
 	titleFace := getFace(rpxOf(s, 17), true)
 	bodyFace := getFace(rpxOf(s, 14), false)
 	it := s.previewItem
+	// Wrap with the SAME fonts drawPreview draws these lines with (stock toolkit
+	// Labels carrying ttFont), not with the textFaces whose heights size the
+	// rows — see wrapMeasured.
 	d := previewBody{
 		innerX: x, innerW: w, titleFace: titleFace, bodyFace: bodyFace,
-		titleLines: wrapText(titleFace, it.Title, w),
-		bodyLines:  wrapText(bodyFace, stripHTML(it.Body), w),
+		titleLines: wrapMeasured(ttFont(true, rpxOf(s, 17)).Measure, it.Title, w),
+		bodyLines:  wrapMeasured(ttFont(false, rpxOf(s, 14)).Measure, stripHTML(it.Body), w),
 		meta:       metaLine(it),
 	}
 	gap := rpxOf(s, 8)
@@ -467,7 +470,7 @@ func (s *Scene) layoutPreview() {
 // fixed web-preview header.
 func (s *Scene) previewHeaderLines() []string {
 	_, w := s.previewInner()
-	lines := wrapText(getFace(rpxOf(s, 17), true), s.previewItem.Title, w)
+	lines := wrapMeasured(ttFont(true, rpxOf(s, 17)).Measure, s.previewItem.Title, w)
 	if len(lines) > 2 {
 		lines = lines[:2]
 	}
