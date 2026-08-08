@@ -196,10 +196,11 @@ func (h *Handler) MouseDown(x, y int) {
 		s.ToggleAccountBool(hit.Value)
 	default:
 		vm.FocusSearch(false)
-		// A press on the reading view's body (no interactive target here) starts a
-		// text selection; a release without a drag leaves it empty, so a plain
-		// click just clears any prior selection.
-		if s.Mode() == ui.ModeDetail {
+		// A press on a reading surface (the detail view, or the preview pane's
+		// text summary — no interactive target here) starts a text selection; a
+		// release without a drag leaves it empty, so a plain click just clears any
+		// prior selection.
+		if s.SelectableAt(x, y) {
 			s.SelectionBegin(x, y)
 		}
 	}

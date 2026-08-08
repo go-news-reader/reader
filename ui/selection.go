@@ -65,3 +65,19 @@ func (s *Scene) ClearSelection() {
 
 // HasSelection reports whether a non-empty text selection is active.
 func (s *Scene) HasSelection() bool { return !s.textSel.IsEmpty() }
+
+// SelectableAt reports whether a press at screen point (x, y) should begin a
+// text selection: the reading surfaces whose runs are collected each frame —
+// the full-screen detail view, or the preview pane's text summary (not the
+// embedded web browser, which handles its own selection). A front-end consults
+// it before starting a drag-selection.
+func (s *Scene) SelectableAt(x, y int) bool {
+	switch {
+	case s.mode == ModeDetail:
+		return true
+	case s.mode == ModeFeed && s.previewHas && !s.webPreviewItem():
+		return inRect(s.previewR, x, y)
+	default:
+		return false
+	}
+}
