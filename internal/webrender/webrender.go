@@ -64,8 +64,16 @@ type Engine struct{ e *engine.Engine }
 
 // New returns an Engine renderer using go-webengine's browser-like HTTP client
 // (Chrome TLS fingerprint, cookie jar, redirect following) — the same
-// go-browserhttp stack the reader's providers use.
-func New() *Engine { return &Engine{e: engine.New()} }
+// go-browserhttp stack the reader's providers use. MetaFallback is enabled so a
+// page the engine can't hydrate (a JS-only SPA — Mastodon, X, …) renders a
+// readable OpenGraph card (title + text + image) instead of a blank pane; the
+// fallback only triggers when the real render is empty, so normal pages are
+// unaffected.
+func New() *Engine {
+	e := engine.New()
+	e.MetaFallback = true
+	return &Engine{e: e}
+}
 
 // WithEngine wraps a pre-configured *engine.Engine (e.g. with a custom HTTP
 // client, for tests or a shared client). A nil engine falls back to New's.
