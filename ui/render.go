@@ -350,6 +350,7 @@ type topbarKey struct {
 	theme    *toolkit.Theme
 	search   string
 	focused  bool
+	copied   bool // a select-all highlight over the search text after a copy
 }
 
 // sidebarSprite renders (or reuses) the sidebar column at local origin.
@@ -496,7 +497,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	m := s.m
 	th := s.theme
-	k := topbarKey{w: s.W, sidebarW: m.sidebarW, scale: s.Scale, theme: th, search: s.searchEntry.Text, focused: s.searchFocused}
+	k := topbarKey{w: s.W, sidebarW: m.sidebarW, scale: s.Scale, theme: th, search: s.searchEntry.Text, focused: s.searchFocused, copied: s.searchCopied}
 	if s.topbarSpr != nil && s.topbarKey == k {
 		return s.topbarSpr
 	}
@@ -521,6 +522,18 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	se.Draw(p, th)
 	if s.searchFocused {
 		p.StrokeRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Accent, rpxOf(s, 2))
+	}
+	// After a copy, paint a translucent select-all highlight OVER the query text
+	// (visual feedback of what went to the clipboard). SearchEntry.Draw fills its
+	// own background, so the highlight must go on top — a translucent accent lets
+	// the glyphs show through (a real selection look). The text origin mirrors
+	// SearchEntry.Draw exactly (PadX + the icon slot) so it lines up.
+	if s.searchCopied && s.searchEntry.Text != "" {
+		f := se.Font
+		tx := s.searchR.X + toolkit.SearchEntryPadX + toolkit.SearchEntryIconW
+		hl := th.Accent
+		hl.A = 0x55
+		p.FillRect(painter.Rect{X: tx, Y: s.searchR.Y + (s.searchR.H-f.Height())/2, W: f.Measure(s.searchEntry.Text), H: f.Height()}, hl)
 	}
 	s.topbarKey, s.topbarSpr = k, img
 	return img

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -50,6 +51,77 @@ func TestCopyToClipboard(t *testing.T) {
 	// Real text is written to the toolkit clipboard and reported.
 	if !s.copyToClipboard("hello") || toolkit.ClipboardText() != "hello" {
 		t.Fatalf("copy wrote %q", toolkit.ClipboardText())
+	}
+}
+
+func TestCopySearchField(t *testing.T) {
+	toolkit.SetClipboard(nil)
+	s := New(1000, 600, ThemeFor(OSMac, false))
+	s.SetScale(1)
+
+	// Not focused → the search field is not the copy target.
+	s.SetSearch("golang")
+	if s.searchCopied {
+		t.Fatal("searchCopied should start false")
+	}
+
+	// Focused with text → Cmd/Ctrl+C copies the query + arms the highlight.
+	s.FocusSearch(true)
+	if !s.Copy() {
+		t.Fatal("copy from the focused search field should report true")
+	}
+	if toolkit.ClipboardText() != "golang" {
+		t.Fatalf("search copy = %q", toolkit.ClipboardText())
+	}
+	if !s.searchCopied {
+		t.Fatal("copy should arm the search select-all highlight")
+	}
+	// Drawing paints the highlight (covers the topbar highlight branch). Prove it
+	// actually changes pixels in the search band: render with the highlight, then
+	// without, and require the search-box rows to differ.
+	band := func() []byte {
+		buf := make([]byte, s.W*s.H*4)
+		s.Draw(buf)
+		r := s.searchR
+		out := make([]byte, 0, r.W*r.H*4)
+		for y := r.Y; y < r.Y+r.H; y++ {
+			o := (y*s.W + r.X) * 4
+			out = append(out, buf[o:o+r.W*4]...)
+		}
+		return out
+	}
+	withHL := band()
+	s.searchCopied = false // same text/focus, highlight off
+	withoutHL := band()
+	if bytes.Equal(withHL, withoutHL) {
+		t.Fatal("the copied-highlight did not change any pixels in the search band")
+	}
+	s.searchCopied = true // restore for the clear-path checks below
+
+	// Typing dismisses the highlight.
+	s.TypeRune('x')
+	if s.searchCopied {
+		t.Fatal("typing should dismiss the search highlight")
+	}
+	// Re-copy, then Backspace dismisses it.
+	s.Copy()
+	s.Backspace()
+	if s.searchCopied {
+		t.Fatal("backspace should dismiss the search highlight")
+	}
+	// Re-copy, then a focus change dismisses it.
+	s.Copy()
+	s.FocusSearch(false)
+	if s.searchCopied {
+		t.Fatal("blur should dismiss the search highlight")
+	}
+
+	// Focused but empty → not the copy target (falls through).
+	s.SetSearch("")
+	s.FocusSearch(true)
+	toolkit.SetClipboard(nil)
+	if s.Copy() {
+		t.Fatal("empty focused search should not be the copy target")
 	}
 }
 
