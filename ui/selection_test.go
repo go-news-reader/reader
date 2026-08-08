@@ -82,6 +82,45 @@ func TestSelectionClickClearsAndFallsBackToArticle(t *testing.T) {
 	s.SelectionEnd()
 }
 
+func TestSelectableAt(t *testing.T) {
+	s := New(1000, 700, ThemeFor(OSMac, false))
+	s.SetScale(1)
+
+	// Detail (reading) view: selectable anywhere.
+	s.OpenDetail(source.Item{Source: source.HackerNews, Title: "T", Body: "b"})
+	if !s.SelectableAt(5, 5) {
+		t.Fatal("detail view should be selectable")
+	}
+	s.CloseDetail()
+
+	// Feed + a non-web preview (text summary): selectable inside the pane only.
+	s.SelectPreview(source.Item{Source: source.HackerNews, Title: "T", Body: "body text"})
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	pr := s.previewR
+	if pr.W == 0 {
+		t.Fatal("preview pane not laid out")
+	}
+	if !s.SelectableAt(pr.X+pr.W/2, pr.Y+pr.H/2) {
+		t.Fatal("inside the preview text pane should be selectable")
+	}
+	if s.SelectableAt(pr.X-5, pr.Y+pr.H/2) {
+		t.Fatal("left of the preview pane (the feed) must not text-select")
+	}
+
+	// Feed + a web preview: the embedded browser handles selection, not us.
+	s.SelectPreview(source.Item{Source: source.HackerNews, Title: "W", Link: "https://ex.com/a"})
+	if s.SelectableAt(pr.X+pr.W/2, pr.Y+pr.H/2) {
+		t.Fatal("a web preview must not start a text selection")
+	}
+
+	// Feed with nothing previewed: not selectable (default branch).
+	s2 := New(800, 600, ThemeFor(OSMac, false))
+	if s2.SelectableAt(400, 300) {
+		t.Fatal("no preview → not selectable")
+	}
+}
+
 func TestSelectionFillMix(t *testing.T) {
 	s := New(400, 300, ThemeFor(OSMac, false))
 	fill := s.selectionFill()
