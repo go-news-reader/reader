@@ -11,6 +11,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -79,6 +80,13 @@ type App struct {
 	// image into the preview pane, keyed by id. A field so tests can substitute a
 	// synchronous variant.
 	previewFetch func(id string, parts []usenet.ReconstructPart)
+
+	// mediaFetch triggers the asynchronous download+decode of the shown feed's
+	// remote thumbnails (every source but Usenet, whose images arrive over NNTP).
+	// A field so tests can substitute a synchronous, network-free variant.
+	// mediaClient is the browser-fingerprint http.Client it downloads through.
+	mediaFetch  func(reqs []ui.MediaRequest)
+	mediaClient *http.Client
 
 	// webFetch triggers the asynchronous render of a target page (the embedded
 	// browser's OnNavigate seam). A field so tests can substitute a synchronous
@@ -237,6 +245,10 @@ func New(cfg Config) *App {
 	a.loadGroups = func(force bool) { go a.doLoadGroups(context.Background(), force) }
 	a.previewFetch = func(id string, parts []usenet.ReconstructPart) {
 		go a.loadPreviewImage(context.Background(), id, parts)
+	}
+	a.mediaClient = feeds.MediaClient(cfg.Recorder)
+	a.mediaFetch = func(reqs []ui.MediaRequest) {
+		go a.loadMediaThumbs(context.Background(), reqs)
 	}
 	a.webRender = webrender.New()
 	a.webFetch = func(target string, width int) {
@@ -524,6 +536,7 @@ func (a *App) Refresh(ctx context.Context) []error {
 		a.vm.SetStatus(firstNonAuthError(errs))
 	})
 	a.post(a.PrefetchImages) // prefetch shown Usenet images in parallel (UI thread)
+	a.post(a.PrefetchMedia)  // and every other source's remote thumbnails over HTTP
 	return errs
 }
 
@@ -560,6 +573,7 @@ func (a *App) RefreshStreaming(ctx context.Context) []error {
 		})
 	})
 	a.post(a.PrefetchImages) // prefetch shown Usenet images in parallel (UI thread)
+	a.post(a.PrefetchMedia)  // and every other source's remote thumbnails over HTTP
 	return compactErrs(byIndex)
 }
 
