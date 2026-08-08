@@ -156,6 +156,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	a := buildApp(cfg)
+	// The one-shot paths render the moment Refresh returns, so fetch the feed's
+	// thumbnails inline: an async fetch would always lose that race and emit an
+	// image full of placeholders.
+	a.SetMediaSync()
 
 	for _, e := range a.Refresh(context.Background()) {
 		fmt.Fprintln(stderr, "warning:", e)
