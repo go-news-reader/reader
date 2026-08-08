@@ -14,6 +14,8 @@ github.com/go-atproto/atproto v0.1.0 h1:gdf/+JTPEq9z51JMmvH6huiBT6WIpOTfhbPMS3QV
 github.com/go-atproto/atproto v0.1.0/go.mod h1:0ir15Nin/oDgaeIPBpG2ncndlITx0Z9ZFzExl48M0SM=
 github.com/go-birdsite/twitter v0.1.0 h1:s6xFl2oG6b8/o+nkth3Nr992bq+wSVsz/HYqeTBIZtU=
 github.com/go-birdsite/twitter v0.1.0/go.mod h1:K81gyFwTIuec82tIz/Ffo4mOqT/obIqjHhyUnbbmcOc=
+github.com/go-birdsite/twitter v0.2.0 h1:9Z2NmuBlijGFk79IxK/Pp5WQ8TUg4gHSoYHnh7fd/rI=
+github.com/go-birdsite/twitter v0.2.0/go.mod h1:K81gyFwTIuec82tIz/Ffo4mOqT/obIqjHhyUnbbmcOc=
 github.com/go-browserhttp/browserhttp v0.2.0 h1:3RcjOQVHgqhSOmI5cfsURpexw/vetoDUoLXKzgTCSac=
 github.com/go-browserhttp/browserhttp v0.2.0/go.mod h1:VJiwBxLetXdc8eDadOcNbiO0EelNQPny0cLZhg1hTKU=
 github.com/go-datetime/dates v0.1.0 h1:Uj8TaTZ09DXdq75EGQ/teFdrXpfVAC3ZDHAPQvPTnaA=

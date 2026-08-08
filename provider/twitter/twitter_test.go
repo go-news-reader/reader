@@ -3,7 +3,9 @@ package twitter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +25,20 @@ func (f *fakeClient) UserTweets(_ context.Context, screenName string) (*gotw.Tim
 	return f.tl, f.err
 }
 
+// feedOne runs one tweet through the provider and returns the mapped item.
+func feedOne(t *testing.T, tw gotw.Tweet, channel string) source.Item {
+	t.Helper()
+	p := NewWithClient(&fakeClient{tl: &gotw.Timeline{Tweets: []gotw.Tweet{tw}}})
+	res, err := p.Feed(context.Background(), source.Query{Channel: channel})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(res.Items))
+	}
+	return res.Items[0]
+}
+
 func TestNewWithHTTPClient(t *testing.T) {
 	if p := NewWithHTTPClient(&http.Client{}, "tok"); p.client == nil {
 		t.Fatal("client not set from injected HTTP client")
@@ -38,23 +54,42 @@ func TestKindAndNew(t *testing.T) {
 	}
 }
 
+// TestNewBuildsFingerprintClient checks the no-client constructor does not fall
+// back to net/http's default: the endpoint 429s the stock transport whatever the
+// quota says, so that fallback was a guaranteed failure, not a degraded path.
+func TestNewBuildsFingerprintClient(t *testing.T) {
+	p := New("")
+	c, ok := p.client.(*gotw.Client)
+	if !ok {
+		t.Fatalf("client = %T, want *gotw.Client", p.client)
+	}
+	if c.HTTPClient == nil || c.HTTPClient == http.DefaultClient {
+		t.Fatalf("HTTPClient = %v, want a dedicated fingerprinting client", c.HTTPClient)
+	}
+	if c.HTTPClient.Timeout != defaultTimeout {
+		t.Fatalf("timeout = %v, want %v", c.HTTPClient.Timeout, defaultTimeout)
+	}
+	if c.AuthToken != "" {
+		t.Fatalf("token = %q, want none", c.AuthToken)
+	}
+	// A supplied token is threaded through.
+	withTok, _ := New("tok").client.(*gotw.Client)
+	if withTok.AuthToken != "tok" {
+		t.Fatalf("token = %q, want %q", withTok.AuthToken, "tok")
+	}
+}
+
 func TestFeedNoChannel(t *testing.T) {
 	if _, err := NewWithClient(&fakeClient{}).Feed(context.Background(), source.Query{Channel: "@"}); !errors.Is(err, ErrNoChannel) {
 		t.Fatalf("want ErrNoChannel, got %v", err)
 	}
 }
 
-func TestFeedError(t *testing.T) {
-	p := NewWithClient(&fakeClient{err: errors.New("403")})
-	if _, err := p.Feed(context.Background(), source.Query{Channel: "jack"}); err == nil {
-		t.Fatal("want error")
-	}
-}
-
 func TestFeedMap(t *testing.T) {
 	f := &fakeClient{tl: &gotw.Timeline{Tweets: []gotw.Tweet{{
 		ID: "1", Text: "hi", Author: "jack", Permalink: "https://twitter.com/jack/status/1",
-		CreatedAt: time.Unix(1700000000, 0), Likes: 5, Replies: 2,
+		User:      gotw.User{ScreenName: "jack", Name: "Jack D."},
+		CreatedAt: time.Unix(1700000000, 0), Likes: 5, Replies: 2, Sensitive: true,
 		Media: []gotw.Media{{URL: "p", Type: "photo"}, {URL: "v", Type: "video"}, {URL: "g", Type: "animated_gif"}, {URL: "x", Type: "other"}},
 	}}}}
 	p := NewWithClient(f)
@@ -66,8 +101,8 @@ func TestFeedMap(t *testing.T) {
 		t.Fatalf("screen name = %q (@ should be stripped)", f.got)
 	}
 	it := res.Items[0]
-	if it.ID != "1" || it.Author != "jack" || it.Channel != "jack" || it.Body != "hi" ||
-		it.Score != 5 || it.Comments != 2 || it.Created != 1700000000 {
+	if it.ID != "1" || it.Author != "Jack D." || it.Channel != "jack" || it.Body != "hi" ||
+		it.Score != 5 || it.Comments != 2 || it.Created != 1700000000 || !it.NSFW {
 		t.Fatalf("item %+v", it)
 	}
 	wantKinds := []source.MediaKind{source.MediaImage, source.MediaVideo, source.MediaGIF, source.MediaImage}
@@ -81,27 +116,134 @@ func TestFeedMap(t *testing.T) {
 	}
 }
 
-func TestFeedAuthError(t *testing.T) {
-	// No token configured: any failure prompts for a token.
-	p := NewWithClient(&fakeClient{err: errors.New("twitter: GET jack: unexpected status 500")})
-	_, err := p.Feed(context.Background(), source.Query{Channel: "jack"})
-	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Twitter {
-		t.Fatalf("no-cred failure not mapped to AuthError: %v", err)
+// TestFeedExpandsLinks checks t.co URLs are resolved in the body and the first
+// external destination becomes Item.Link, which is what drives the in-app web
+// preview — it used to stay empty, so a tweet never previewed anything.
+func TestFeedExpandsLinks(t *testing.T) {
+	it := feedOne(t, gotw.Tweet{
+		ID: "1", Text: "watch https://t.co/AAA now https://t.co/BBB",
+		User: gotw.User{ScreenName: "nasa", Name: "NASA"},
+		Links: []gotw.Link{
+			{URL: "https://t.co/AAA", Expanded: "https://x.com/nasa/status/1/photo/1"},
+			{URL: "https://t.co/BBB", Expanded: "http://nasa.gov/live"},
+		},
+	}, "nasa")
+
+	if strings.Contains(it.Body, "t.co") {
+		t.Fatalf("body still carries a shortened link: %q", it.Body)
 	}
-	// With a token, an explicit 403 still prompts.
-	p2 := NewWithClient(&fakeClient{err: errors.New("twitter: unexpected status 403")})
-	p2.hasCred = true
-	if _, err := p2.Feed(context.Background(), source.Query{Channel: "jack"}); func() bool {
-		_, ok := source.AsAuthError(err)
-		return !ok
-	}() {
-		t.Fatal("403 with cred not mapped to AuthError")
+	if !strings.Contains(it.Body, "http://nasa.gov/live") {
+		t.Fatalf("body = %q, want the expanded destination", it.Body)
 	}
-	// With a token, a transient error passes through.
-	p3 := NewWithClient(&fakeClient{err: errors.New("twitter: __NEXT_DATA__ not found")})
-	p3.hasCred = true
-	_, err = p3.Feed(context.Background(), source.Query{Channel: "jack"})
-	if _, ok := source.AsAuthError(err); ok {
-		t.Fatalf("transient error misclassified as auth: %v", err)
+	// The self-link is skipped in favour of the real article.
+	if it.Link != "http://nasa.gov/live" {
+		t.Fatalf("link = %q", it.Link)
 	}
+}
+
+// TestFeedUnwrapsRetweets is the substance of the retweet fix: the wrapper is a
+// truncated "RT @x: …" stub with zero likes and zero replies, which is what the
+// feed used to display. The item must carry the ORIGINAL tweet's content,
+// author, media, counts and permalink — but keep the retweet's own timestamp, so
+// it sorts where it appeared in the timeline.
+func TestFeedUnwrapsRetweets(t *testing.T) {
+	original := gotw.Tweet{
+		ID: "inner", Text: "the real content", Permalink: "https://twitter.com/spox/status/inner",
+		User:      gotw.User{ScreenName: "spox", Name: "Bethany Stevens"},
+		CreatedAt: time.Unix(1600000000, 0), Likes: 510, Replies: 42,
+		Media: []gotw.Media{{URL: "https://pbs/thumb.jpg", Type: "video"}},
+	}
+	rt := gotw.Tweet{
+		ID: "outer", Text: "RT @spox: the real conte…", Permalink: "https://twitter.com/nasa/status/outer",
+		User:      gotw.User{ScreenName: "nasa", Name: "NASA"},
+		CreatedAt: time.Unix(1700000000, 0), Likes: 0, Replies: 0,
+		Retweeted: &original,
+	}
+	it := feedOne(t, rt, "nasa")
+
+	if it.ID != "outer" {
+		t.Fatalf("ID = %q, want the timeline entry's own id", it.ID)
+	}
+	if it.Body != "the real content" {
+		t.Fatalf("body = %q, want the original's text", it.Body)
+	}
+	if it.Author != "Bethany Stevens" {
+		t.Fatalf("author = %q, want the original author", it.Author)
+	}
+	if it.Channel != "nasa" {
+		t.Fatalf("channel = %q, want the subscribed account", it.Channel)
+	}
+	if it.Score != 510 || it.Comments != 42 {
+		t.Fatalf("counts = %d/%d, want the original's 510/42 (the stub reports zeroes)", it.Score, it.Comments)
+	}
+	if it.Permalink != original.Permalink {
+		t.Fatalf("permalink = %q, want the original tweet", it.Permalink)
+	}
+	if len(it.Media) != 1 || it.Media[0].Kind != source.MediaVideo {
+		t.Fatalf("media = %+v, want the original's video", it.Media)
+	}
+	if it.Created != 1700000000 {
+		t.Fatalf("created = %d, want the retweet's own time (timeline order)", it.Created)
+	}
+}
+
+// TestFeedAppendsQuotedTweet checks a quote is not left dangling without the
+// thing it quotes.
+func TestFeedAppendsQuotedTweet(t *testing.T) {
+	quoted := gotw.Tweet{ID: "q", Text: "the quoted claim", User: gotw.User{ScreenName: "someone"}}
+	it := feedOne(t, gotw.Tweet{
+		ID: "1", Text: "this is wrong\n", User: gotw.User{ScreenName: "nasa", Name: "NASA"},
+		Quoted: &quoted,
+	}, "nasa")
+
+	if !strings.Contains(it.Body, "this is wrong") || !strings.Contains(it.Body, "@someone: the quoted claim") {
+		t.Fatalf("body = %q, want the quote appended", it.Body)
+	}
+	if strings.Contains(it.Body, "wrong\n\n\n") {
+		t.Fatalf("body = %q, trailing newlines should be trimmed before appending", it.Body)
+	}
+}
+
+func TestDisplayNameFallsBackToHandle(t *testing.T) {
+	if got := displayName(gotw.User{ScreenName: "jack", Name: "  "}); got != "jack" {
+		t.Fatalf("got %q, want the handle when there is no name", got)
+	}
+	if got := displayName(gotw.User{ScreenName: "jack", Name: "Jack"}); got != "Jack" {
+		t.Fatalf("got %q, want the display name", got)
+	}
+}
+
+// TestFeedErrorClassification is the diagnosis fix: this provider used to report
+// EVERY failure as "session/token required", sending the user off to find a
+// credential that would not have helped. Only a non-public account is actually a
+// sign-in problem.
+func TestFeedErrorClassification(t *testing.T) {
+	authCase := func(t *testing.T, err error, wantAuth bool, wantText string) {
+		t.Helper()
+		p := NewWithClient(&fakeClient{err: err})
+		_, got := p.Feed(context.Background(), source.Query{Channel: "jack"})
+		ae, isAuth := source.AsAuthError(got)
+		if isAuth != wantAuth {
+			t.Fatalf("%v → auth=%v, want %v (mapped: %v)", err, isAuth, wantAuth, got)
+		}
+		if wantAuth && ae.Kind != source.Twitter {
+			t.Fatalf("auth error kind = %v", ae.Kind)
+		}
+		if !strings.Contains(got.Error(), wantText) {
+			t.Fatalf("%v → %q, want it to mention %q", err, got, wantText)
+		}
+	}
+
+	t.Run("protected is a sign-in problem", func(t *testing.T) {
+		authCase(t, fmt.Errorf("%w: @jack", gotw.ErrProtected), true, "not public")
+	})
+	t.Run("fingerprint refusal is not", func(t *testing.T) {
+		authCase(t, fmt.Errorf("%w (@jack)", gotw.ErrFingerprinted), false, "fingerprints")
+	})
+	t.Run("unknown account is not", func(t *testing.T) {
+		authCase(t, fmt.Errorf("%w: @jack", gotw.ErrNotFound), false, "no such account")
+	})
+	t.Run("anything else passes through untouched", func(t *testing.T) {
+		authCase(t, errors.New("twitter: __NEXT_DATA__ not found"), false, "__NEXT_DATA__")
+	})
 }
