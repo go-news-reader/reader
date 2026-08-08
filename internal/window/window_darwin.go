@@ -17,7 +17,6 @@
 package window
 
 import (
-	"fmt"
 	"image/color"
 	"os"
 	"runtime"
@@ -25,8 +24,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/ebitengine/purego"
-	"github.com/ebitengine/purego/objc"
+	objc "github.com/go-macos/objc"
 	"github.com/go-widgets/tray"
 
 	"github.com/go-news-reader/reader/internal/appicon"
@@ -45,7 +43,6 @@ var (
 	selSetActivationPolicy       = objc.RegisterName("setActivationPolicy:")
 	selActivateIgnoringOtherApps = objc.RegisterName("activateIgnoringOtherApps:")
 	selRun                       = objc.RegisterName("run")
-	selStringWithUTF8String      = objc.RegisterName("stringWithUTF8String:")
 	selSetTitle                  = objc.RegisterName("setTitle:")
 	selSetContentView            = objc.RegisterName("setContentView:")
 	selContentView               = objc.RegisterName("contentView")
@@ -64,8 +61,6 @@ var (
 	selKeyCode                   = objc.RegisterName("keyCode")
 	selCharsIgnoringMods         = objc.RegisterName("charactersIgnoringModifiers")
 	selModifierFlags             = objc.RegisterName("modifierFlags")
-	selLengthOfBytes             = objc.RegisterName("lengthOfBytesUsingEncoding:")
-	selGetCString                = objc.RegisterName("getCString:maxLength:encoding:")
 	selInitBitmapRep             = objc.RegisterName("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:hasAlpha:isPlanar:colorSpaceName:bytesPerRow:bitsPerPixel:")
 	selDrawInRectFull            = objc.RegisterName("drawInRect:fromRect:operation:fraction:respectFlipped:hints:")
 	selScheduledTimer            = objc.RegisterName("scheduledTimerWithTimeInterval:target:selector:userInfo:repeats:")
@@ -103,7 +98,6 @@ const (
 const (
 	backingStoreBuffered = 2
 	activationPolicyReg  = 0 // NSApplicationActivationPolicyRegular
-	nsUTF8Encoding       = 4 // NSUTF8StringEncoding
 	frameInterval        = 1.0 / 60.0
 )
 
@@ -146,39 +140,19 @@ func loadFrameworks() error {
 	if frameworksLoaded {
 		return nil
 	}
-	for _, p := range []string{
-		"/System/Library/Frameworks/Foundation.framework/Foundation",
-		"/System/Library/Frameworks/AppKit.framework/AppKit",
-	} {
-		if _, err := purego.Dlopen(p, purego.RTLD_GLOBAL|purego.RTLD_NOW); err != nil {
-			return fmt.Errorf("window: dlopen %s: %w", p, err)
-		}
+	if err := objc.Load(objc.Foundation, objc.AppKit); err != nil {
+		return err
 	}
 	frameworksLoaded = true
 	return nil
 }
 
 // nsString builds an NSString from a Go string.
-func nsString(s string) objc.ID {
-	return objc.ID(objc.GetClass("NSString")).Send(selStringWithUTF8String, s)
-}
+func nsString(s string) objc.ID { return objc.NSString(s) }
 
 // goString copies an NSString's UTF-8 bytes into a Go-owned buffer, avoiding
 // any uintptr→Pointer arithmetic on the ObjC-owned bytes.
-func goString(nsstr objc.ID) string {
-	if nsstr == 0 {
-		return ""
-	}
-	n := int(nsstr.Send(selLengthOfBytes, nsUTF8Encoding))
-	if n <= 0 {
-		return ""
-	}
-	buf := make([]byte, n+1)
-	if nsstr.Send(selGetCString, unsafe.Pointer(&buf[0]), len(buf), nsUTF8Encoding) == 0 {
-		return ""
-	}
-	return string(buf[:n])
-}
+func goString(nsstr objc.ID) string { return objc.GoString(nsstr) }
 
 // classesOnce registers the view and agent classes exactly once.
 var (
@@ -191,7 +165,7 @@ var (
 func registerClasses() (objc.Class, objc.Class, error) {
 	classesOnce.Do(func() {
 		viewClass, classesErr = objc.RegisterClass(
-			"GoNewsReaderView", objc.GetClass("NSView"), nil, nil,
+			"GoNewsReaderView", objc.GetClass("NSView"),
 			[]objc.MethodDef{
 				{Cmd: objc.RegisterName("isFlipped"), Fn: viewIsFlipped},
 				{Cmd: objc.RegisterName("acceptsFirstResponder"), Fn: viewAcceptsFirstResponder},
@@ -206,7 +180,7 @@ func registerClasses() (objc.Class, objc.Class, error) {
 			return
 		}
 		agentClass, classesErr = objc.RegisterClass(
-			"GoNewsReaderAgent", objc.GetClass("NSObject"), nil, nil,
+			"GoNewsReaderAgent", objc.GetClass("NSObject"),
 			[]objc.MethodDef{
 				{Cmd: objc.RegisterName("tick:"), Fn: agentTick},
 				{Cmd: objc.RegisterName("windowDidResize:"), Fn: agentWindowDidResize},
