@@ -18,7 +18,7 @@ require (
 	github.com/go-newsgroups/nzb v0.1.0
 	github.com/go-newsgroups/par2 v0.1.0
 	github.com/go-newsgroups/yenc v0.1.0
-	github.com/go-opentype/fonts v0.5.0
+	github.com/go-opentype/fonts v0.6.0
 	github.com/go-reddit/reddit v0.1.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
