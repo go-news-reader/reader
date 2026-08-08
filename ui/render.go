@@ -618,18 +618,51 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 // grow a card so far.
 const cardTitleMaxLines = 3
 
+// cardBodyMaxLines is the same cap for a card whose headline is its body (see
+// cardText). It is higher than cardTitleMaxLines because a short post's whole
+// text IS the card: a tweet or a toot should read in full rather than stop at an
+// ellipsis three lines in.
+const cardBodyMaxLines = 5
+
+// cardText is the headline a feed card renders. Most sources title every post,
+// but the social ones — Twitter/X, Mastodon, Bluesky — have no title at all and
+// carry the entire post in Body, so a Title-only card rendered *blank* for them.
+// Falling back to the body makes those posts legible. The body is HTML-stripped
+// and collapsed to one flowing paragraph, because a card is a summary, not the
+// reading view: the blank lines a post embeds would otherwise burn the card's
+// few lines on whitespace.
+func cardText(it source.Item) string {
+	if t := strings.TrimSpace(it.Title); t != "" {
+		return t
+	}
+	return collapseSpace(stripHTML(it.Body))
+}
+
+// collapseSpace flattens every run of whitespace — including the newlines a
+// tweet or toot embeds — into single spaces.
+func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// cardMaxLines is how many wrapped headline lines a card may show: titled items
+// keep the historical three, a body fallback gets cardBodyMaxLines.
+func cardMaxLines(it source.Item) int {
+	if strings.TrimSpace(it.Title) != "" {
+		return cardTitleMaxLines
+	}
+	return cardBodyMaxLines
+}
+
 // titleLineH is the vertical slot one card-title line occupies — the same slot
 // the former single-line title used, so a one-line card is unchanged.
 func (s *Scene) titleLineH() int { return s.m.title.height + rpxOf(s, 4) }
 
-// cardTitleLines word-wraps it.Title to the card's text width (the card width w
+// cardTitleLines word-wraps cardText(it) to the card's text width (the card width w
 // less the horizontal padding, and the thumbnail column when the item has
 // media). It wraps with the exact toolkit font the title Labels render with (the
 // embedded Go bold face at rpx(15) via ttFont), measured through that font's own
 // Measure — NOT the getFace textFace — so the wrap decision matches the glyphs
 // that draw. A width mismatch between the two rasterisers would otherwise let a
 // line "fit" the wrap yet overflow the (ellipsis-less) Label and clip mid-word.
-// It never returns zero lines, and caps at cardTitleMaxLines, ellipsising the
+// It never returns zero lines, and caps at cardMaxLines(it), ellipsising the
 // last shown line so the cut is visible.
 func (s *Scene) cardTitleLines(it source.Item, w int) []string {
 	m := s.m
@@ -637,15 +670,16 @@ func (s *Scene) cardTitleLines(it source.Item, w int) []string {
 	if len(it.Media) > 0 {
 		textW -= m.thumbW + m.pad
 	}
+	text := cardText(it)
 	titleFont := ttFont(true, rpxOf(s, 15))
-	lines := wrapMeasured(titleFont.Measure, it.Title, textW)
+	lines := wrapMeasured(titleFont.Measure, text, textW)
 	if len(lines) == 0 {
-		return []string{it.Title} // whitespace/empty title still occupies one line
+		return []string{text} // an item with neither title nor body still occupies one line
 	}
-	if len(lines) > cardTitleMaxLines {
-		last := lines[cardTitleMaxLines-1]
-		lines = lines[:cardTitleMaxLines]
-		lines[cardTitleMaxLines-1] = truncateFont(titleFont, last+"…", textW)
+	if max := cardMaxLines(it); len(lines) > max {
+		last := lines[max-1]
+		lines = lines[:max]
+		lines[max-1] = truncateFont(titleFont, last+"…", textW)
 	}
 	return lines
 }
@@ -765,10 +799,11 @@ func (s *Scene) drawAuthBanner(p *painter.PixelPainter, img *image.RGBA, ap Auth
 // RSS items — would collide and blit the wrong card. Including Source + Title
 // disambiguates without hashing the whole item.
 // sameItem reports whether two items are the same post. it.ID is only unique
-// within a Source (and empty for some feeds), so identity is Source+ID+Title —
-// exactly what cardKey uses to avoid sprite collisions.
+// within a Source (and empty for some feeds), so identity is Source+ID+headline
+// — exactly what cardKey uses to avoid sprite collisions. The headline is
+// cardText, not Title, so untitled posts (tweets, toots) stay distinguishable.
 func sameItem(a, b source.Item) bool {
-	return a.Source == b.Source && a.ID == b.ID && a.Title == b.Title
+	return a.Source == b.Source && a.ID == b.ID && cardText(a) == cardText(b)
 }
 
 type cardKey struct {
@@ -789,7 +824,7 @@ func (s *Scene) cardSprite(it source.Item, w int, onAccent, muteS toolkit.RGBA) 
 	if s.Thumbs != nil {
 		thumb = s.Thumbs[it.ID]
 	}
-	k := cardKey{id: it.ID, src: it.Source, title: it.Title, w: w, scale: s.Scale, theme: s.theme, thumb: thumb}
+	k := cardKey{id: it.ID, src: it.Source, title: cardText(it), w: w, scale: s.Scale, theme: s.theme, thumb: thumb}
 	if s.cardCache == nil {
 		s.cardCache = map[cardKey]*image.RGBA{}
 	}
