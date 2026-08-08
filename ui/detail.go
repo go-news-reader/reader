@@ -57,10 +57,18 @@ func (s *Scene) detailContent() detailBody {
 	titleFace := getFace(rpxOf(s, 22), true)
 	bodyFace := getFace(rpxOf(s, 15), false)
 	it := s.detail
+	// Wrap with the SAME fonts drawDetail draws these lines with (stock toolkit
+	// Labels carrying ttFont), not with the textFace whose heights size the rows.
+	// wrapMeasured says so explicitly, and the feed card already obeys it: a line
+	// that "fits" one rasteriser can overflow the other and be clipped mid-word.
+	// Composed emoji widened the gap — a ZWJ sequence is two glyphs to the
+	// x/image measurer and one to the shaper that actually draws it.
+	titleWrap := ttFont(true, rpxOf(s, 22))
+	bodyWrap := ttFont(false, rpxOf(s, 15))
 	d := detailBody{
 		x: x, w: w, titleFace: titleFace, bodyFace: bodyFace,
-		titleLines: wrapText(titleFace, it.Title, w),
-		bodyLines:  wrapText(bodyFace, stripHTML(it.Body), w),
+		titleLines: wrapMeasured(titleWrap.Measure, it.Title, w),
+		bodyLines:  wrapMeasured(bodyWrap.Measure, stripHTML(it.Body), w),
 		meta:       metaLine(it),
 	}
 	gap := rpxOf(s, 10)
@@ -178,12 +186,6 @@ func (s *Scene) detailHitTest(x, y int) Hit {
 		return Hit{Kind: HitOpenExternal, Item: s.detail}
 	}
 	return Hit{Kind: HitNone}
-}
-
-// wrapText greedily word-wraps text to maxW pixels in face, preserving paragraph
-// breaks ("\n"). A word longer than maxW is left un-broken on its own line.
-func wrapText(face textFace, text string, maxW int) []string {
-	return wrapMeasured(face.width, text, maxW)
 }
 
 // wrapMeasured is the width-measurer-agnostic core of wrapText: it greedily

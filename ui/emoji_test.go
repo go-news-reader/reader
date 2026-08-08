@@ -75,6 +75,39 @@ func TestEmojiRenderInTheToolkitChain(t *testing.T) {
 	}
 }
 
+// TestZWJSequencesComposeToOneGlyph is the payoff of routing whole graphemes to
+// one face (toolkit v0.127.0): the sequence reaches the shaper intact, so the
+// GSUB ligature fires and 🧑‍🚀 is ONE astronaut rather than a person standing
+// next to a rocket. Before, the joiner was claimed by the Thai face — which
+// ships U+200D for its own shaping and sits earlier in the chain — and the
+// sequence arrived as three separate runs.
+func TestZWJSequencesComposeToOneGlyph(t *testing.T) {
+	f := ttFont(false, 32)
+	const (
+		person = "\U0001F9D1"
+		rocket = "\U0001F680"
+		zwj    = "‍"
+	)
+	one := f.Measure(person)
+	if one <= 0 {
+		t.Fatal("the emoji face measured nothing")
+	}
+	if got := f.Measure(person + zwj + rocket); got != one {
+		t.Fatalf("🧑‍🚀 measures %d, want one glyph's %d (un-composed would be %d)",
+			got, one, f.Measure(person+rocket))
+	}
+	// A three-part family sequence composes too.
+	family := "\U0001F468" + zwj + "\U0001F469" + zwj + "\U0001F466"
+	if got := f.Measure(family); got != one {
+		t.Fatalf("👨‍👩‍👦 measures %d, want one glyph's %d", got, one)
+	}
+	// The card wraps with this very measurer, so a composed sequence costs one
+	// glyph of line width rather than two.
+	if f.Measure("a"+person+zwj+rocket+"b") != f.Measure("a"+person+"b") {
+		t.Fatal("a sequence embedded in text did not compose")
+	}
+}
+
 // TestFormatCharactersAreNeverRasterised covers the defect that only becomes
 // visible once emoji render: an emoji sequence is held together by invisible
 // controls (🧑‍🚀 is person + ZWJ + rocket), and nothing in the chain has a glyph

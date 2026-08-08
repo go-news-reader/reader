@@ -116,22 +116,27 @@ func TestDetailScroll(t *testing.T) {
 }
 
 func TestWrapText(t *testing.T) {
-	f := getFace(14, false)
-	if wrapText(f, "   ", 100) != nil {
+	// wrapMeasured is the only wrapper now: wrapText, which defaulted to the
+	// textFace measurer, was removed because every caller draws with a
+	// toolkit.Font and must wrap against THAT font's metrics.
+	wrap := func(text string, maxW int) []string {
+		return wrapMeasured(getFace(14, false).width, text, maxW)
+	}
+	if wrap("   ", 100) != nil {
 		t.Fatal("blank -> nil")
 	}
-	if got := wrapText(f, "hi", 10000); len(got) != 1 || got[0] != "hi" {
+	if got := wrap("hi", 10000); len(got) != 1 || got[0] != "hi" {
 		t.Fatalf("fits = %v", got)
 	}
-	if got := wrapText(f, "one two three four five six seven eight nine ten", 60); len(got) < 2 {
+	if got := wrap("one two three four five six seven eight nine ten", 60); len(got) < 2 {
 		t.Fatalf("should wrap: %v", got)
 	}
 	// A single word wider than maxW stays on its own line.
-	if got := wrapText(f, "supercalifragilisticexpialidocious", 20); len(got) != 1 {
+	if got := wrap("supercalifragilisticexpialidocious", 20); len(got) != 1 {
 		t.Fatalf("long word = %v", got)
 	}
 	// Paragraph break preserved as a blank line.
-	got := wrapText(f, "a\n\nb", 1000)
+	got := wrap("a\n\nb", 1000)
 	if len(got) != 3 || got[1] != "" {
 		t.Fatalf("paragraphs = %v", got)
 	}
