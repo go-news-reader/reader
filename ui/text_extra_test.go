@@ -27,7 +27,11 @@ func TestGetFaceCJKFallback(t *testing.T) {
 	if f.faceFor('中') == f.face {
 		t.Fatal("CJK routes to a fallback face")
 	}
-	if f.faceFor('🙂') != f.face {
+	// U+E000 is a Private Use Area codepoint: no bundled face maps it, and none
+	// ever will, so it is a stable stand-in for "nothing covers this". (Emoji
+	// used to play that role here, until the chain gained Noto Emoji — they are
+	// now covered, which is what ui/emoji_test.go asserts.)
+	if f.faceFor('\uE000') != f.face {
 		t.Fatal("an uncovered rune falls back to the primary")
 	}
 	// Width: the fallback sum is positive and mixed text is wider than its Latin
@@ -35,9 +39,9 @@ func TestGetFaceCJKFallback(t *testing.T) {
 	if f.width("中文") <= 0 || f.width("Hi 中文") <= f.width("Hi ") {
 		t.Fatal("CJK width should be measured through the fallback")
 	}
-	// A rune no face covers (emoji) alongside CJK still measures (uncovered → the
+	// A rune no face covers alongside CJK still measures (uncovered → the
 	// primary's .notdef advance) without panicking.
-	if f.width("中🙂") < f.width("中") {
+	if f.width("中\uE000") < f.width("中") {
 		t.Fatal("an uncovered rune must not shrink the measured width")
 	}
 	// Draw the mixed run (fallback path) — expect painted pixels.

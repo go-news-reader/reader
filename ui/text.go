@@ -5,7 +5,9 @@ import (
 	"image/color"
 	"strings"
 	"sync"
+	"unicode"
 
+	"github.com/go-opentype/fonts/notoemoji"
 	"github.com/go-opentype/fonts/notosansarabic"
 	"github.com/go-opentype/fonts/notosansarmenian"
 	"github.com/go-opentype/fonts/notosansdevanagari"
@@ -100,6 +102,44 @@ func loadFallbacks() {
 	})
 }
 
+// isFormatRune reports whether r is an invisible control rather than a glyph:
+// a Unicode format character (category Cf — the zero-width joiner and space, the
+// word joiner, the soft hyphen, the BOM) or a variation selector (U+FE00..FE0F
+// and the supplement, which are category Mn, NOT Cf, so the Cf test alone misses
+// the VS16 every emoji presentation sequence ends with).
+//
+// Only the variation selectors are taken from Mn, never Mn at large: ordinary
+// combining marks carry meaning and must render, or Devanagari, Arabic and
+// Hebrew text would silently lose its diacritics.
+func isFormatRune(r rune) bool {
+	return unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Variation_Selector, r)
+}
+
+// stripFormat drops every format character from s.
+//
+// A renderer must never rasterise these, but nothing in the font chain has a
+// glyph for some of them, so the per-rune routing fell through to the primary
+// face's .notdef and painted a visible box mid-word — U+2060 WORD JOINER did
+// exactly that next to an emoji. Emoji sequences carry these characters by
+// construction (🧑‍🚀 is person + ZWJ + rocket), so displaying emoji at all means
+// handling them.
+//
+// It returns s itself when there is nothing to strip, so ordinary text costs one
+// scan and no allocation.
+func stripFormat(s string) string {
+	if !strings.ContainsFunc(s, isFormatRune) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if !isFormatRune(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // faceFor returns the first face in the chain that has a glyph for r, or the
 // primary when none does (so an unknown rune lands on the primary's .notdef).
 func (tf textFace) faceFor(r rune) font.Face {
@@ -165,6 +205,12 @@ var (
 // Arabic title next to Latin) needs per-rune font routing. go-opentype parses
 // each lazily (~1ms), and go:embed shares one copy of the bytes, so the chain is
 // cheap in time and memory despite the large CJK face.
+//
+// Noto Emoji is LAST, and must stay last. Both fallback paths route a rune to
+// the FIRST face that covers it, so a face this late can only ever claim runes
+// every text face declined. That matters here because the emoji family does map
+// a handful of ASCII — "#", "*" and the digits, the bases of the keycap emoji
+// sequences — which a text face must keep serving.
 var scriptFallbackTTFs = [][]byte{
 	notosanssc.TTF,         // Chinese + Han ideographs + kana
 	notosansjp.TTF,         // Japanese (kana + JP kanji forms)
@@ -175,6 +221,7 @@ var scriptFallbackTTFs = [][]byte{
 	notosanshebrew.TTF,     // Hebrew
 	notosansarmenian.TTF,   // Armenian
 	notosansgeorgian.TTF,   // Georgian
+	notoemoji.TTF,          // emoji + pictographs — keep LAST, see above
 }
 
 // ttFont returns a cached toolkit TrueType font at px pixels, regular or bold.
@@ -251,6 +298,7 @@ func getFace(px int, bold bool) textFace {
 // only when a rune falls outside the primary does it sum per-rune advances across
 // the fallback chain.
 func (tf textFace) width(s string) int {
+	s = stripFormat(s)
 	if len(tf.faces) <= 1 || tf.primaryCovers(s) {
 		return font.MeasureString(tf.face, s).Round()
 	}
@@ -290,6 +338,7 @@ func (tf textFace) clipRight(s string, w int) string {
 // alias the scene's RGBA buffer).
 func (tf textFace) draw(img *image.RGBA, x, top int, s string, col toolkit.RGBA) {
 	src := image.NewUniform(color.RGBA{R: col.R, G: col.G, B: col.B, A: 0xFF})
+	s = stripFormat(s)
 	// Fast path: the primary face covers every rune (all Latin UI text), drawn in
 	// one pass exactly as before.
 	if len(tf.faces) <= 1 || tf.primaryCovers(s) {
