@@ -3,7 +3,6 @@ module github.com/go-news-reader/reader
 go 1.26.4
 
 require (
-	github.com/ebitengine/purego v0.10.2
 	github.com/go-atproto/atproto v0.1.0
 	github.com/go-birdsite/twitter v0.2.0
 	github.com/go-browserhttp/browserhttp v0.2.0
@@ -12,6 +11,7 @@ require (
 	github.com/go-images/images v0.0.0-20260702213524-ea366b42f216
 	github.com/go-instagram/instagram v0.1.0
 	github.com/go-lemmy/lemmy v0.1.0
+	github.com/go-macos/objc v0.1.0
 	github.com/go-mastodon/mastodon v0.1.0
 	github.com/go-newsgroups/newznab v0.1.0
 	github.com/go-newsgroups/nntp v0.2.2
@@ -37,6 +37,7 @@ require (
 	github.com/breml/rootcerts v0.3.7 // indirect
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/dop251/goja v0.0.0-20260723142020-b4aef50fa347 // indirect
+	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-opentype/bidi v0.2.1 // indirect
