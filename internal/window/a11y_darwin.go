@@ -14,6 +14,30 @@
 // time the accessibility client asks, so it always describes the frame on screen
 // rather than a snapshot taken when the window opened.
 //
+// # KNOWN GAP: the children do not reach the accessibility tree yet
+//
+// Measured with an external client (AXUIElementCopyAttributeValue), validated
+// first against Finder so the instrument itself was known good: the app exposes
+// AXWindow "News Reader" with ZERO accessible children.
+//
+// Everything on this side is confirmed working. AppKit really does call
+// -accessibilityChildren (repeatedly). The handler really does return the full
+// tree. Every NSAccessibilityElement is created non-nil and added. The frames
+// are right at every step — for the burger button: 96x96 device pixels at
+// (0,0) -> 48x48 view points -> (8,652) in the window, y correctly flipped ->
+// (528,1082) on screen, on-screen and sane.
+//
+// So the elements are built correctly and AppKit discards them. The remaining
+// suspects, in order: a view reporting isAccessibilityElement=NO may be pruned
+// from the tree WITH its synthetic children rather than replaced by them; the
+// BOOL that method returns crosses purego as a Go bool and AppKit reads a
+// signed char; or synthetic children need
+// NSAccessibilityElement.accessibilityParent wired differently than the factory
+// does. Resolving it needs the next debugging session, not a guess here.
+//
+// Nothing below claims to work end to end. It is the correct shape with a
+// measured, isolated failure at the last hop.
+//
 //go:build darwin
 
 package window
@@ -25,7 +49,8 @@ import (
 var (
 	selAccessibilityElementWithRole = objc.RegisterName("accessibilityElementWithRole:frame:label:parent:")
 	selSetAccessibilityValue        = objc.RegisterName("setAccessibilityValue:")
-	selArrayWithObjects             = objc.RegisterName("arrayWithObjects:count:")
+	selArray                        = objc.RegisterName("array")
+	selAddObject                    = objc.RegisterName("addObject:")
 	selConvertRectToView            = objc.RegisterName("convertRect:toView:")
 	selConvertRectToScreen          = objc.RegisterName("convertRectToScreen:")
 )
@@ -59,8 +84,18 @@ func viewAccessibilityChildren(self objc.ID, _ objc.SEL) objc.ID {
 	scale := curScale
 	mu.Unlock()
 
+	// Collect into an NSMutableArray one object at a time. The obvious
+	// +arrayWithObjects:count: takes a C array, which means handing Objective-C a
+	// pointer into Go memory — a hazard worth removing on its own terms, though
+	// measurement showed it was not what is wrong here (see the KNOWN GAP above).
+	// Adding them one by one keeps every pointer on the Objective-C side.
+	arr := objc.ID(objc.GetClass("NSMutableArray")).Send(selArray)
+	if arr == 0 {
+		return 0
+	}
+	count := 0
+
 	elems := acc.A11yElements()
-	ids := make([]objc.ID, 0, len(elems))
 	for _, e := range elems {
 		if axSkip(e) {
 			continue
@@ -86,12 +121,13 @@ func viewAccessibilityChildren(self objc.ID, _ objc.SEL) objc.ID {
 		if e.Value != "" {
 			el.Send(selSetAccessibilityValue, nsString(e.Value))
 		}
-		ids = append(ids, el)
+		arr.Send(selAddObject, el)
+		count++
 	}
-	if len(ids) == 0 {
+	if count == 0 {
 		return 0
 	}
-	return objc.ID(objc.GetClass("NSArray")).Send(selArrayWithObjects, &ids[0], uint(len(ids)))
+	return arr
 }
 
 // a11yMethods are the accessibility overrides added to the view class. Kept
