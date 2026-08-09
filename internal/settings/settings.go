@@ -23,6 +23,25 @@ const (
 	ThemeDark   = "dark"
 )
 
+// Sign-in browser options. This is the browser the reader launches for a
+// provider's browser sign-in flow (today: Reddit). "default" opens the system
+// default browser; the named values target a specific installed browser.
+//
+// Cookie import (see [Settings] Reddit account handling) can only read Firefox's
+// plaintext cookies.sqlite, so [DefaultSignInBrowser] is Firefox — signing in
+// there is the one flow whose session the reader can subsequently import.
+const (
+	SignInBrowserDefault = "default"
+	SignInBrowserFirefox = "firefox"
+	SignInBrowserChrome  = "chrome"
+	SignInBrowserSafari  = "safari"
+	SignInBrowserEdge    = "edge"
+)
+
+// DefaultSignInBrowser is the browser a fresh install launches for sign-in:
+// Firefox, the only browser whose session cookie the reader can import.
+const DefaultSignInBrowser = SignInBrowserFirefox
+
 // Profile is a named tab grouping a subset of source subscriptions.
 type Profile struct {
 	Name string                `json:"name"`
@@ -57,6 +76,11 @@ type Settings struct {
 	// HideBrowserChrome hides the web-preview browser's toolbar + address bar
 	// (nav / zoom / URL), rendering the page chrome-free. Default false (shown).
 	HideBrowserChrome bool `json:"hideBrowserChrome,omitempty"`
+
+	// SignInBrowser names the browser the reader launches for a provider's
+	// browser sign-in flow (today: Reddit) — one of default|firefox|chrome|
+	// safari|edge. Blank means the default (Firefox); Normalize backfills it.
+	SignInBrowser string `json:"signInBrowser,omitempty"`
 }
 
 // Default zoom-shortcut base keys (a real-browser feel: Ctrl/Cmd + "="/"-").
@@ -204,6 +228,18 @@ func Default() *Settings {
 		BrowserSingleTab: boolPtr(DefaultBrowserSingleTab),
 		ZoomInKey:        DefaultZoomInKey,
 		ZoomOutKey:       DefaultZoomOutKey,
+		SignInBrowser:    DefaultSignInBrowser,
+	}
+}
+
+// ValidSignInBrowser reports whether name is a recognised sign-in browser.
+func ValidSignInBrowser(name string) bool {
+	switch name {
+	case SignInBrowserDefault, SignInBrowserFirefox, SignInBrowserChrome,
+		SignInBrowserSafari, SignInBrowserEdge:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -241,6 +277,11 @@ func (s *Settings) Normalize() {
 	}
 	if s.ZoomOutKey == "" {
 		s.ZoomOutKey = DefaultZoomOutKey
+	}
+	if !ValidSignInBrowser(s.SignInBrowser) {
+		// A blank field (a settings file predating it) or an unrecognised value
+		// falls back to the default sign-in browser (Firefox).
+		s.SignInBrowser = DefaultSignInBrowser
 	}
 	if s.BrowserSingleTab == nil {
 		// A settings file predating this field (or a fresh one) defaults to

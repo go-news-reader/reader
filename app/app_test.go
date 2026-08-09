@@ -599,6 +599,74 @@ func TestImportRedditSessionFromFirefoxFailure(t *testing.T) {
 	}
 }
 
+func TestLaunchRedditSignIn(t *testing.T) {
+	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit}), OS: ui.OSMac})
+	a.SetRefreshHook(func() {})
+
+	// No opener installed (the CLI front-ends never set one): error + status, and
+	// nothing is launched.
+	if err := a.LaunchRedditSignIn(); err == nil {
+		t.Fatal("LaunchRedditSignIn with no opener should error")
+	}
+	if got := a.VM().Status.Get(); !strings.Contains(got, "Cannot open") {
+		t.Fatalf("status = %q, want a no-opener message", got)
+	}
+
+	// Success: the opener runs with the configured browser and Reddit's login URL,
+	// and the status names the browser.
+	var gotBrowser, gotURL string
+	a.SetURLOpener(func(browser, url string) error { gotBrowser, gotURL = browser, url; return nil })
+	a.Scene().SetSignInBrowser(settings.SignInBrowserChrome)
+	if err := a.LaunchRedditSignIn(); err != nil {
+		t.Fatal(err)
+	}
+	if gotBrowser != settings.SignInBrowserChrome || gotURL != redditLoginURL {
+		t.Fatalf("opener args = %q,%q; want chrome,%q", gotBrowser, gotURL, redditLoginURL)
+	}
+	if got := a.VM().Status.Get(); !strings.Contains(got, "Chrome") {
+		t.Fatalf("status = %q, want it to name the browser", got)
+	}
+
+	// Failure: the opener's error surfaces on the status line.
+	a.SetURLOpener(func(string, string) error { return errors.New("boom") })
+	if err := a.LaunchRedditSignIn(); err == nil {
+		t.Fatal("opener error should propagate")
+	}
+	if got := a.VM().Status.Get(); !strings.Contains(got, "boom") {
+		t.Fatalf("status = %q, want the opener error", got)
+	}
+}
+
+func TestSignInBrowserLabel(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{settings.SignInBrowserFirefox, "Firefox"},
+		{settings.SignInBrowserChrome, "Chrome"},
+		{settings.SignInBrowserSafari, "Safari"},
+		{settings.SignInBrowserEdge, "Edge"},
+		{settings.SignInBrowserDefault, "your default browser"},
+	} {
+		if got := signInBrowserLabel(tc.in); got != tc.want {
+			t.Fatalf("signInBrowserLabel(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestImportRedditNonFirefoxHint(t *testing.T) {
+	// With a non-Firefox sign-in browser, a failed import spells out that cookie
+	// import requires Firefox (signing in elsewhere leaves nothing importable).
+	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit}), OS: ui.OSMac})
+	a.SetRefreshHook(func() {})
+	a.SetRegistryBuilder(func(feeds.Options) *source.Registry { return newReg() })
+	a.Scene().SetSignInBrowser(settings.SignInBrowserChrome)
+	a.SetCookieFinder(fakeCookieFinder{err: browsercookies.ErrNoCookie})
+	if _, err := a.ImportRedditSessionFromFirefox(); err == nil {
+		t.Fatal("want an import failure")
+	}
+	if got := a.VM().Status.Get(); !strings.Contains(got, "requires Firefox") {
+		t.Fatalf("status = %q, want the Firefox-only import hint", got)
+	}
+}
+
 func TestApplyAccountsNoStore(t *testing.T) {
 	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit})})
 	a.SetRegistryBuilder(func(feeds.Options) *source.Registry { return newReg() })

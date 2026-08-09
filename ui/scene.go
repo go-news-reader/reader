@@ -117,6 +117,7 @@ const (
 	HitFocusZoomIn   // focus the zoom-in browser-shortcut key input
 	HitFocusZoomOut  // focus the zoom-out browser-shortcut key input
 	HitTheme         // Value = "system"|"light"|"dark"
+	HitSignInBrowser // Value = "default"|"firefox"|"chrome"|"safari"|"edge" (sign-in browser)
 	HitBrowserTabs   // Value = "multi"|"single" (web-preview browser tab mode)
 	HitBrowserChrome // Value = "shown"|"hidden" (web-preview toolbar/urlbar visibility)
 	HitCloseSettings // leave the settings view
@@ -128,6 +129,7 @@ const (
 	HitFocusAccountField   // Value = credential field key to focus
 	HitToggleAccountBool   // Value = bool credential field key to flip (Usenet TLS)
 	HitImportRedditFirefox // the Reddit editor's "Import session from Firefox" button
+	HitRedditSignIn        // the Reddit editor's "Sign in to Reddit in browser" button
 )
 
 // Mode selects which view the scene renders.
@@ -186,6 +188,10 @@ type Scene struct {
 	themeName  string // "system"|"light"|"dark" (persisted)
 	cachePath  string // media cache dir (persisted, repositionable)
 
+	// signInBrowser is the browser launched for a provider's browser sign-in flow
+	// (today: Reddit) — default|firefox|chrome|safari|edge (persisted).
+	signInBrowser string
+
 	// Settings editor (ModeSettings) state.
 	selEdit      int          // profile being edited
 	sf           Focus        // which text field has keyboard focus
@@ -218,6 +224,7 @@ type Scene struct {
 	accBackR    toolkit.Rect
 	accDoneR    toolkit.Rect
 	accImportR  toolkit.Rect // Reddit-only "Import session from Firefox" button (zero when hidden)
+	accSignInR  toolkit.Rect // Reddit-only "Sign in to Reddit in browser" button (zero when hidden)
 
 	// Optional decoded thumbnails keyed by Item.ID (blitted when present).
 	Thumbs map[string]*image.RGBA
@@ -451,7 +458,8 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 		theme = toolkit.DefaultLight()
 	}
 	s := &Scene{W: w, H: h, theme: theme, Active: AllFilter, Scale: 1,
-		themeName: settings.ThemeSystem, newKind: source.Reddit,
+		themeName: settings.ThemeSystem, signInBrowser: settings.DefaultSignInBrowser,
+		newKind:   source.Reddit,
 		zoomInKey: '=', zoomOutKey: '-',
 		searchEntry: toolkit.NewSearchEntry(""),
 		browseEntry: toolkit.NewSearchEntry("")}
@@ -769,6 +777,20 @@ func (s *Scene) ThemeName() string { return s.themeName }
 // SetThemeName records the theme choice (the host resolves it to a palette).
 func (s *Scene) SetThemeName(name string) { s.themeName = name; s.touch() }
 
+// SignInBrowser returns the browser launched for a provider sign-in flow
+// (default|firefox|chrome|safari|edge).
+func (s *Scene) SignInBrowser() string { return s.signInBrowser }
+
+// SetSignInBrowser records the sign-in browser choice (unrecognised values fall
+// back to the default so the picker can never persist a bad value).
+func (s *Scene) SetSignInBrowser(name string) {
+	if !settings.ValidSignInBrowser(name) {
+		name = settings.DefaultSignInBrowser
+	}
+	s.signInBrowser = name
+	s.touch()
+}
+
 // CachePath returns the media cache directory.
 func (s *Scene) CachePath() string { return s.cachePath }
 
@@ -788,6 +810,7 @@ func (s *Scene) Settings() *settings.Settings {
 		Accounts:          s.EditedAccounts(),
 		BrowserSingleTab:  &singleTab,
 		HideBrowserChrome: s.BrowserChromeHidden(),
+		SignInBrowser:     s.signInBrowser,
 		ZoomInKey:         s.BrowserZoomInKey(),
 		ZoomOutKey:        s.BrowserZoomOutKey(),
 		Bookmarks:         s.BookmarkedURLs(),

@@ -13,6 +13,7 @@ import (
 	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/app"
+	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
@@ -45,6 +46,58 @@ func defaultOpenURL(url string) error {
 	return execStart(name, args...)
 }
 
+// openURLIn opens a URL in a specific browser. A package var so tests can
+// substitute it; the app calls it (via the SetURLOpener seam) for sign-in flows.
+var openURLIn = defaultOpenURLIn
+
+// openURLInBrowser returns the opener command + arguments that launch url in a
+// specific browser on goos. browser is one of the settings.SignInBrowser* values;
+// "default" (and any browser with no sensible command on this OS, e.g. Safari off
+// macOS) falls back to the default opener via browserCommand.
+func openURLInBrowser(goos, browser, url string) (string, []string) {
+	if browser == "" || browser == settings.SignInBrowserDefault {
+		return browserCommand(goos, url)
+	}
+	switch goos {
+	case "darwin":
+		if appName, ok := map[string]string{
+			settings.SignInBrowserFirefox: "Firefox",
+			settings.SignInBrowserChrome:  "Google Chrome",
+			settings.SignInBrowserSafari:  "Safari",
+			settings.SignInBrowserEdge:    "Microsoft Edge",
+		}[browser]; ok {
+			return "open", []string{"-a", appName, url}
+		}
+	case "windows":
+		// `start ""` opens via the shell's default handler for the given program;
+		// the empty first quoted argument is start's (ignored) window title.
+		if exe, ok := map[string]string{
+			settings.SignInBrowserFirefox: "firefox",
+			settings.SignInBrowserChrome:  "chrome",
+			settings.SignInBrowserEdge:    "msedge",
+		}[browser]; ok {
+			return "cmd", []string{"/c", "start", "", exe, url}
+		}
+	default:
+		if bin, ok := map[string]string{
+			settings.SignInBrowserFirefox: "firefox",
+			settings.SignInBrowserChrome:  "google-chrome",
+			settings.SignInBrowserEdge:    "microsoft-edge",
+		}[browser]; ok {
+			return bin, []string{url}
+		}
+	}
+	// Named browser with no sensible command on this OS (e.g. Safari on Linux, or
+	// Windows Safari): fall back to the platform default opener.
+	return browserCommand(goos, url)
+}
+
+// defaultOpenURLIn launches url in the named browser for the current platform.
+func defaultOpenURLIn(browser, url string) error {
+	name, args := openURLInBrowser(runtime.GOOS, browser, url)
+	return execStart(name, args...)
+}
+
 // Handler adapts an app to the presenter's data-source/input-sink interface.
 //
 // pending* records a text-selectable hit (a feed card, a sidebar row, or a
@@ -58,8 +111,14 @@ type Handler struct {
 	pendingHit bool
 }
 
-// New wraps a to be driven by a native window.
-func New(a *app.App) *Handler { return &Handler{a: a} }
+// New wraps a to be driven by a native window. It installs the platform browser
+// opener as the app's sign-in URL opener (through the openURLIn seam, so tests
+// substituting it are honoured), letting the app start a browser sign-in without
+// importing this package.
+func New(a *app.App) *Handler {
+	a.SetURLOpener(func(browser, url string) error { return openURLIn(browser, url) })
+	return &Handler{a: a}
+}
 
 // Frame returns the current framebuffer, its device dimensions, and whether it
 // changed since the last call.
@@ -220,6 +279,9 @@ func (h *Handler) runHit(hit ui.Hit) {
 	case ui.HitTheme:
 		s.SetThemeName(hit.Value)
 		h.a.ApplySceneSettings()
+	case ui.HitSignInBrowser:
+		s.SetSignInBrowser(hit.Value) // which browser a provider sign-in launches
+		h.a.ApplySceneSettings()
 	case ui.HitBrowserTabs:
 		s.SetBrowserSingleTab(hit.Value == "single") // web-preview tab mode
 		h.a.ApplySceneSettings()
@@ -242,6 +304,10 @@ func (h *Handler) runHit(hit ui.Hit) {
 		// into the Reddit account; the app persists it, rebuilds the registry and
 		// re-aggregates, reporting success/failure on the status line.
 		_, _ = h.a.ImportRedditSessionFromFirefox()
+	case ui.HitRedditSignIn:
+		// Launch Reddit's login page in the configured sign-in browser so the user
+		// can authenticate there (then, with Firefox, import the session cookie).
+		_ = h.a.LaunchRedditSignIn()
 	default:
 		// A press over no interactive target (HitNone) that is NOT a selectable
 		// reading surface just blurs the topbar search. When it IS selectable the

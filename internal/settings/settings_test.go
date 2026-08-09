@@ -102,6 +102,53 @@ func TestBrowserSingleTabDefaultAndRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSignInBrowserDefaultAndRoundTrip(t *testing.T) {
+	// A fresh install defaults to Firefox — the only browser whose session cookie
+	// the reader can subsequently import.
+	if d := Default(); d.SignInBrowser != SignInBrowserFirefox {
+		t.Fatalf("default sign-in browser = %q, want firefox", d.SignInBrowser)
+	}
+	// The exported default constant is Firefox.
+	if DefaultSignInBrowser != SignInBrowserFirefox {
+		t.Fatalf("DefaultSignInBrowser = %q, want firefox", DefaultSignInBrowser)
+	}
+	// Normalize backfills a blank field (a settings file predating it) and repairs
+	// an unrecognised value to the default.
+	for _, in := range []string{"", "mosaic"} {
+		s := &Settings{SignInBrowser: in}
+		s.Normalize()
+		if s.SignInBrowser != DefaultSignInBrowser {
+			t.Fatalf("Normalize(%q) => %q, want firefox", in, s.SignInBrowser)
+		}
+	}
+	// Every recognised value is preserved by Normalize and survives Save/Load.
+	for _, v := range []string{
+		SignInBrowserDefault, SignInBrowserFirefox, SignInBrowserChrome,
+		SignInBrowserSafari, SignInBrowserEdge,
+	} {
+		if !ValidSignInBrowser(v) {
+			t.Fatalf("ValidSignInBrowser(%q) = false", v)
+		}
+		s := &Settings{Profiles: []Profile{{Name: "x"}}, Theme: ThemeDark, CachePath: "/c", SignInBrowser: v}
+		s.Normalize()
+		if s.SignInBrowser != v {
+			t.Fatalf("Normalize clobbered sign-in browser %q => %q", v, s.SignInBrowser)
+		}
+		p := filepath.Join(t.TempDir(), "s.json")
+		st := NewStore(p)
+		if err := st.Save(s); err != nil {
+			t.Fatal(err)
+		}
+		out, err := st.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out.SignInBrowser != v {
+			t.Fatalf("round-trip sign-in browser = %q, want %q", out.SignInBrowser, v)
+		}
+	}
+}
+
 func TestActiveProfile(t *testing.T) {
 	s := &Settings{Profiles: []Profile{{Name: "A"}, {Name: "B"}}}
 	if s.ActiveProfile().Name != "A" {

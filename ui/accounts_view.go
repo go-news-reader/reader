@@ -20,6 +20,13 @@ import (
 // rendered with the same painter + anti-aliased text as the rest of the app.
 // Secret fields are masked; the Usenet TLS field renders as a toggle.
 
+// Reddit editor button captions. Sign-in launches the configured browser at
+// Reddit's login page; import lifts the resulting cookie (Firefox only).
+const (
+	redditSignInLabel = "Sign in to Reddit in browser"
+	redditImportLabel = "Import session from Firefox"
+)
+
 // accProvBtn is one provider pill in the selector.
 type accProvBtn struct {
 	rect   toolkit.Rect
@@ -262,9 +269,15 @@ func (s *Scene) layoutAccounts() {
 	// in is a single button rather than a manual copy-paste. Other providers show
 	// no button (its rect stays zero, so it never hit-tests).
 	s.accImportR = toolkit.Rect{}
+	s.accSignInR = toolkit.Rect{}
 	if s.accSel == source.Reddit {
-		iw := m.tab.width("Import session from Firefox") + rpxOf(s, 24)
-		s.accImportR = toolkit.Rect{X: pad, Y: y, W: iw, H: btnH}
+		// "Sign in to Reddit in browser" launches the configured browser at Reddit's
+		// login page; "Import session from Firefox" lifts the resulting cookie. They
+		// sit on one row (sign-in first, then import), each hidden for other providers.
+		sw := m.tab.width(redditSignInLabel) + rpxOf(s, 24)
+		s.accSignInR = toolkit.Rect{X: pad, Y: y, W: sw, H: btnH}
+		iw := m.tab.width(redditImportLabel) + rpxOf(s, 24)
+		s.accImportR = toolkit.Rect{X: pad + sw + gap, Y: y, W: iw, H: btnH}
 		y += btnH + gap
 	}
 
@@ -284,6 +297,9 @@ func (s *Scene) layoutAccounts() {
 		}
 		if s.accImportR.W > 0 {
 			s.accImportR.Y += dy
+		}
+		if s.accSignInR.W > 0 {
+			s.accSignInR.Y += dy
 		}
 	}
 }
@@ -343,9 +359,15 @@ func (s *Scene) drawAccounts(buf []byte) {
 		w.Draw(p, th)
 	}
 
-	// Reddit's "Import session from Firefox" button.
+	// Reddit's "Sign in to Reddit in browser" + "Import session from Firefox" buttons.
+	if s.accSignInR.W > 0 {
+		w := &toolkit.Button{Label: redditSignInLabel}
+		w.Font = pillFont
+		w.SetBounds(s.accSignInR)
+		w.Draw(p, th)
+	}
 	if s.accImportR.W > 0 {
-		w := &toolkit.Button{Label: "Import session from Firefox"}
+		w := &toolkit.Button{Label: redditImportLabel}
 		w.Font = pillFont
 		w.SetBounds(s.accImportR)
 		w.Draw(p, th)
@@ -370,6 +392,9 @@ func (s *Scene) accountsHitTest(x, y int) Hit {
 	// that band must not select a provider or field through the chrome.
 	if y < s.m.topbarH {
 		return Hit{Kind: HitNone}
+	}
+	if s.accSignInR.W > 0 && inRect(s.accSignInR, x, y) {
+		return Hit{Kind: HitRedditSignIn}
 	}
 	if s.accImportR.W > 0 && inRect(s.accImportR, x, y) {
 		return Hit{Kind: HitImportRedditFirefox}

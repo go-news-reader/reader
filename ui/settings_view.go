@@ -62,6 +62,16 @@ var settingsKinds = []source.Kind{
 	source.Bluesky, source.Lemmy, source.Mastodon, source.Usenet,
 }
 
+// signInBrowsers is the sign-in-browser picker (label + persisted value), in
+// display order. "Default" is the system default browser.
+var signInBrowsers = []struct{ label, value string }{
+	{"Default", settings.SignInBrowserDefault},
+	{"Firefox", settings.SignInBrowserFirefox},
+	{"Chrome", settings.SignInBrowserChrome},
+	{"Safari", settings.SignInBrowserSafari},
+	{"Edge", settings.SignInBrowserEdge},
+}
+
 // --- settings widgets (box-composed; the layout below positions
 // them with toolkit boxes, and drawSettings renders each as a widget rather than
 // hand-drawing pills/labels/fields) ---
@@ -309,6 +319,20 @@ func (s *Scene) layoutSettings() {
 		themeSpecs = append(themeSpecs, sButton{label: titleCase(tn), kind: HitTheme, value: tn, active: s.themeName == tn})
 	}
 	s.layoutBtnRow(pad, y, themeSpecs)
+	y += btnH + pad
+
+	// SIGN-IN BROWSER: which browser a provider sign-in (Reddit) launches. Cookie
+	// import only works from Firefox, so it is both the default and the caption's
+	// note.
+	label(pad, y, "SIGN-IN BROWSER")
+	y += m.side.height + gap
+	label(pad, y, "Launches Reddit sign-in; only Firefox's session can be imported")
+	y += m.side.height + gap
+	signInSpecs := make([]sButton, 0, len(signInBrowsers))
+	for _, b := range signInBrowsers {
+		signInSpecs = append(signInSpecs, sButton{label: b.label, kind: HitSignInBrowser, value: b.value, active: s.signInBrowser == b.value})
+	}
+	s.layoutBtnRow(pad, y, signInSpecs)
 	y += btnH + pad
 
 	// WEB PREVIEW: browser tab-mode picker (multiple / single).

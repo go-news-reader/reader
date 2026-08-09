@@ -60,6 +60,14 @@ type App struct {
 	// tests inject a fake with no real profile on disk.
 	cookieFinder redditCookieImporter
 
+	// openInBrowser launches url in the named browser (default|firefox|chrome|
+	// safari|edge) for a provider sign-in flow. The window front-end injects it
+	// (via SetURLOpener) with the platform opener, so the app can start a browser
+	// without importing the windowapp/exec layer (avoiding an import cycle); it is
+	// nil under the CLI front-ends, which never trigger a browser sign-in. A field
+	// so tests inject a fake asserting the URL + browser instead of spawning one.
+	openInBrowser func(browser, url string) error
+
 	osName string
 	dark   bool
 
@@ -221,6 +229,7 @@ func New(cfg Config) *App {
 
 	scene := ui.New(w, h, ui.ResolveTheme(set.Theme, cfg.OS, cfg.Dark))
 	scene.SetThemeName(set.Theme)
+	scene.SetSignInBrowser(set.SignInBrowser)
 	scene.SetCachePath(set.CachePath)
 	scene.SetProfiles(set.Profiles, set.Active)
 	scene.SetAccounts(set.Accounts)
@@ -385,6 +394,51 @@ type redditCookieImporter interface {
 // SetCookieFinder overrides the browser-cookie importer (tests inject a fake).
 func (a *App) SetCookieFinder(f redditCookieImporter) { a.cookieFinder = f }
 
+// SetURLOpener installs the browser opener used by browser sign-in flows: f
+// launches a URL in the named browser (default|firefox|chrome|safari|edge). The
+// window front-end wires it to the platform opener; tests inject a fake.
+func (a *App) SetURLOpener(f func(browser, url string) error) { a.openInBrowser = f }
+
+// errNoBrowserOpener is returned by [App.LaunchRedditSignIn] when no browser
+// opener has been installed (e.g. a CLI front-end that never signs in).
+var errNoBrowserOpener = errors.New("no browser opener configured")
+
+// redditLoginURL is the page the Reddit browser sign-in flow opens.
+const redditLoginURL = "https://www.reddit.com/login/"
+
+// LaunchRedditSignIn opens Reddit's login page in the browser configured by the
+// SignInBrowser setting, so the user can sign in there and (with Firefox) import
+// the resulting session cookie. It surfaces progress/failure on the status line.
+func (a *App) LaunchRedditSignIn() error {
+	browser := a.scene.SignInBrowser()
+	if a.openInBrowser == nil {
+		a.vm.SetStatus("Cannot open a browser to sign in to Reddit")
+		return errNoBrowserOpener
+	}
+	if err := a.openInBrowser(browser, redditLoginURL); err != nil {
+		a.vm.SetStatus("Reddit sign-in failed: " + err.Error())
+		return err
+	}
+	a.vm.SetStatus("Opening Reddit sign-in in " + signInBrowserLabel(browser))
+	return nil
+}
+
+// signInBrowserLabel is the human-readable name of a sign-in browser value.
+func signInBrowserLabel(browser string) string {
+	switch browser {
+	case settings.SignInBrowserFirefox:
+		return "Firefox"
+	case settings.SignInBrowserChrome:
+		return "Chrome"
+	case settings.SignInBrowserSafari:
+		return "Safari"
+	case settings.SignInBrowserEdge:
+		return "Edge"
+	default:
+		return "your default browser"
+	}
+}
+
 // ImportRedditSessionFromFirefox lifts the user's logged-in reddit_session
 // cookie out of their Firefox profile and installs it as the Reddit account's
 // session cookie: it writes the value into the accounts editor buffer (so the
@@ -397,7 +451,14 @@ func (a *App) SetCookieFinder(f redditCookieImporter) { a.cookieFinder = f }
 func (a *App) ImportRedditSessionFromFirefox() (bool, error) {
 	rs, err := a.cookieFinder.RedditSession()
 	if err != nil {
-		a.vm.SetStatus("Reddit import failed: " + importFailureHint(err))
+		msg := "Reddit import failed: " + importFailureHint(err)
+		// Cookie import can only read Firefox's plaintext cookies. If the user set a
+		// non-Firefox sign-in browser, signing in there leaves nothing importable, so
+		// spell that out rather than letting the failure look like a bug.
+		if a.scene.SignInBrowser() != settings.SignInBrowserFirefox {
+			msg += " — cookie import currently requires Firefox"
+		}
+		a.vm.SetStatus(msg)
 		return false, err
 	}
 	a.scene.SetAccountField(source.Reddit, "session_cookie", rs.Value)
