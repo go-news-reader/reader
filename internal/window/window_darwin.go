@@ -260,6 +260,10 @@ func present() {
 	mu.Unlock()
 	if view != 0 {
 		view.Send(selSetNeedsDisplay, true)
+		// The accessibility tree describes what was just drawn, so refresh it on
+		// the same damage signal rather than on a timer: no rebuild while the UI
+		// is idle, and never a description of a frame that is no longer on screen.
+		refreshA11y(view)
 	}
 }
 

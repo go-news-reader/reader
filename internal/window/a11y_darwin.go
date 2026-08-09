@@ -14,29 +14,24 @@
 // time the accessibility client asks, so it always describes the frame on screen
 // rather than a snapshot taken when the window opened.
 //
-// # KNOWN GAP: the children do not reach the accessibility tree yet
+// # Verified end to end
 //
-// Measured with an external client (AXUIElementCopyAttributeValue), validated
-// first against Finder so the instrument itself was known good: the app exposes
-// AXWindow "News Reader" with ZERO accessible children.
+// Measured with an external accessibility client (AXUIElementCopyAttributeValue,
+// the API VoiceOver itself uses), validated against Finder first so the
+// instrument was known good. The running app exposes:
 //
-// Everything on this side is confirmed working. AppKit really does call
-// -accessibilityChildren (repeatedly). The handler really does return the full
-// tree. Every NSAccessibilityElement is created non-nil and added. The frames
-// are right at every step — for the burger button: 96x96 device pixels at
-// (0,0) -> 48x48 view points -> (8,652) in the window, y correctly flipped ->
-// (528,1082) on screen, on-screen and sane.
+//	AXWindow "News Reader"
+//	  AXGroup "News"
+//	    AXButton    "Toggle sidebar"
+//	    AXTextField "Search"
+//	    AXButton    "Home"        active
+//	    AXButton    "HN"          0/25
+//	    AXSheet     "reddit needs sign-in"  log into Reddit in your browser…
 //
-// So the elements are built correctly and AppKit discards them. The remaining
-// suspects, in order: a view reporting isAccessibilityElement=NO may be pruned
-// from the tree WITH its synthetic children rather than replaced by them; the
-// BOOL that method returns crosses purego as a Go bool and AppKit reads a
-// signed char; or synthetic children need
-// NSAccessibilityElement.accessibilityParent wired differently than the factory
-// does. Resolving it needs the next debugging session, not a guess here.
-//
-// Nothing below claims to work end to end. It is the correct shape with a
-// measured, isolated failure at the last hop.
+// Two non-obvious things had to be true, both found by measurement and both
+// documented at the code below: the view must report itself AS an accessibility
+// element, and the children must be PUSHED with the setter rather than returned
+// from an -accessibilityChildren override.
 //
 //go:build darwin
 
@@ -47,18 +42,28 @@ import (
 )
 
 var (
-	selAccessibilityElementWithRole = objc.RegisterName("accessibilityElementWithRole:frame:label:parent:")
-	selSetAccessibilityValue        = objc.RegisterName("setAccessibilityValue:")
-	selArray                        = objc.RegisterName("array")
-	selAddObject                    = objc.RegisterName("addObject:")
-	selConvertRectToView            = objc.RegisterName("convertRect:toView:")
-	selConvertRectToScreen          = objc.RegisterName("convertRectToScreen:")
+	selSetAccessibilityFrame    = objc.RegisterName("setAccessibilityFrame:")
+	selSetAccessibilityParent   = objc.RegisterName("setAccessibilityParent:")
+	selSetAccessibilityValue    = objc.RegisterName("setAccessibilityValue:")
+	selArray                    = objc.RegisterName("array")
+	selAddObject                = objc.RegisterName("addObject:")
+	selConvertRectToView        = objc.RegisterName("convertRect:toView:")
+	selConvertRectToScreen      = objc.RegisterName("convertRectToScreen:")
+	selSetAccessibilityChildren = objc.RegisterName("setAccessibilityChildren:")
+	selSetAccessibilityRole     = objc.RegisterName("setAccessibilityRole:")
+	selSetAccessibilityLabel    = objc.RegisterName("setAccessibilityLabel:")
+	selSetAccessibilityElement  = objc.RegisterName("setAccessibilityElement:")
 )
 
-// viewIsAccessibilityElement reports NO: the view is a container, not a control.
-// Saying YES would make VoiceOver treat the whole window as one element and stop
-// descending into the children below.
-func viewIsAccessibilityElement(_ objc.ID, _ objc.SEL) bool { return false }
+// viewIsAccessibilityElement reports YES.
+//
+// The instinct is NO — the view is a container, not a control — and that is what
+// this returned first. Measured result: the view was pruned from the tree
+// ENTIRELY, taking its children with it, and the window reported no accessible
+// children at all. AppKit does not lift a non-element's synthetic children into
+// its parent. Reporting YES with a group role puts the container in the tree and
+// the elements beneath it, which is the shape a screen reader wants anyway.
+func viewIsAccessibilityElement(_ objc.ID, _ objc.SEL) bool { return true }
 
 // viewAccessibilityRole reports the view as a group, the role AppKit uses for
 // something whose meaning is its contents.
@@ -75,7 +80,7 @@ func viewAccessibilityLabel(_ objc.ID, _ objc.SEL) objc.ID { return nsString("Ne
 // NSAccessibilityElement wants screen points with a bottom-left origin. The trip
 // is pixels -> view points (axViewRect) -> window -> screen, using the view's
 // own conversions so a moved, resized or Retina window needs no special case.
-func viewAccessibilityChildren(self objc.ID, _ objc.SEL) objc.ID {
+func buildA11yChildren(self objc.ID) objc.ID {
 	acc, ok := handler.(Accessible)
 	if !ok {
 		return 0
@@ -100,6 +105,13 @@ func viewAccessibilityChildren(self objc.ID, _ objc.SEL) objc.ID {
 		if axSkip(e) {
 			continue
 		}
+		// The scene opens its tree with a document node covering the whole
+		// surface. The container view already plays that part here, so emitting it
+		// again would give VoiceOver two nested groups with the same name and
+		// nothing between them.
+		if e.Role == "document" {
+			continue
+		}
 		x, y, w, h := axViewRect(e, scale)
 		frame := nsRect{Origin: nsPoint{X: x, Y: y}, Size: nsSize{W: w, H: h}}
 		// View -> window -> screen. Passing a nil view to convertRect:toView:
@@ -112,12 +124,20 @@ func viewAccessibilityChildren(self objc.ID, _ objc.SEL) objc.ID {
 		}
 		onScreen := objc.Send[nsRect](win, selConvertRectToScreen, inWindow)
 
-		el := objc.ID(objc.GetClass("NSAccessibilityElement")).Send(
-			selAccessibilityElementWithRole,
-			nsString(axRole(e.Role)), onScreen, nsString(e.Name), self)
+		// Build with individual setters rather than
+		// +accessibilityElementWithRole:frame:label:parent:. That factory takes an
+		// NSRect BETWEEN two object pointers, and passing a by-value struct in the
+		// middle of an argument list through purego shifts everything after it:
+		// the elements appeared in the tree with no role and no label at all.
+		// One-argument setters keep every value in a register of its own.
+		el := objc.ID(objc.GetClass("NSAccessibilityElement")).Send(selAlloc).Send(selInit)
 		if el == 0 {
 			continue
 		}
+		el.Send(selSetAccessibilityRole, nsString(axRole(e.Role)))
+		el.Send(selSetAccessibilityLabel, nsString(e.Name))
+		el.Send(selSetAccessibilityFrame, onScreen)
+		el.Send(selSetAccessibilityParent, self)
 		if e.Value != "" {
 			el.Send(selSetAccessibilityValue, nsString(e.Value))
 		}
@@ -138,6 +158,29 @@ func a11yMethods() []objc.MethodDef {
 		{Cmd: objc.RegisterName("isAccessibilityElement"), Fn: viewIsAccessibilityElement},
 		{Cmd: objc.RegisterName("accessibilityRole"), Fn: viewAccessibilityRole},
 		{Cmd: objc.RegisterName("accessibilityLabel"), Fn: viewAccessibilityLabel},
-		{Cmd: objc.RegisterName("accessibilityChildren"), Fn: viewAccessibilityChildren},
+	}
+}
+
+// refreshA11y republishes the accessibility tree for the current frame.
+//
+// The children are PUSHED with -setAccessibilityChildren: rather than left for
+// AppKit to pull through an -accessibilityChildren override. Overriding the
+// getter is the documented shape and it is genuinely called — measurement
+// confirmed AppKit invoking it repeatedly — but the array it returned never
+// reached the tree: the window showed no children at all. The setter works. That
+// difference cost a debugging session and is the reason this is not written the
+// obvious way.
+func refreshA11y(v objc.ID) {
+	if v == 0 {
+		return
+	}
+	if _, ok := handler.(Accessible); !ok {
+		return
+	}
+	v.Send(selSetAccessibilityElement, true)
+	v.Send(selSetAccessibilityRole, nsString("AXGroup"))
+	v.Send(selSetAccessibilityLabel, nsString("News"))
+	if arr := buildA11yChildren(v); arr != 0 {
+		v.Send(selSetAccessibilityChildren, arr)
 	}
 }

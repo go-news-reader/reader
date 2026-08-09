@@ -41,7 +41,6 @@ func TestAccessibilityMethodsAreRegistered(t *testing.T) {
 		"isAccessibilityElement": false,
 		"accessibilityRole":      false,
 		"accessibilityLabel":     false,
-		"accessibilityChildren":  false,
 	}
 	defs := a11yMethods()
 	if len(defs) != len(want) {
@@ -66,12 +65,13 @@ func TestAccessibilityMethodsAreRegistered(t *testing.T) {
 	}
 }
 
-// TestViewDescribesItselfAsAContainer checks the two answers that decide whether
-// VoiceOver descends into the window at all. Reporting the view as an element
-// would make the whole UI one opaque rectangle and stop the walk there.
+// TestViewDescribesItselfAsAContainer checks the answers that decide whether the
+// view appears in the tree at all. It must report itself AS an element: measured
+// against the running app, a view answering NO was pruned ENTIRELY, taking its
+// children with it, and the window exposed nothing.
 func TestViewDescribesItselfAsAContainer(t *testing.T) {
-	if viewIsAccessibilityElement(0, 0) {
-		t.Error("the view claims to be a leaf element; VoiceOver would not look inside it")
+	if !viewIsAccessibilityElement(0, 0) {
+		t.Error("the view must report itself as an accessibility element or AppKit prunes it with its children")
 	}
 	if role := goString(viewAccessibilityRole(0, 0)); role != "AXGroup" {
 		t.Errorf("role = %q, want AXGroup", role)
@@ -111,7 +111,7 @@ func TestAccessibilityChildrenNeedsAWindow(t *testing.T) {
 	handler = &describingHandler{elems: []A11yElement{
 		{Role: "button", Name: "Settings", W: 40, H: 20},
 	}}
-	if got := viewAccessibilityChildren(0, 0); got != 0 {
+	if got := buildA11yChildren(0); got != 0 {
 		t.Fatalf("children = %v, want none for a view with no window", got)
 	}
 }
@@ -123,7 +123,7 @@ func TestAccessibilityChildrenWithoutADescription(t *testing.T) {
 	old := handler
 	defer func() { handler = old }()
 	handler = pixelsOnlyHandler{}
-	if got := viewAccessibilityChildren(0, 0); got != 0 {
+	if got := buildA11yChildren(0); got != 0 {
 		t.Fatalf("children = %v, want none from a handler that cannot describe itself", got)
 	}
 }
@@ -139,7 +139,7 @@ func TestAccessibilityChildrenSkipsUnannounceableElements(t *testing.T) {
 		{Role: "button", Name: "Zero", W: 0, H: 0}, // no area
 		{Role: "list", Name: "Feed", W: 0, H: 0},   // a container carries no rect
 	}}
-	if got := viewAccessibilityChildren(0, 0); got != 0 {
+	if got := buildA11yChildren(0); got != 0 {
 		t.Fatalf("children = %v, want none once every element is filtered", got)
 	}
 }
