@@ -249,7 +249,7 @@ func TestWebFetchDebounce(t *testing.T) {
 
 	// Rapid re-selection resets the deadline; only the final item settles.
 	a.selectPreview(webItem("b", "https://b/"), true)
-	a.Frame() // a partial wait for b …
+	a.Frame()                                         // a partial wait for b …
 	a.selectPreview(webItem("c", "https://c/"), true) // … superseded by c
 	before := calls
 	for i := uint64(0); i < a.webDebounceFrames; i++ {

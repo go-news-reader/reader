@@ -633,7 +633,7 @@ func TestWebPreviewEventForwarding(t *testing.T) {
 
 	// Focus the address field, then keys route to the browser; Enter commits it.
 	h.MouseDown(b.X+b.W*3/4, b.Y+toolkit.BrowserToolbarH/2)
-	h.Key("", 'q')       // → EventChar into the address buffer
+	h.Key("", 'q')        // → EventChar into the address buffer
 	h.Key("Backspace", 0) // → EventKeyDown Backspace
 	h.Key("Enter", 0)     // → commit/navigate (stubbed fetch)
 

@@ -247,3 +247,99 @@ func TestFeedErrorClassification(t *testing.T) {
 		authCase(t, errors.New("twitter: __NEXT_DATA__ not found"), false, "__NEXT_DATA__")
 	})
 }
+
+// TestFeedCarriesTheVideoNotJustItsThumbnail is the gap this closes. X reports
+// only the still frame in media_url_https and keeps the encodings in video_info,
+// so mapping the attachment to one entry threw the playable URL away at the
+// provider boundary — a consumer reading Item.Media could reach the preview
+// image and nothing else.
+func TestFeedCarriesTheVideoNotJustItsThumbnail(t *testing.T) {
+	it := feedOne(t, gotw.Tweet{
+		ID: "v", User: gotw.User{ScreenName: "nasa", Name: "NASA"},
+		Media: []gotw.Media{{
+			URL: "https://pbs/still.jpg", Type: "video", Width: 1280, Height: 720,
+			Variants: []gotw.VideoVariant{
+				{URL: "https://v/hls.m3u8", ContentType: "application/x-mpegURL"},
+				{URL: "https://v/low.mp4", ContentType: "video/mp4", Bitrate: 288000},
+				{URL: "https://v/high.mp4", ContentType: "video/mp4", Bitrate: 2176000},
+			},
+		}},
+	}, "nasa")
+
+	if len(it.Media) != 2 {
+		t.Fatalf("media = %+v, want the still AND the playable video", it.Media)
+	}
+	still, video := it.Media[0], it.Media[1]
+	if still.URL != "https://pbs/still.jpg" || still.Kind != source.MediaThumbnail {
+		t.Fatalf("still = %+v, want the preview frame as a thumbnail", still)
+	}
+	if still.Width != 1280 || still.Height != 720 {
+		t.Fatalf("still = %+v, want the reported dimensions", still)
+	}
+	if video.URL != "https://v/high.mp4" || video.Kind != source.MediaVideo {
+		t.Fatalf("video = %+v, want the highest-bitrate progressive MP4", video)
+	}
+	// The dimensions describe the media, so they belong on the playable entry
+	// too: a consumer that picks it must still know the aspect.
+	if video.Width != 1280 || video.Height != 720 {
+		t.Fatalf("video = %+v, want the same dimensions as the still", video)
+	}
+}
+
+// TestFeedPhotoStaysOneEntry checks the split is video-only: a photo is already
+// its own full-resolution URL, so doubling it would be noise.
+func TestFeedPhotoStaysOneEntry(t *testing.T) {
+	it := feedOne(t, gotw.Tweet{
+		ID: "p", User: gotw.User{ScreenName: "nasa"},
+		Media: []gotw.Media{{URL: "https://pbs/photo.jpg", Type: "photo", Width: 1080, Height: 1080}},
+	}, "nasa")
+
+	if len(it.Media) != 1 {
+		t.Fatalf("media = %+v, want a single entry", it.Media)
+	}
+	if got := it.Media[0]; got.Kind != source.MediaImage || got.Width != 1080 || got.Height != 1080 {
+		t.Fatalf("media = %+v", got)
+	}
+}
+
+// TestFeedStreamOnlyVideoKeepsItsKind checks the honest degradation: with no
+// progressive MP4 to hand a plain decoder, the entry stays a video rather than
+// claiming to be a thumbnail with nothing behind it.
+func TestFeedStreamOnlyVideoKeepsItsKind(t *testing.T) {
+	it := feedOne(t, gotw.Tweet{
+		ID: "s", User: gotw.User{ScreenName: "nasa"},
+		Media: []gotw.Media{{
+			URL: "https://pbs/still.jpg", Type: "video",
+			Variants: []gotw.VideoVariant{{URL: "https://v/only.m3u8", ContentType: "application/x-mpegURL"}},
+		}},
+	}, "nasa")
+
+	if len(it.Media) != 1 {
+		t.Fatalf("media = %+v, want one entry when nothing is playable", it.Media)
+	}
+	if got := it.Media[0]; got.Kind != source.MediaVideo || got.URL != "https://pbs/still.jpg" {
+		t.Fatalf("media = %+v, want the preview frame still marked a video", got)
+	}
+}
+
+// TestFeedAnimatedGIFSplitsToo checks X's GIFs — which it delivers as MP4 — get
+// the same treatment, keeping the GIF kind on the playable entry.
+func TestFeedAnimatedGIFSplitsToo(t *testing.T) {
+	it := feedOne(t, gotw.Tweet{
+		ID: "g", User: gotw.User{ScreenName: "nasa"},
+		Media: []gotw.Media{{
+			URL: "https://pbs/gif.jpg", Type: "animated_gif",
+			Variants: []gotw.VideoVariant{{URL: "https://v/gif.mp4", ContentType: "video/mp4", Bitrate: 1}},
+		}},
+	}, "nasa")
+
+	if len(it.Media) != 2 {
+		t.Fatalf("media = %+v, want the still and the playable GIF", it.Media)
+	}
+	if it.Media[0].Kind != source.MediaThumbnail || it.Media[1].Kind != source.MediaGIF {
+		t.Fatalf("media = %+v", it.Media)
+	}
+	if it.Media[1].URL != "https://v/gif.mp4" {
+		t.Fatalf("playable = %q", it.Media[1].URL)
+	}
+}

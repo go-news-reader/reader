@@ -242,7 +242,7 @@ func TestGroupsCachesAndSorts(t *testing.T) {
 	fc := &fakeConn{list: []gonntp.NewsgroupInfo{
 		{Name: "comp.lang.go", High: 100, Low: 1}, // count = 100
 		{Name: "alt.binaries.test", High: 50, Low: 41},
-		{Name: ""}, // blank names are dropped
+		{Name: ""},                           // blank names are dropped
 		{Name: "alt.test", High: 5, Low: 10}, // high<low → count clamps to 0
 	}}
 	p := NewWithDial(dialing(fc, nil))

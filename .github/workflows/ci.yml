@@ -19,6 +19,19 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.4"
+      - name: Gofmt
+        # Three test files had silently drifted out of gofmt; nothing in CI
+        # noticed, because vet does not check formatting. gofmt -l prints the
+        # offenders and says nothing when the tree is clean, so fail on any
+        # output rather than on an exit code it never sets.
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            gofmt -d $unformatted
+            exit 1
+          fi
       - name: Vet
         run: go vet ./...
       # internal/window opens a real OS window and pumps a native event loop

@@ -132,12 +132,39 @@ func mapTweet(tw gotw.Tweet, channel string) source.Item {
 		NSFW:      o.Sensitive,
 	}
 	for _, m := range o.Media {
-		// URL stays the still image even for a video: it is the preview frame
-		// (media_url_https), which is what a card thumbnail needs. Kind records
-		// what the attachment really is.
-		it.Media = append(it.Media, source.Media{URL: m.URL, Kind: mediaKind(m.Type)})
+		it.Media = append(it.Media, mapMedia(m)...)
 	}
 	return it
+}
+
+// mapMedia turns one attachment into the feed's media entries.
+//
+// A photo is one entry. A video or animated GIF is TWO: the still preview frame
+// as a thumbnail, and the playable MP4 as the video. X reports only the still in
+// media_url_https and keeps the encodings in video_info, so emitting the still
+// alone — as this used to — threw the playable URL away at the provider
+// boundary, and a consumer reading Item.Media had no way to reach the video at
+// all. The two-entry shape is what provider/tiktok already does for exactly the
+// same reason.
+func mapMedia(m gotw.Media) []source.Media {
+	kind := mediaKind(m.Type)
+	still := source.Media{URL: m.URL, Kind: kind, Width: m.Width, Height: m.Height}
+	if kind == source.MediaImage {
+		return []source.Media{still}
+	}
+	v, ok := m.BestVariant()
+	if !ok {
+		// Offered only as an adaptive stream, with no progressive MP4 to hand a
+		// plain decoder. Keep the preview frame and keep calling it a video,
+		// rather than promising a thumbnail with nothing behind it.
+		return []source.Media{still}
+	}
+	// original_info describes the MEDIA, so it sizes the video as much as the
+	// frame lifted out of it; carrying it on both entries means a consumer that
+	// picks the playable one still knows its aspect.
+	playable := source.Media{URL: v.URL, Kind: kind, Width: m.Width, Height: m.Height}
+	still.Kind = source.MediaThumbnail
+	return []source.Media{still, playable}
 }
 
 // body is the tweet's readable text: every t.co resolved to its destination,
