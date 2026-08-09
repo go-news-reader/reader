@@ -43,6 +43,7 @@ type config struct {
 	dark   bool
 	limit  int
 	out    string
+	asA11y bool
 	asJSON bool
 	serve  string
 	window bool
@@ -123,6 +124,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	limit := fs.Int("limit", 25, "items per subscription")
 	out := fs.String("o", "", "write PNG to this file (\"\" or \"-\" = stdout)")
 	asJSON := fs.Bool("json", false, "print the merged feed as JSON instead of an image")
+	asA11y := fs.Bool("a11y", false, "print the accessibility tree of the rendered view instead of an image")
 	serve := fs.String("serve", "", "serve a live read-only PNG view at this address, e.g. :8080")
 	windowMode := fs.Bool("window", false, "open a native window that blits the UI directly (macOS/Windows/Linux)")
 	mastodon := fs.String("mastodon", "", "Mastodon instance URL (enables mastodon)")
@@ -135,7 +137,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	cfg := config{
-		w: *w, h: *h, osName: *osName, dark: *dark, limit: *limit, out: *out, asJSON: *asJSON, serve: *serve, window: *windowMode,
+		w: *w, h: *h, osName: *osName, dark: *dark, limit: *limit, out: *out, asJSON: *asJSON, asA11y: *asA11y, serve: *serve, window: *windowMode,
 		opts: feeds.Options{
 			MastodonInstance:    *mastodon,
 			LemmyInstance:       *lemmy,
@@ -166,6 +168,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch {
+	case cfg.asA11y:
+		return emitA11y(a, stdout, stderr)
 	case cfg.asJSON:
 		return emitJSON(a, stdout, stderr)
 	case cfg.serve != "":
@@ -179,6 +183,23 @@ func emitJSON(a *app.App, stdout, stderr io.Writer) int {
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(a.Items()); err != nil {
+		fmt.Fprintln(stderr, "newsreader:", err)
+		return 1
+	}
+	return 0
+}
+
+// emitA11y prints the accessibility tree of the view as rendered — the same
+// description a platform bridge would hand a screen reader.
+//
+// It exists so that description can be READ. Accessibility work is otherwise
+// unverifiable from the outside: nothing on screen changes, and a bug looks
+// exactly like a correct implementation until someone runs a screen reader
+// against it. Piping this into a diff, or an eyeball, makes it ordinary output.
+func emitA11y(a *app.App, stdout, stderr io.Writer) int {
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(a.Scene().A11yTree()); err != nil {
 		fmt.Fprintln(stderr, "newsreader:", err)
 		return 1
 	}

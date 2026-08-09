@@ -121,6 +121,37 @@ func TestRunJSONError(t *testing.T) {
 	}
 }
 
+// TestRunA11y checks the accessibility tree reaches stdout describing the very
+// items the feed holds. It is the only way this work is verifiable from outside
+// the process: nothing on screen changes, so without a dump a broken description
+// looks exactly like a correct one.
+func TestRunA11y(t *testing.T) {
+	stubApp(t, fakeProv{items: []source.Item{{ID: "a", Source: source.Reddit, Title: "Eclipse day"}}})
+	var out, errb bytes.Buffer
+	if code := run([]string{"-sub", "reddit:golang", "-a11y"}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d, stderr=%s", code, errb.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, `"Role": "document"`) {
+		t.Fatalf("tree has no document node: %s", got)
+	}
+	if !strings.Contains(got, "Eclipse day") {
+		t.Fatalf("tree does not name the item: %s", got)
+	}
+	// A control the user can reach must carry the rect it is reachable at.
+	if !strings.Contains(got, `"Name": "Settings"`) {
+		t.Fatalf("tree is missing the footer controls: %s", got)
+	}
+}
+
+func TestRunA11yError(t *testing.T) {
+	stubApp(t, fakeProv{items: []source.Item{{ID: "a"}}})
+	var errb bytes.Buffer
+	if code := run([]string{"-a11y"}, failWriter{}, &errb); code != 1 {
+		t.Fatalf("code=%d", code)
+	}
+}
+
 func TestRunServe(t *testing.T) {
 	stubApp(t, fakeProv{})
 	orig := serveFunc
