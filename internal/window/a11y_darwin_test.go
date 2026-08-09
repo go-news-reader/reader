@@ -143,3 +143,76 @@ func TestAccessibilityChildrenSkipsUnannounceableElements(t *testing.T) {
 		t.Fatalf("children = %v, want none once every element is filtered", got)
 	}
 }
+
+// recordingHandler captures the clicks the accessibility layer replays.
+type recordingHandler struct {
+	pixelsOnlyHandler
+	downs [][2]int
+	ups   [][2]int
+}
+
+func (r *recordingHandler) MouseDown(x, y int)          { r.downs = append(r.downs, [2]int{x, y}) }
+func (r *recordingHandler) MouseUp(x, y int)            { r.ups = append(r.ups, [2]int{x, y}) }
+func (r *recordingHandler) A11yElements() []A11yElement { return nil }
+
+// TestPressReplaysARealClick is the point of making elements pressable: a
+// VoiceOver press must go through the SAME input path a mouse click takes, so
+// every behaviour a click has is had by a press with no second implementation to
+// drift out of step.
+func TestPressReplaysARealClick(t *testing.T) {
+	if err := registerA11yElementClass(); err != nil {
+		t.Fatalf("registerA11yElementClass: %v", err)
+	}
+	rec := &recordingHandler{}
+	old := handler
+	defer func() { handler = old }()
+	handler = rec
+
+	if !performPressAt("120,210") {
+		t.Fatal("press reported failure")
+	}
+	if len(rec.downs) != 1 || rec.downs[0] != [2]int{120, 210} {
+		t.Fatalf("MouseDown = %v, want one click at the element's centre", rec.downs)
+	}
+	if len(rec.ups) != 1 || rec.ups[0] != [2]int{120, 210} {
+		t.Fatalf("MouseUp = %v, want the matching release", rec.ups)
+	}
+}
+
+// TestPressWithoutACoordinateDoesNothing checks the refusal path: an element
+// carrying no usable point must not fall back to (0,0), which is a real control.
+func TestPressWithoutACoordinateDoesNothing(t *testing.T) {
+	if err := registerA11yElementClass(); err != nil {
+		t.Fatalf("registerA11yElementClass: %v", err)
+	}
+	rec := &recordingHandler{}
+	old := handler
+	defer func() { handler = old }()
+	handler = rec
+
+	if performPressAt("not-a-point") {
+		t.Error("a malformed point reported a successful press")
+	}
+	if len(rec.downs) != 0 {
+		t.Fatalf("it clicked anyway: %v", rec.downs)
+	}
+}
+
+// TestPressWithoutAHandlerIsSafe checks the accessibility client cannot crash a
+// window that has no handler yet.
+func TestPressWithoutAHandlerIsSafe(t *testing.T) {
+	old := handler
+	defer func() { handler = old }()
+	handler = nil
+	if performPressAt("10,20") {
+		t.Error("press succeeded with no handler")
+	}
+}
+
+// TestElementsAreEnabled checks elements are announced as available; a disabled
+// element is read as unavailable and cannot be pressed at all.
+func TestElementsAreEnabled(t *testing.T) {
+	if !elementIsEnabled(0, 0) {
+		t.Error("elements must report themselves enabled")
+	}
+}

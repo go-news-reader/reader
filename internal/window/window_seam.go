@@ -9,7 +9,11 @@
 
 package window
 
-import "unicode/utf16"
+import (
+	"strconv"
+	"strings"
+	"unicode/utf16"
+)
 
 // wheelPixelsPerNotch is how many device pixels one mouse-wheel notch scrolls.
 // Win32 reports wheel motion in 120-unit (WHEEL_DELTA) steps; X11 reports one
@@ -382,4 +386,28 @@ func axViewRect(e A11yElement, scale float64) (x, y, w, h float64) {
 	}
 	return float64(e.X) / scale, float64(e.Y) / scale,
 		float64(e.W) / scale, float64(e.H) / scale
+}
+
+// pressPoint encodes an element's centre, in device pixels, for the platform to
+// carry back when the element is activated.
+func pressPoint(e A11yElement) string {
+	return strconv.Itoa(e.X+e.W/2) + "," + strconv.Itoa(e.Y+e.H/2)
+}
+
+// parsePressPoint reads back what pressPoint wrote. Anything malformed reports
+// not-ok rather than clicking at (0,0), which is a real control.
+func parsePressPoint(s string) (x, y int, ok bool) {
+	comma := strings.IndexByte(s, ',')
+	if comma <= 0 || comma == len(s)-1 {
+		return 0, 0, false
+	}
+	x, err := strconv.Atoi(s[:comma])
+	if err != nil {
+		return 0, 0, false
+	}
+	y, err = strconv.Atoi(s[comma+1:])
+	if err != nil {
+		return 0, 0, false
+	}
+	return x, y, true
 }

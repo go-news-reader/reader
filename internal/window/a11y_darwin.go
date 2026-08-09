@@ -38,12 +38,16 @@
 package window
 
 import (
+	"sync"
+
 	objc "github.com/go-macos/objc"
 )
 
 var (
 	selSetAccessibilityFrame    = objc.RegisterName("setAccessibilityFrame:")
 	selSetAccessibilityParent   = objc.RegisterName("setAccessibilityParent:")
+	selSetAccessibilityIdent    = objc.RegisterName("setAccessibilityIdentifier:")
+	selAccessibilityIdent       = objc.RegisterName("accessibilityIdentifier")
 	selSetAccessibilityValue    = objc.RegisterName("setAccessibilityValue:")
 	selArray                    = objc.RegisterName("array")
 	selAddObject                = objc.RegisterName("addObject:")
@@ -130,7 +134,7 @@ func buildA11yChildren(self objc.ID) objc.ID {
 		// middle of an argument list through purego shifts everything after it:
 		// the elements appeared in the tree with no role and no label at all.
 		// One-argument setters keep every value in a register of its own.
-		el := objc.ID(objc.GetClass("NSAccessibilityElement")).Send(selAlloc).Send(selInit)
+		el := objc.ID(a11yElementClass).Send(selAlloc).Send(selInit)
 		if el == 0 {
 			continue
 		}
@@ -138,6 +142,12 @@ func buildA11yChildren(self objc.ID) objc.ID {
 		el.Send(selSetAccessibilityLabel, nsString(e.Name))
 		el.Send(selSetAccessibilityFrame, onScreen)
 		el.Send(selSetAccessibilityParent, self)
+		// Carry the element's own centre, in the device pixels the input path
+		// speaks, so a press can be replayed as an ordinary click. Stashing it on
+		// the element beats holding a Go-side table keyed by index: the tree is
+		// rebuilt on every damaged frame, and an index would go stale the moment
+		// the feed scrolled under a VoiceOver user's cursor.
+		el.Send(selSetAccessibilityIdent, nsString(pressPoint(e)))
 		if e.Value != "" {
 			el.Send(selSetAccessibilityValue, nsString(e.Value))
 		}
@@ -174,6 +184,9 @@ func refreshA11y(v objc.ID) {
 	if v == 0 {
 		return
 	}
+	if err := registerA11yElementClass(); err != nil {
+		return // no pressable element class: describe nothing rather than half of it
+	}
 	if _, ok := handler.(Accessible); !ok {
 		return
 	}
@@ -183,4 +196,64 @@ func refreshA11y(v objc.ID) {
 	if arr := buildA11yChildren(v); arr != 0 {
 		v.Send(selSetAccessibilityChildren, arr)
 	}
+}
+
+// a11yElementClass is a subclass of NSAccessibilityElement that can be pressed.
+// A plain NSAccessibilityElement is readable and inert: VoiceOver announces
+// "Settings, button" and then has no way to press it, which is half an interface.
+var a11yElementClass objc.Class
+
+// registerA11yElementClass builds that subclass once.
+func registerA11yElementClass() error {
+	var err error
+	a11yElementOnce.Do(func() {
+		a11yElementClass, err = objc.RegisterClass(
+			"GoNewsReaderA11yElement", objc.GetClass("NSAccessibilityElement"),
+			[]objc.MethodDef{
+				{Cmd: objc.RegisterName("accessibilityPerformPress"), Fn: elementPerformPress},
+				{Cmd: objc.RegisterName("isAccessibilityEnabled"), Fn: elementIsEnabled},
+			})
+	})
+	return err
+}
+
+var a11yElementOnce sync.Once
+
+// elementIsEnabled reports the element as enabled; a disabled one is announced
+// as unavailable and cannot be pressed.
+func elementIsEnabled(_ objc.ID, _ objc.SEL) bool { return true }
+
+// elementPerformPress replays the press as a click at the element's centre,
+// through the SAME MouseDown/MouseUp path a real click takes.
+//
+// Routing it through the input path rather than into some parallel "activate"
+// API is what keeps the two in step: every behaviour a click has — opening an
+// article, toggling the sidebar, focusing the search field — is had by a press,
+// for free and forever, with no second implementation to drift.
+//
+// It is safe because of an invariant the ui package already tests: every element
+// carrying a rect came from a hit-testable region, so its centre resolves to
+// something.
+func elementPerformPress(self objc.ID, _ objc.SEL) bool {
+	return performPressAt(goString(self.Send(selAccessibilityIdent)))
+}
+
+// performPressAt is the press itself, split from the Objective-C entry point so
+// it can be tested: instantiating an AppKit object off the main thread aborts
+// the process (see the note at the top of the test file), so the only way to
+// exercise this is to call it with the identifier a real element would carry.
+func performPressAt(ident string) bool {
+	if handler == nil {
+		return false
+	}
+	x, y, ok := parsePressPoint(ident)
+	if !ok {
+		return false
+	}
+	handler.MouseDown(x, y)
+	handler.MouseUp(x, y)
+	if view != 0 {
+		view.Send(selSetNeedsDisplay, true)
+	}
+	return true
 }

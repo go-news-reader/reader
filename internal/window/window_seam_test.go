@@ -322,3 +322,32 @@ func TestAXViewRectUndoesTheBackingScale(t *testing.T) {
 		t.Fatalf("off-screen y = %v, want it preserved", y)
 	}
 }
+
+// TestPressPointRoundTrip checks the codec that carries an element's centre out
+// to the platform and back when it is activated.
+func TestPressPointRoundTrip(t *testing.T) {
+	e := A11yElement{X: 100, Y: 200, W: 40, H: 20}
+	got := pressPoint(e)
+	if got != "120,210" {
+		t.Fatalf("pressPoint = %q, want the centre %q", got, "120,210")
+	}
+	x, y, ok := parsePressPoint(got)
+	if !ok || x != 120 || y != 210 {
+		t.Fatalf("parsePressPoint(%q) = %d,%d,%v", got, x, y, ok)
+	}
+	// An element flush against the origin still round-trips.
+	if s := pressPoint(A11yElement{W: 2, H: 2}); s != "1,1" {
+		t.Fatalf("pressPoint at the origin = %q", s)
+	}
+}
+
+// TestParsePressPointRejectsGarbage checks the failure mode matters: returning
+// 0,0 for an unparseable value would click the top-left corner, which is the
+// burger button — a malformed identifier must do NOTHING, not something else.
+func TestParsePressPointRejectsGarbage(t *testing.T) {
+	for _, s := range []string{"", ",", "12,", ",34", "abc,12", "12,abc", "12", "1,2,3"} {
+		if _, _, ok := parsePressPoint(s); ok {
+			t.Errorf("parsePressPoint(%q) reported success", s)
+		}
+	}
+}
