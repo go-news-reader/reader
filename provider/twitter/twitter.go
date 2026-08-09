@@ -148,7 +148,7 @@ func mapTweet(tw gotw.Tweet, channel string) source.Item {
 // same reason.
 func mapMedia(m gotw.Media) []source.Media {
 	kind := mediaKind(m.Type)
-	still := source.Media{URL: m.URL, Kind: kind, Width: m.Width, Height: m.Height}
+	still := source.Media{URL: m.URL, Kind: kind, Width: m.Width, Height: m.Height, AltText: m.AltText}
 	if kind == source.MediaImage {
 		return []source.Media{still}
 	}
@@ -162,7 +162,7 @@ func mapMedia(m gotw.Media) []source.Media {
 	// original_info describes the MEDIA, so it sizes the video as much as the
 	// frame lifted out of it; carrying it on both entries means a consumer that
 	// picks the playable one still knows its aspect.
-	playable := source.Media{URL: v.URL, Kind: kind, Width: m.Width, Height: m.Height}
+	playable := source.Media{URL: v.URL, Kind: kind, Width: m.Width, Height: m.Height, AltText: m.AltText}
 	still.Kind = source.MediaThumbnail
 	return []source.Media{still, playable}
 }

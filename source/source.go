@@ -62,6 +62,11 @@ type Media struct {
 	Kind   MediaKind
 	Width  int
 	Height int
+	// AltText is the author's own description of the picture — what a reader
+	// announces in place of it, and the only thing anyone who cannot see the
+	// image has. Empty when the source reports none, which is most of them;
+	// Twitter/X is the one provider whose payload carries it.
+	AltText string
 }
 
 // Item is a single normalized entry — a post, article, toot, tweet, video, or
