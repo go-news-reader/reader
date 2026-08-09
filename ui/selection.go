@@ -17,11 +17,55 @@ import (
 // reflects what is currently on screen.
 func (s *Scene) setSelectableRuns(runs []toolkit.TextRun) { s.textSel.SetRuns(runs) }
 
+// beginSelectableFrame resets the per-frame selectable-run accumulator. The feed
+// draw builds its selection from several surfaces (the sidebar labels, every
+// visible card, the preview text); each appends its on-screen runs via
+// addSelectableRuns, and commitSelectableRuns hands the flat set to the
+// selection. Because the runs are all in screen space, the selection then spans
+// the surfaces in document order (top→bottom, left→right).
+func (s *Scene) beginSelectableFrame() { s.selAccum = s.selAccum[:0] }
+
+// addSelectableRuns appends runs to the accumulator, translated by (dx, dy) into
+// screen space. Callers pass surface-local runs (a card's local sprite runs, the
+// sidebar's sprite-local runs) with the surface's on-screen offset; already-
+// screen-space runs (the preview text) pass dx=dy=0.
+func (s *Scene) addSelectableRuns(runs []toolkit.TextRun, dx, dy int) {
+	for _, r := range runs {
+		r.Bounds.X += dx
+		r.Bounds.Y += dy
+		s.selAccum = append(s.selAccum, r)
+	}
+}
+
+// commitSelectableRuns replaces the selection's run set with everything the frame
+// accumulated (the toolkit sorts + de-dupes empties), keeping an active drag's
+// endpoints clamped to the new runs.
+func (s *Scene) commitSelectableRuns() { s.textSel.SetRuns(s.selAccum) }
+
 // drawSelectionHighlight paints the current selection's highlight into p. It is
 // drawn BEHIND the text (the surface calls it just before drawing its Labels),
-// so an opaque tint reads as a clean highlight without hiding the glyphs.
+// so an opaque tint reads as a clean highlight without hiding the glyphs. The
+// detail view uses this; the feed uses drawSelectionOverHighlight instead.
 func (s *Scene) drawSelectionHighlight(p painter.Painter) {
 	s.textSel.Draw(p, s.selectionFill())
+}
+
+// drawSelectionOverHighlight paints the selection OVER already-painted content
+// (the feed's cached card/sidebar sprites and the preview text). Since the
+// glyphs are already on screen, the fill is a translucent accent (A≈0x55) that
+// the painter blends src-over, so the highlighted text stays readable — the same
+// trick the search field's copy feedback uses. It reads clearly in both light
+// and dark themes because the accent is a saturated colour laid at low alpha.
+func (s *Scene) drawSelectionOverHighlight(p painter.Painter) {
+	s.textSel.Draw(p, s.selectionOverFill())
+}
+
+// selectionOverFill is the translucent highlight for the over-paint path: the
+// theme accent at a low alpha so the painter blends it over the glyphs.
+func (s *Scene) selectionOverFill() toolkit.RGBA {
+	c := s.theme.Accent
+	c.A = 0x55
+	return c
 }
 
 // selectionFill is the highlight colour: the theme accent softened toward the
@@ -75,9 +119,39 @@ func (s *Scene) SelectableAt(x, y int) bool {
 	switch {
 	case s.mode == ModeDetail:
 		return true
-	case s.mode == ModeFeed && s.previewHas && !s.webPreviewItem():
-		return inRect(s.previewR, x, y)
+	case s.mode == ModeFeed:
+		// The preview pane's text summary (never the embedded web browser).
+		if s.previewHas && !s.webPreviewItem() && inRect(s.previewR, x, y) {
+			return true
+		}
+		// The sidebar's text column and the feed list of cards: a press here that
+		// hit-tested to no interactive target still begins a selection, so a drag
+		// over a card title or a sidebar label selects it.
+		return inRect(s.sidebarTextRegion(), x, y) || inRect(s.feedListRegion(), x, y)
 	default:
 		return false
 	}
+}
+
+// sidebarTextRegion is the sidebar's scrollable label band (between the profile
+// tabs and the pinned footer), in screen coords. Empty when the sidebar is
+// collapsed. A press inside it may begin a selection over the sidebar labels.
+func (s *Scene) sidebarTextRegion() toolkit.Rect {
+	if s.m.sidebarW == 0 {
+		return toolkit.Rect{}
+	}
+	return toolkit.Rect{X: 0, Y: s.sideBandTop, W: s.m.sidebarW, H: s.sideBandBot - s.sideBandTop}
+}
+
+// feedListRegion is the feed's card viewport in screen coords: right of the
+// sidebar, below the topbar, left of the preview pane (when open), above the
+// download panel / status bar. A press inside it may begin a card selection.
+func (s *Scene) feedListRegion() toolkit.Rect {
+	right := s.W
+	if s.previewR.W > 0 {
+		right = s.previewR.X
+	}
+	// A width ≤ 0 (a pathologically narrow window where the sidebar meets the
+	// pane) yields a rect inRect treats as empty, so no clamp is needed.
+	return toolkit.Rect{X: s.m.sidebarW, Y: s.m.topbarH, W: right - s.m.sidebarW, H: s.feedBottom() - s.m.topbarH}
 }

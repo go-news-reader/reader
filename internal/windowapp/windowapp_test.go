@@ -45,7 +45,10 @@ func findHit(s *ui.Scene, kind ui.HitKind) (int, int, bool) {
 	return 0, 0, false
 }
 
-// click routes a MouseDown at the first coordinate matching kind (fatal if none).
+// click routes a full press+release (no drag) at the first coordinate matching
+// kind (fatal if none). It drives MouseDown then MouseUp at the same point so a
+// text-selectable hit (whose action is deferred to release) fires its click
+// action, while an immediate control acts on the press and shrugs off the up.
 func click(t *testing.T, h *Handler, kind ui.HitKind) {
 	t.Helper()
 	x, y, ok := findHit(h.a.Scene(), kind)
@@ -53,6 +56,7 @@ func click(t *testing.T, h *Handler, kind ui.HitKind) {
 		t.Fatalf("no hit region for kind %d", kind)
 	}
 	h.MouseDown(x, y)
+	h.MouseUp(x, y)
 }
 
 // newApp builds an App with an empty registry at a known size and scale.
@@ -118,7 +122,10 @@ func TestMouseDownItemSelectsPreview(t *testing.T) {
 	a := newApp(t)
 	a.Scene().SetItems([]source.Item{{ID: "1", Source: source.Reddit, Title: "hi", Permalink: "https://ex/1", Score: -1, Comments: -1}})
 	h := New(a)
-	h.MouseDown(250, 60) // feed row 0 -> select into the right preview pane
+	// A plain click (press+release, no drag) selects the item into the preview
+	// pane: the action is deferred to release now that a card is drag-selectable.
+	h.MouseDown(250, 60)
+	h.MouseUp(250, 60)
 	s := a.Scene()
 	if it, ok := s.PreviewItem(); !ok || it.ID != "1" {
 		t.Fatalf("item click should select the preview; got %+v ok=%v", it, ok)
@@ -132,7 +139,7 @@ func TestMouseDownItemSelectsPreview(t *testing.T) {
 	if !shown {
 		t.Fatal("Open button should be shown for a selected item")
 	}
-	h.MouseDown(oc.X+oc.W/2, oc.Y+oc.H/2)
+	h.MouseDown(oc.X+oc.W/2, oc.Y+oc.H/2) // the Open pill acts immediately on press
 	if s.Mode() != ui.ModeDetail || s.Detail().ID != "1" {
 		t.Fatalf("Open button should open detail; mode=%v id=%q", s.Mode(), s.Detail().ID)
 	}
@@ -173,7 +180,9 @@ func TestMouseDownDetailOpenExternal(t *testing.T) {
 func TestMouseDownSub(t *testing.T) {
 	a := newApp(t)
 	a.Scene().SetSubs([]ui.Subscription{{Source: source.Reddit, Channel: "golang"}})
-	New(a).MouseDown(10, 60) // "All" sidebar row
+	h := New(a)
+	h.MouseDown(10, 60) // "All" sidebar row: a click (press+release) switches the filter
+	h.MouseUp(10, 60)
 	if a.Scene().Active != ui.AllFilter {
 		t.Fatalf("Active = %d, want AllFilter", a.Scene().Active)
 	}
@@ -203,7 +212,11 @@ func TestMouseDownSearch(t *testing.T) {
 func TestMouseDownNone(t *testing.T) {
 	a := newApp(t)
 	a.VM().FocusSearch(true)
-	New(a).MouseDown(10, 400) // empty sidebar area -> HitNone
+	h := New(a)
+	// Empty sidebar area → HitNone over the selectable sidebar band: the blur is
+	// deferred to release (a drag there would select), so a plain click blurs.
+	h.MouseDown(10, 400)
+	h.MouseUp(10, 400)
 	if a.Scene().SearchFocused() {
 		t.Fatal("click on empty area should blur search")
 	}

@@ -93,7 +93,10 @@ func TestSelectableAt(t *testing.T) {
 	}
 	s.CloseDetail()
 
-	// Feed + a non-web preview (text summary): selectable inside the pane only.
+	// Feed + a non-web preview (text summary): the preview text pane, the feed
+	// list of cards and the sidebar labels are all drag-selectable.
+	s.SetSubs([]Subscription{{Source: source.Reddit, Channel: "golang"}})
+	s.SetItems([]source.Item{{ID: "1", Source: source.Reddit, Title: "hi", Score: -1, Comments: -1}})
 	s.SelectPreview(source.Item{Source: source.HackerNews, Title: "T", Body: "body text"})
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
@@ -104,20 +107,35 @@ func TestSelectableAt(t *testing.T) {
 	if !s.SelectableAt(pr.X+pr.W/2, pr.Y+pr.H/2) {
 		t.Fatal("inside the preview text pane should be selectable")
 	}
-	if s.SelectableAt(pr.X-5, pr.Y+pr.H/2) {
-		t.Fatal("left of the preview pane (the feed) must not text-select")
+	// Left of the preview pane is now the feed list of cards — selectable so a
+	// drag over a card title selects it.
+	if !s.SelectableAt(pr.X-5, pr.Y+pr.H/2) {
+		t.Fatal("the feed list of cards should be selectable")
+	}
+	// The sidebar's label band is selectable (a drag over a subscription label).
+	sb := s.sidebarTextRegion()
+	if !s.SelectableAt(sb.X+sb.W/2, sb.Y+sb.H/2) {
+		t.Fatal("the sidebar label band should be selectable")
+	}
+	// The topbar (above the feed/sidebar) is chrome, not a reading surface.
+	if s.SelectableAt(sb.X+sb.W/2, 5) {
+		t.Fatal("the topbar must not text-select")
 	}
 
-	// Feed + a web preview: the embedded browser handles selection, not us.
+	// Feed + a web preview: the embedded browser handles its own selection, so a
+	// press inside the pane is not one of ours (the feed list around it still is).
 	s.SelectPreview(source.Item{Source: source.HackerNews, Title: "W", Link: "https://ex.com/a"})
+	s.Draw(buf)
+	pr = s.previewR
 	if s.SelectableAt(pr.X+pr.W/2, pr.Y+pr.H/2) {
 		t.Fatal("a web preview must not start a text selection")
 	}
 
-	// Feed with nothing previewed: not selectable (default branch).
+	// A non-feed, non-detail view (Settings) is never selectable (default branch).
 	s2 := New(800, 600, ThemeFor(OSMac, false))
+	s2.OpenSettings()
 	if s2.SelectableAt(400, 300) {
-		t.Fatal("no preview → not selectable")
+		t.Fatal("the settings view is not a reading surface → not selectable")
 	}
 }
 

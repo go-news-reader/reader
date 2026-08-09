@@ -243,6 +243,12 @@ func (s *Scene) Draw(buf []byte) {
 
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
 
+	// Begin this frame's cross-surface selectable-run accumulation. The sidebar,
+	// the feed cards and the preview text each append their on-screen runs below;
+	// commitSelectableRuns feeds the flat set to the selection once the whole feed
+	// is painted, and the translucent over-highlight is drawn last.
+	s.beginSelectableFrame()
+
 	// Lay out the right-hand preview pane so the feed geometry (which subtracts the
 	// pane width) and drawPreview agree this frame.
 	s.layoutPreview()
@@ -277,7 +283,12 @@ func (s *Scene) Draw(buf []byte) {
 			s.drawGroup(p, img, r.group, feedX, y, cardW, onAccent, muteS)
 			continue
 		}
-		blitAt(img, s.cardSprite(r.item, cardW, onAccent, muteS), feedX, y)
+		entry := s.cardSprite(r.item, cardW, onAccent, muteS)
+		blitAt(img, entry.img, feedX, y)
+		// Card text is selectable: translate the card's local-space runs to their
+		// on-screen position (the blit offset) and add them to this frame's
+		// accumulator, so a drag spans the sidebar, the cards and the preview text.
+		s.addSelectableRuns(entry.runs, feedX, y)
 		if s.previewHas && sameItem(r.item, s.previewItem) {
 			// Selected card: an accent outline so the current post is visibly
 			// picked out, mirroring the sidebar's selected-group affordance.
@@ -307,6 +318,10 @@ func (s *Scene) Draw(buf []byte) {
 	// --- chrome (cached sprites; static across scroll like Evas smart objects) ---
 	if m.sidebarW > 0 {
 		blitAt(img, s.sidebarSprite(), 0, m.topbarH)
+		// The sidebar's text labels are selectable: its cached runs are in
+		// sprite-local coords, so translate them by the sprite's screen origin
+		// (0, topbarH) into the frame's accumulator.
+		s.addSelectableRuns(s.sidebarRuns, 0, m.topbarH)
 		// A 1px divider at the sidebar's right edge plus a centred grab handle so
 		// the resize affordance is visible and easy to hit.
 		p.FillRect(painter.Rect{X: m.sidebarW - 1, Y: m.topbarH, W: 1, H: s.H - m.topbarH}, th.Border)
@@ -327,6 +342,13 @@ func (s *Scene) Draw(buf []byte) {
 
 	// --- per-group post-count status bar (very bottom) ---
 	s.drawStatusBar(p, img)
+
+	// Commit the accumulated sidebar/card/preview runs as the selection's run set,
+	// then paint ONE translucent over-highlight above the already-painted feed
+	// (the cards and sidebar are pre-rasterised sprites, so the highlight must
+	// blend over them rather than behind the glyphs like the detail view does).
+	s.commitSelectableRuns()
+	s.drawSelectionOverHighlight(p)
 }
 
 // sidebarKey / topbarKey identify the single-slot chrome sprite caches. The
@@ -376,6 +398,12 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	img := &image.RGBA{Pix: buf, Stride: m.sidebarW * 4, Rect: image.Rect(0, 0, m.sidebarW, h)}
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: m.sidebarW, H: h}, th.SurfaceAlt)
 
+	// Accumulate the selectable text-label runs (in this sprite's local coords)
+	// as the rows are laid out, so the feed can offer them for drag-selection
+	// without re-laying-out the sidebar every frame. Only the text labels are
+	// collected — the icons, dots, counts and spinner slots are not selectable.
+	var runs []toolkit.TextRun
+
 	// Profile tabs (sidebar-local coords).
 	for _, t := range s.profTabs {
 		ly := t.rect.Y - m.topbarH
@@ -412,6 +440,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 			lbl.Font, lbl.Ink = sideF, col
 			lbl.SetBounds(toolkit.Rect{X: m.pad, Y: ly, W: m.sidebarW - 2*m.pad, H: m.sideItemH})
 			lbl.Draw(p, th)
+			runs = append(runs, lbl.TextRuns()...)
 			continue
 		}
 		// A subscription row, composed as an HBox: source dot | channel label |
@@ -448,6 +477,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		}
 		row.SetBounds(toolkit.Rect{X: m.pad, Y: ly, W: innerW, H: m.sideItemH})
 		row.Draw(p, th)
+		runs = append(runs, lbl.TextRuns()...)
 		if pending {
 			d := rpxOf(s, 14)
 			s.spinnerAt(toolkit.Rect{X: m.sidebarW - m.pad - d, Y: ly + (m.sideItemH-d)/2, W: d, H: d}, toolkit.SpinnerDots).Draw(p, th)
@@ -489,7 +519,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: s.sideBandTop - m.topbarH, W: m.sidebarW, H: band}, m.sidebarW, band+s.sideMaxScroll, s.sideScrollY)
 	}
 
-	s.sidebarKey, s.sidebarSpr = k, img
+	s.sidebarKey, s.sidebarSpr, s.sidebarRuns = k, img, runs
 	return img
 }
 
@@ -560,7 +590,7 @@ func (c *cardThumb) Draw(_ painter.Painter, _ *toolkit.Theme) {
 // the content column from the thumbnail, and the column is a VBox of a badge row,
 // the title, a flexible spacer, and the meta line — each a real widget (Badge /
 // Label / cardThumb) the boxes lay out and draw.
-func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Item, x, y, w int, onAccent, muteS toolkit.RGBA) {
+func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Item, x, y, w int, onAccent, muteS toolkit.RGBA) []toolkit.TextRun {
 	m := s.m
 	th := s.theme
 	h := s.cardHeight(it, w)
@@ -624,6 +654,11 @@ func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Ite
 	row.SetBounds(toolkit.Rect{X: x + pad, Y: y + pad, W: w - 2*pad, H: h - 2*pad})
 	row.Draw(p, th)
 	_ = onAccent
+	// Return the card's selectable text runs (channel, wrapped title lines, meta)
+	// in the coordinates row was laid out at, so a sprite built at local origin
+	// (x=y=0) yields local-space runs the feed can translate to the card's blit
+	// offset each frame.
+	return toolkit.CollectRuns(row)
 }
 
 // cardTitleMaxLines caps how many lines a wrapped card title occupies; beyond
@@ -829,17 +864,26 @@ type cardKey struct {
 	thumb *image.RGBA
 }
 
+// cardSpriteEntry caches a rendered card together with its selectable text runs
+// in card-LOCAL coordinates (the sprite is rasterised at origin 0,0). The feed
+// draw loop blits img and translates runs by the card's on-screen blit offset,
+// so scrolling reuses both the pixels and the run geometry without re-layout.
+type cardSpriteEntry struct {
+	img  *image.RGBA
+	runs []toolkit.TextRun
+}
+
 // cardSprite returns a cached bitmap of the card for it at width w, rendering it
 // once on a cache miss. Scrolling then reuses the sprite via a memcpy blit
 // instead of re-rasterising every glyph each frame.
-func (s *Scene) cardSprite(it source.Item, w int, onAccent, muteS toolkit.RGBA) *image.RGBA {
+func (s *Scene) cardSprite(it source.Item, w int, onAccent, muteS toolkit.RGBA) cardSpriteEntry {
 	var thumb *image.RGBA
 	if s.Thumbs != nil {
 		thumb = s.Thumbs[it.ID]
 	}
 	k := cardKey{id: it.ID, src: it.Source, title: cardText(it), w: w, scale: s.Scale, theme: s.theme, thumb: thumb}
 	if s.cardCache == nil {
-		s.cardCache = map[cardKey]*image.RGBA{}
+		s.cardCache = map[cardKey]cardSpriteEntry{}
 	}
 	if sp, ok := s.cardCache[k]; ok {
 		return sp
@@ -855,9 +899,10 @@ func (s *Scene) cardSprite(it source.Item, w int, onAccent, muteS toolkit.RGBA) 
 	// Fill with the feed background so the card's rounded corners composite
 	// correctly when the opaque sprite is blitted onto the scene.
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: w, H: h}, s.theme.Background)
-	s.drawCard(p, img, it, 0, 0, w, onAccent, muteS)
-	s.cardCache[k] = img
-	return img
+	runs := s.drawCard(p, img, it, 0, 0, w, onAccent, muteS)
+	entry := cardSpriteEntry{img: img, runs: runs}
+	s.cardCache[k] = entry
+	return entry
 }
 
 // blitAt copies src into dst at (x, y) with a per-row memcpy, clamped to dst's

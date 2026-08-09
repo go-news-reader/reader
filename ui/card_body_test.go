@@ -150,8 +150,8 @@ func TestUntitledCardSpritesDoNotCollide(t *testing.T) {
 	b := tweet("b", "a considerably longer beta post text that wraps onto a second line for sure")
 	th := s.theme
 	onAccent, muteS := themeOnAccent(th), mute(th.OnSurface, th.Surface)
-	spA := s.cardSprite(a, 260, onAccent, muteS)
-	spB := s.cardSprite(b, 260, onAccent, muteS)
+	spA := s.cardSprite(a, 260, onAccent, muteS).img
+	spB := s.cardSprite(b, 260, onAccent, muteS).img
 	if spA == spB {
 		t.Fatal("distinct posts must not share one sprite")
 	}
@@ -159,7 +159,7 @@ func TestUntitledCardSpritesDoNotCollide(t *testing.T) {
 		t.Fatalf("the wrapping post should be taller: %d vs %d", spA.Bounds().Dy(), spB.Bounds().Dy())
 	}
 	// The same item hits the cache rather than re-rasterising.
-	if again := s.cardSprite(a, 260, onAccent, muteS); again != spA {
+	if again := s.cardSprite(a, 260, onAccent, muteS).img; again != spA {
 		t.Fatal("second call should return the cached sprite")
 	}
 }

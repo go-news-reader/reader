@@ -209,13 +209,13 @@ func TestCardCacheNoCollision(t *testing.T) {
 	muteS := mute(th.OnSurface, th.Surface)
 	a := source.Item{ID: "1", Source: source.HackerNews, Title: "AAAA"}
 	b := source.Item{ID: "1", Source: source.Lemmy, Title: "BBBB"}
-	spA := s.cardSprite(a, 600, onAccent, muteS)
-	spB := s.cardSprite(b, 600, onAccent, muteS)
+	spA := s.cardSprite(a, 600, onAccent, muteS).img
+	spB := s.cardSprite(b, 600, onAccent, muteS).img
 	if spA == spB {
 		t.Fatal("distinct items with the same ID shared one cached sprite")
 	}
 	// And an identical re-request hits the cache (same pointer).
-	if s.cardSprite(a, 600, onAccent, muteS) != spA {
+	if s.cardSprite(a, 600, onAccent, muteS).img != spA {
 		t.Fatal("identical item re-request missed the cache")
 	}
 }

@@ -46,7 +46,17 @@ func defaultOpenURL(url string) error {
 }
 
 // Handler adapts an app to the presenter's data-source/input-sink interface.
-type Handler struct{ a *app.App }
+//
+// pending* records a text-selectable hit (a feed card, a sidebar row, or a
+// non-interactive reading surface) whose action is DEFERRED from the press to
+// the release: a press begins a text selection instead of acting, and MouseUp
+// decides — a drag that produced a selection suppresses the action and keeps the
+// selection for a copy; a plain click (no drag) runs the recorded action.
+type Handler struct {
+	a          *app.App
+	pending    ui.Hit
+	pendingHit bool
+}
 
 // New wraps a to be driven by a native window.
 func New(a *app.App) *Handler { return &Handler{a: a} }
@@ -69,7 +79,7 @@ func (h *Handler) Resize(w, height int, scale float64) {
 // MouseDown routes a click across the feed, detail and settings views: open an
 // item, follow a link, switch a filter or profile, or drive the settings editor.
 func (h *Handler) MouseDown(x, y int) {
-	s, vm := h.a.Scene(), h.a.VM()
+	s := h.a.Scene()
 	// A click inside the embedded web-preview browser is forwarded to it (a link,
 	// a toolbar button, the address field, a tab) and consumes the event; a click
 	// anywhere else blurs the browser's keyboard focus and falls through to the
@@ -77,7 +87,40 @@ func (h *Handler) MouseDown(x, y int) {
 	if s.ForwardBrowserClick(x, y) {
 		return
 	}
-	switch hit := s.HitTest(x, y); hit.Kind {
+	hit := s.HitTest(x, y)
+	// Text-selectable hits (a feed card, a sidebar row, or a non-interactive
+	// reading surface) DEFER their action to MouseUp so a drag can select the
+	// text instead: begin a selection now, remember the hit, and decide on
+	// release. Every other control acts immediately, exactly as before.
+	if h.textSelectableHit(hit, x, y) {
+		s.SelectionBegin(x, y)
+		h.pending, h.pendingHit = hit, true
+		return
+	}
+	h.runHit(hit)
+}
+
+// textSelectableHit reports whether a press on hit at (x, y) should defer to a
+// click-vs-drag decision: an item card, a subscription row, or a press that
+// resolved to no interactive target over a reading surface (detail view, the
+// preview text pane, the feed list, or the sidebar labels).
+func (h *Handler) textSelectableHit(hit ui.Hit, x, y int) bool {
+	switch hit.Kind {
+	case ui.HitItem, ui.HitSub:
+		return true
+	case ui.HitNone:
+		return h.a.Scene().SelectableAt(x, y)
+	default:
+		return false
+	}
+}
+
+// runHit executes a hit's action. It is called immediately on MouseDown for
+// non-deferred controls, and on MouseUp for a deferred text-selectable hit that
+// turned out to be a plain click (no drag).
+func (h *Handler) runHit(hit ui.Hit) {
+	s, vm := h.a.Scene(), h.a.VM()
+	switch hit.Kind {
 	case ui.HitItem:
 		h.a.SelectPreview(hit.Item) // show it in the right preview pane (fetch image if any)
 	case ui.HitPreviewGroup:
@@ -200,14 +243,12 @@ func (h *Handler) MouseDown(x, y int) {
 		// re-aggregates, reporting success/failure on the status line.
 		_, _ = h.a.ImportRedditSessionFromFirefox()
 	default:
+		// A press over no interactive target (HitNone) that is NOT a selectable
+		// reading surface just blurs the topbar search. When it IS selectable the
+		// press was deferred (textSelectableHit → SelectionBegin), and this runs
+		// only if the release was a plain click, so blurring search here is still
+		// the right click action.
 		vm.FocusSearch(false)
-		// A press on a reading surface (the detail view, or the preview pane's
-		// text summary — no interactive target here) starts a text selection; a
-		// release without a drag leaves it empty, so a plain click just clears any
-		// prior selection.
-		if s.SelectableAt(x, y) {
-			s.SelectionBegin(x, y)
-		}
 	}
 }
 
@@ -223,6 +264,15 @@ func (h *Handler) MouseUp(x, y int) {
 	s.EndPreviewResize()
 	s.SelectionEnd()
 	s.ForwardBrowserRelease(x, y)
+	// Resolve a deferred text-selectable press: a drag that produced a selection
+	// suppresses the click action (and keeps the selection for a copy); a plain
+	// click with no drag runs the recorded action now.
+	if h.pendingHit {
+		h.pendingHit = false
+		if !s.HasSelection() {
+			h.runHit(h.pending)
+		}
+	}
 }
 
 // Scroll scrolls the feed by a device-pixel wheel delta, unless the pointer is

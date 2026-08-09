@@ -294,6 +294,10 @@ type Scene struct {
 	// a pointer drag is extending it (so MouseMove routes to it).
 	textSel   toolkit.TextSelection
 	selecting bool
+	// selAccum accumulates the frame's selectable runs (screen coords) from every
+	// surface — the sidebar labels, the visible cards and the preview text — so
+	// one commit (commitSelectableRuns) lets a single selection span them all.
+	selAccum []toolkit.TextRun
 
 	// Download manager: a docked panel across the bottom of the feed/preview area
 	// showing queued/active/finished downloads. Populated by the app via
@@ -411,13 +415,18 @@ type Scene struct {
 	// content, width, scale or theme changes. The chrome (sidebar/topbar) is
 	// cached the same way in single slots — like Evas smart-object surfaces —
 	// so scrolling never re-rasterises any text.
-	cardCache  map[cardKey]*image.RGBA
+	cardCache  map[cardKey]cardSpriteEntry
 	sidebarSpr *image.RGBA
 	sidebarKey sidebarKey
-	topbarSpr  *image.RGBA
-	topbarKey  topbarKey
-	subsRev    int
-	profRev    int
+	// sidebarRuns are the sidebar's selectable text-label runs in sidebar-LOCAL
+	// coordinates (origin at the sprite, i.e. screen (0, topbarH)), cached
+	// alongside the sprite so the feed's per-frame selection accumulator can
+	// translate them to screen space without re-laying-out the sidebar.
+	sidebarRuns []toolkit.TextRun
+	topbarSpr   *image.RGBA
+	topbarKey   topbarKey
+	subsRev     int
+	profRev     int
 
 	// rev is a monotonically increasing damage/commit sequence bumped on every
 	// state change (the Wayland commit-seq / Evas dirty model). A present layer

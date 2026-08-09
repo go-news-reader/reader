@@ -601,10 +601,11 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	// rendered web page, but also scrolled-up header/body) never paints over the
 	// topbar above or the download panel below.
 	p.PushClip(painter.Rect(r))
-	// Text selection: collect the runs just laid out, paint the highlight behind
-	// the text (so it reads clean under the glyphs), then draw the text.
-	s.setSelectableRuns(toolkit.CollectRuns(col))
-	s.drawSelectionHighlight(p)
+	// Text selection: the preview text joins the feed's cross-surface selection.
+	// Its runs are already in screen coords, so add them to the frame accumulator
+	// (offset 0,0); the highlight is painted once, translucent, over the whole
+	// feed at the end of Draw (drawSelectionOverHighlight), not behind the glyphs.
+	s.addSelectableRuns(toolkit.CollectRuns(col), 0, 0)
 	col.Draw(p, th)
 	p.PopClip()
 
