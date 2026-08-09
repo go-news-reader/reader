@@ -52,6 +52,10 @@ func (x *x11) present() {
 	x.buf, x.w, x.h = buf, w, h
 	x.repaintLocked()
 	x.mu.Unlock()
+	// The accessibility tree describes what was just drawn, so republish it on
+	// the same damage signal: never a description of a frame that has gone, and
+	// no work at all while the UI is idle.
+	refreshA11yLinux()
 }
 
 // repaintLocked converts the current buffer to BGRA and PutImages it in
@@ -108,6 +112,9 @@ func Run(cfg Config, h Handler) error {
 		maxReq:  uint32(setup.MaximumRequestLength),
 		handler: h,
 	}
+	// Published for the D-Bus methods, which run on their own goroutines and have
+	// no path back to this value.
+	setA11yHandler(h)
 
 	// Button1Motion reports pointer motion only while the left button is held, so
 	// a drag arrives as MotionNotify without idle hovers flooding the loop.
@@ -181,6 +188,9 @@ func (x *x11) handleEvent(ev xgb.Event) {
 		x.repaintLocked()
 		x.mu.Unlock()
 	case xproto.ConfigureNotifyEvent:
+		// Record where the window landed: AT-SPI asks for element extents in
+		// SCREEN coordinates as well as window ones, and only this event knows.
+		setWindowOrigin(int(e.X), int(e.Y))
 		if x.handler != nil {
 			x.handler.Resize(int(e.Width), int(e.Height), 1.0)
 			x.present()
