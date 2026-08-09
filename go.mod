@@ -22,11 +22,12 @@ require (
 	github.com/go-reddit/reddit v0.2.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
-	github.com/go-webengine/engine v0.3.5
+	github.com/go-webengine/engine v0.3.6
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.2.0
 	github.com/go-widgets/toolkit v0.133.0
 	github.com/go-widgets/tray v0.1.1
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/jezek/xgb v1.3.1
 	golang.org/x/sys v0.47.0
 	modernc.org/sqlite v1.56.0
@@ -46,7 +47,6 @@ require (
 	github.com/go-opentype/opentype v0.5.0 // indirect
 	github.com/go-opentype/shape v0.4.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
