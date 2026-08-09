@@ -401,3 +401,29 @@ func (h *Handler) commitSettingsField() {
 		h.a.ApplySceneSettings()
 	}
 }
+
+// A11yElements describes what the app is showing, satisfying window.Accessible
+// so a back-end with an accessibility API can expose it.
+//
+// It is the ui package's tree flattened into the window package's neutral shape.
+// The translation exists precisely so window stays a generic surface that never
+// imports ui: the presenter learns the roles and labels without learning what a
+// feed or a subscription is.
+//
+// The rects pass through unchanged. ui.A11yNode already carries device-pixel,
+// top-left coordinates — the same space the framebuffer and MouseDown use — so
+// there is nothing to convert here, and the back-end owns the trip to whatever
+// its platform wants.
+func (h *Handler) A11yElements() []window.A11yElement {
+	tree := h.a.Scene().A11yTree()
+	out := make([]window.A11yElement, 0, len(tree))
+	for _, n := range tree {
+		out = append(out, window.A11yElement{
+			Role:  string(n.Role),
+			Name:  n.Name,
+			Value: n.Value,
+			X:     n.Rect.X, Y: n.Rect.Y, W: n.Rect.W, H: n.Rect.H,
+		})
+	}
+	return out
+}

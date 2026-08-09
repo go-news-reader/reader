@@ -310,3 +310,76 @@ func putImageRows(maxReqUnits uint32, stride int) int {
 	}
 	return rows
 }
+
+// axRole maps a neutral role name (see A11yElement) to the macOS
+// NSAccessibility role constant that matches it.
+//
+// The names on the left are the toolkit's ARIA-flavoured vocabulary; the ones on
+// the right are AppKit's. Nothing maps automatically between them, and guessing
+// wrong is worse than being vague: VoiceOver announces the role, so a button
+// described as static text is silently unclickable to someone using it.
+// Anything unrecognised becomes a group, which is AppKit's own "a thing that
+// contains things" and the honest answer for a role this table does not know.
+func axRole(neutral string) string {
+	switch neutral {
+	case "button":
+		return "AXButton"
+	case "text":
+		return "AXStaticText"
+	case "textbox", "searchbox":
+		return "AXTextField"
+	case "checkbox":
+		return "AXCheckBox"
+	case "radio":
+		return "AXRadioButton"
+	case "slider":
+		return "AXSlider"
+	case "img":
+		return "AXImage"
+	case "list", "listbox":
+		return "AXList"
+	case "grid":
+		return "AXTable"
+	case "toolbar":
+		return "AXToolbar"
+	case "menu":
+		return "AXMenu"
+	case "menubar":
+		return "AXMenuBar"
+	case "progressbar":
+		return "AXProgressIndicator"
+	case "document":
+		return "AXGroup"
+	case "alert", "dialog":
+		return "AXSheet"
+	case "status":
+		return "AXStaticText"
+	case "navigation", "banner", "group", "tablist", "tree", "presentation":
+		return "AXGroup"
+	default:
+		return "AXGroup"
+	}
+}
+
+// axSkip reports whether an element should be left out of the accessibility
+// tree entirely. An element with no name says nothing a reader could announce,
+// and a zero-area one cannot be pointed at; either would land in VoiceOver's
+// rotor as an unlabelled stop the user has to skip past.
+func axSkip(e A11yElement) bool {
+	return e.Name == "" || e.W <= 0 || e.H <= 0
+}
+
+// axViewRect converts an element's device-pixel rect (top-left origin) into the
+// view's own point coordinates, still top-left because the view is flipped.
+//
+// It clamps nothing: an element scrolled above or below the viewport keeps its
+// true off-screen position, so the accessibility client can tell that it exists
+// and where it would be, rather than seeing a pile of elements collapsed onto
+// the top edge.
+func axViewRect(e A11yElement, scale float64) (x, y, w, h float64) {
+	if scale <= 0 {
+		scale = 1
+	}
+	return float64(e.X) / scale, float64(e.Y) / scale,
+		float64(e.W) / scale, float64(e.H) / scale
+}

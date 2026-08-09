@@ -166,7 +166,9 @@ func registerClasses() (objc.Class, objc.Class, error) {
 	classesOnce.Do(func() {
 		viewClass, classesErr = objc.RegisterClass(
 			"GoNewsReaderView", objc.GetClass("NSView"),
-			[]objc.MethodDef{
+			// Presentation first, then the accessibility overrides that describe
+			// what was presented (a11y_darwin.go).
+			append([]objc.MethodDef{
 				{Cmd: objc.RegisterName("isFlipped"), Fn: viewIsFlipped},
 				{Cmd: objc.RegisterName("acceptsFirstResponder"), Fn: viewAcceptsFirstResponder},
 				{Cmd: objc.RegisterName("drawRect:"), Fn: viewDrawRect},
@@ -175,7 +177,7 @@ func registerClasses() (objc.Class, objc.Class, error) {
 				{Cmd: objc.RegisterName("mouseUp:"), Fn: viewMouseUp},
 				{Cmd: objc.RegisterName("scrollWheel:"), Fn: viewScrollWheel},
 				{Cmd: objc.RegisterName("keyDown:"), Fn: viewKeyDown},
-			})
+			}, a11yMethods()...))
 		if classesErr != nil {
 			return
 		}

@@ -95,6 +95,39 @@ type Handler interface {
 	Key(name string, r rune)
 }
 
+// A11yElement is one element the handler wants the platform's accessibility
+// layer to expose: what it is, what it says, and where it sits.
+//
+// Rect is in DEVICE PIXELS with a top-left origin — the same space Frame's
+// buffer and the MouseDown coordinates use — because that is the only space this
+// package and its handler already agree on. Each back-end converts it to
+// whatever its own accessibility API wants (macOS: screen points, y-up).
+//
+// Role is a neutral name, not a platform constant: this package presents pixels
+// and must not drag a platform's vocabulary into the handler. The back-end maps
+// it (see axRole).
+type A11yElement struct {
+	Role       string
+	Name       string
+	Value      string
+	X, Y, W, H int
+}
+
+// Accessible is implemented by a Handler that can describe what it is showing.
+// A back-end that supports an accessibility API asks for the description when
+// the platform requests it; a handler that does not implement this simply
+// presents pixels, as before.
+//
+// It is a separate, optional interface rather than a Handler method so that
+// adding it breaks no existing back-end or handler.
+type Accessible interface {
+	// A11yElements returns the current elements in reading order. It is called
+	// from the platform's accessibility client, which on macOS is the main
+	// thread, at unpredictable times — the implementation must be safe to call
+	// between frames.
+	A11yElements() []A11yElement
+}
+
 // Config controls the window.
 type Config struct {
 	Title         string

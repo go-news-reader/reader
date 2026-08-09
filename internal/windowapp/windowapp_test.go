@@ -675,3 +675,84 @@ func TestWebPreviewEventForwarding(t *testing.T) {
 		t.Fatal("a click off the browser should blur its focus")
 	}
 }
+
+// TestA11yElementsSatisfiesTheWindowContract is the check that the bridge is
+// wired at all: the back-end asks for the description through an OPTIONAL
+// interface, so a Handler that fails to implement it is not a compile error —
+// it silently presents pixels and nothing else, and a screen reader stays quiet.
+func TestA11yElementsSatisfiesTheWindowContract(t *testing.T) {
+	var h any = New(profApp(t))
+	if _, ok := h.(window.Accessible); !ok {
+		t.Fatal("the handler does not implement window.Accessible; the back-end would never ask it for anything")
+	}
+}
+
+// TestA11yElementsTranslatesTheSceneTree checks the translation carries what a
+// reader needs — roles, names, values and rects — without the window package
+// learning what a feed is.
+func TestA11yElementsTranslatesTheSceneTree(t *testing.T) {
+	a := profApp(t)
+	a.Scene().SetItems([]source.Item{
+		{ID: "1", Source: source.HackerNews, Title: "Show HN: a pure-Go news reader", Score: 99, Comments: 4},
+	})
+	h := New(a)
+
+	elems := h.A11yElements()
+	if len(elems) < 6 {
+		t.Fatalf("got %d elements, too few to describe a populated feed", len(elems))
+	}
+
+	var post, settings *window.A11yElement
+	for i := range elems {
+		switch elems[i].Name {
+		case "Show HN: a pure-Go news reader":
+			post = &elems[i]
+		case "Settings":
+			settings = &elems[i]
+		}
+	}
+	if post == nil {
+		t.Fatal("the feed item is not described")
+	}
+	if post.Role != "group" {
+		t.Errorf("post role = %q, want the scene's own role name", post.Role)
+	}
+	if post.Value == "" {
+		t.Error("the post carries no meta line")
+	}
+	if post.W <= 0 || post.H <= 0 {
+		t.Errorf("post rect = %dx%d, want a real area", post.W, post.H)
+	}
+	if settings == nil {
+		t.Fatal("the Settings control is not described")
+	}
+	if settings.Role != "button" {
+		t.Errorf("Settings role = %q, want button", settings.Role)
+	}
+
+	// The tree must mirror the scene's, one for one: dropping or inventing
+	// elements here would make the accessibility view disagree with the UI.
+	if len(elems) != len(a.Scene().A11yTree()) {
+		t.Fatalf("translated %d elements from a tree of %d", len(elems), len(a.Scene().A11yTree()))
+	}
+}
+
+// TestA11yElementsRectsAreInTheEventCoordinateSpace pins the contract the macOS
+// back-end relies on: element rects are in the SAME device-pixel, top-left space
+// as MouseDown, so the back-end's one conversion is correct for every element.
+// If these drifted apart, VoiceOver would point at the wrong place on screen.
+func TestA11yElementsRectsAreInTheEventCoordinateSpace(t *testing.T) {
+	a := profApp(t)
+	h := New(a)
+	for _, e := range h.A11yElements() {
+		if e.Name != "Settings" {
+			continue
+		}
+		cx, cy := e.X+e.W/2, e.Y+e.H/2
+		if got := a.Scene().HitTest(cx, cy); got.Kind != ui.HitSettings {
+			t.Fatalf("the Settings element's centre hit-tests to %v, not the Settings control", got.Kind)
+		}
+		return
+	}
+	t.Fatal("no Settings element to check")
+}
