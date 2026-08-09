@@ -394,6 +394,7 @@ func AccountsToOptions(base feeds.Options, accts []settings.Account) feeds.Optio
 	for _, a := range accts {
 		switch a.Kind {
 		case source.Reddit:
+			setIf(&out.RedditSessionCookie, a.Fields["session_cookie"])
 			setIf(&out.RedditClientID, a.Fields["client_id"])
 			setIf(&out.RedditClientSecret, a.Fields["client_secret"])
 			setIf(&out.RedditUsername, a.Fields["username"])

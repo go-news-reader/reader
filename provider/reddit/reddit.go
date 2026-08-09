@@ -69,6 +69,27 @@ func NewOAuth(hc *http.Client, clientID, clientSecret, username, password string
 	return &Provider{client: goreddit.NewClient(opts...)}
 }
 
+// NewWithCookie returns a Reddit provider that authenticates reads with the
+// user's own logged-in browser reddit_session cookie, driving hc (the shared,
+// request-logging client the aggregator builds). Reddit's self-serve OAuth
+// registration is effectively closed to new personal projects, so supplying the
+// cookie from an already-signed-in browser is the practical path for
+// individual, read-only use — the same session-cookie pattern the reader
+// already offers for Instagram and TikTok. The cookie keeps the anonymous
+// www ".json" endpoints (no OAuth). A nil hc falls back to the portable
+// browser-fingerprint client so the constructor is safe on its own.
+func NewWithCookie(hc *http.Client, sessionCookie string) *Provider {
+	if hc == nil {
+		hc = browserhttp.NewClient(30 * time.Second)
+	}
+	c := goreddit.NewClient(
+		goreddit.WithHTTPClient(hc),
+		goreddit.WithUserAgent(browserhttp.DefaultUserAgent),
+		goreddit.WithSessionCookie(sessionCookie),
+	)
+	return &Provider{client: c}
+}
+
 // NewWithClient wraps an already-configured reddit client — e.g. an OAuth
 // (logged-in) client, or a fake in tests.
 func NewWithClient(c fetcher) *Provider { return &Provider{client: c} }

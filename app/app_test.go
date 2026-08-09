@@ -519,7 +519,7 @@ func TestApplyAccountsNoStore(t *testing.T) {
 
 func TestAccountsToOptions(t *testing.T) {
 	accts := []settings.Account{
-		{Kind: source.Reddit, Fields: map[string]string{"client_id": "id", "client_secret": "sec", "username": "u", "password": "p"}},
+		{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "reddit_session=xyz", "client_id": "id", "client_secret": "sec", "username": "u", "password": "p"}},
 		{Kind: source.Mastodon, Fields: map[string]string{"instance": "https://m", "token": "mt"}},
 		{Kind: source.Lemmy, Fields: map[string]string{"instance": "https://l"}},
 		{Kind: source.Usenet, Fields: map[string]string{"addr": "news:119", "tls": "true", "username": "usr", "password": "pw", "indexer_url": "https://ix", "indexer_key": "k"}},
@@ -528,7 +528,7 @@ func TestAccountsToOptions(t *testing.T) {
 		{Kind: source.Twitter, Fields: map[string]string{"token": "tw"}},
 	}
 	o := AccountsToOptions(feeds.Options{}, accts)
-	if o.RedditClientID != "id" || o.RedditClientSecret != "sec" || o.RedditUsername != "u" || o.RedditPassword != "p" {
+	if o.RedditSessionCookie != "reddit_session=xyz" || o.RedditClientID != "id" || o.RedditClientSecret != "sec" || o.RedditUsername != "u" || o.RedditPassword != "p" {
 		t.Fatalf("reddit mapping wrong: %+v", o)
 	}
 	if o.MastodonInstance != "https://m" || o.MastodonToken != "mt" || o.LemmyInstance != "https://l" {

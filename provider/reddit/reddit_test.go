@@ -132,6 +132,58 @@ func TestNewOAuthNilClient(t *testing.T) {
 	}
 }
 
+// cookieRT records the Cookie / Authorization headers and the host of a
+// listing request, serving canned listing JSON so the session-cookie path can
+// be exercised offline.
+type cookieRT struct {
+	cookie   string
+	authHdr  string
+	listHost string
+}
+
+func (rt *cookieRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt.cookie = req.Header.Get("Cookie")
+	rt.authHdr = req.Header.Get("Authorization")
+	rt.listHost = req.URL.Host
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(`{"data":{"after":"","children":[{"kind":"t3","data":{"id":"c1","title":"Hi","subreddit":"golang"}}]}}`)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestNewWithCookie(t *testing.T) {
+	rt := &cookieRT{}
+	p := NewWithCookie(&http.Client{Transport: rt}, "abc123")
+
+	res, err := p.Feed(context.Background(), source.Query{Channel: "golang", Limit: 5})
+	if err != nil {
+		t.Fatalf("Feed: %v", err)
+	}
+	if len(res.Items) != 1 || res.Items[0].ID != "c1" {
+		t.Fatalf("items = %+v", res.Items)
+	}
+	// The reddit_session cookie authenticates the request against the anonymous
+	// www ".json" host, with no Bearer token.
+	if rt.cookie != "reddit_session=abc123" {
+		t.Fatalf("Cookie = %q, want reddit_session=abc123", rt.cookie)
+	}
+	if rt.authHdr != "" {
+		t.Fatalf("Authorization = %q, want none for cookie auth", rt.authHdr)
+	}
+	if rt.listHost != "www.reddit.com" {
+		t.Fatalf("listing host = %q, want www.reddit.com", rt.listHost)
+	}
+}
+
+func TestNewWithCookieNilClient(t *testing.T) {
+	// A nil client falls back to the browser-fingerprint client and still wires
+	// the provider (no network here).
+	if p := NewWithCookie(nil, "abc123"); p.client == nil {
+		t.Fatal("nil client should fall back and still build the provider")
+	}
+}
+
 func TestFeedFrontpage(t *testing.T) {
 	f := &fakeFetcher{page: &goreddit.Page{
 		After: "t3_next",

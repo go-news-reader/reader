@@ -141,6 +141,7 @@ type ProviderCreds struct {
 func CredentialSchema() []ProviderCreds {
 	return []ProviderCreds{
 		{Kind: source.Reddit, Label: "Reddit", Fields: []CredField{
+			{Key: "session_cookie", Label: "Session cookie (reddit_session)", Secret: true},
 			{Key: "client_id", Label: "Client ID"},
 			{Key: "client_secret", Label: "Client secret", Secret: true},
 			{Key: "username", Label: "Username"},

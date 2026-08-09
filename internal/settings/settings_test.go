@@ -313,12 +313,12 @@ func TestCredentialSchema(t *testing.T) {
 	for _, f := range reddit.Fields {
 		keys[f.Key] = f
 	}
-	for _, k := range []string{"client_id", "client_secret", "username", "password"} {
+	for _, k := range []string{"session_cookie", "client_id", "client_secret", "username", "password"} {
 		if _, ok := keys[k]; !ok {
 			t.Fatalf("reddit missing field %q", k)
 		}
 	}
-	if !keys["client_secret"].Secret || !keys["password"].Secret {
+	if !keys["client_secret"].Secret || !keys["password"].Secret || !keys["session_cookie"].Secret {
 		t.Fatal("reddit secrets should be masked")
 	}
 	if keys["client_id"].Secret {

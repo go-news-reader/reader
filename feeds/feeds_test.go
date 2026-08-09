@@ -106,6 +106,20 @@ func TestRegistryRedditOAuth(t *testing.T) {
 	}
 }
 
+func TestRegistryRedditSessionCookie(t *testing.T) {
+	// A session cookie registers Reddit (taking precedence over OAuth) both with
+	// and without a shared logged client.
+	r := Registry(Options{RedditSessionCookie: "reddit_session=abc"})
+	if !has(r.Kinds(), source.Reddit) {
+		t.Fatal("reddit not registered with a session cookie (no recorder)")
+	}
+	rec := httplog.NewRecorder(8)
+	r2 := Registry(Options{Recorder: rec, RedditSessionCookie: "reddit_session=abc", RedditClientID: "id", RedditClientSecret: "sec"})
+	if !has(r2.Kinds(), source.Reddit) {
+		t.Fatal("reddit not registered with a session cookie (with recorder)")
+	}
+}
+
 func TestLoggedClient(t *testing.T) {
 	if loggedClient(nil) != nil {
 		t.Fatal("nil recorder must yield nil shared client")

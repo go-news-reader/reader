@@ -37,6 +37,14 @@ import (
 
 // Options configures which providers get registered and with what credentials.
 type Options struct {
+	// RedditSessionCookie authenticates Reddit reads with the user's own
+	// logged-in browser reddit_session cookie (bare value or a full
+	// "reddit_session=...; ..." Cookie string). It takes precedence over the
+	// OAuth fields below — Reddit's self-serve OAuth registration is effectively
+	// closed to new personal projects, so the cookie is the practical path for
+	// individual read-only use.
+	RedditSessionCookie string
+
 	// RedditClientID + RedditClientSecret switch Reddit from the anonymous
 	// ".json" endpoints to authenticated OAuth against oauth.reddit.com (app-only
 	// "client_credentials" grant), which reads public listings from IPs where the
@@ -144,6 +152,9 @@ func MediaClient(rec *httplog.Recorder) *http.Client {
 // the provider's own default constructor (unchanged behaviour).
 
 func newReddit(hc *http.Client, opts Options) source.Provider {
+	if opts.RedditSessionCookie != "" {
+		return reddit.NewWithCookie(hc, opts.RedditSessionCookie)
+	}
 	if opts.RedditClientID != "" && opts.RedditClientSecret != "" {
 		return reddit.NewOAuth(hc, opts.RedditClientID, opts.RedditClientSecret, opts.RedditUsername, opts.RedditPassword)
 	}
