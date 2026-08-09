@@ -22,10 +22,10 @@ require (
 	github.com/go-reddit/reddit v0.2.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
-	github.com/go-webengine/engine v0.3.3
+	github.com/go-webengine/engine v0.3.4
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.2.0
-	github.com/go-widgets/toolkit v0.130.0
+	github.com/go-widgets/toolkit v0.131.0
 	github.com/go-widgets/tray v0.1.1
 	github.com/jezek/xgb v1.3.1
 	golang.org/x/sys v0.47.0
@@ -39,6 +39,7 @@ require (
 	github.com/dop251/goja v0.0.0-20260723142020-b4aef50fa347 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
+	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-opentype/bidi v0.2.1 // indirect
