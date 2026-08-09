@@ -24,7 +24,12 @@ import (
 // forever. The default webFetch runs this on its own goroutine; tests call it
 // directly for determinism.
 func (a *App) loadPreviewPage(ctx context.Context, target string, width int) {
-	deliver := func(img *image.RGBA, links []webrender.Link) {
+	// deliver hands one render to the browser on the UI thread. final marks the
+	// last frame: an intermediate progressive frame (final=false) keeps the
+	// loading indicator animating and refines in place, so the staged render
+	// (first paint → refine → final) is visibly progressive rather than snapping
+	// to "done" on the first frame.
+	deliver := func(img *image.RGBA, links []webrender.Link, final bool) {
 		bl := toBrowserLinks(links)
 		var pix []byte
 		var iw, ih int
@@ -36,25 +41,26 @@ func (a *App) loadPreviewPage(ctx context.Context, target string, width int) {
 			b := a.scene.Browser()
 			// Preserve the tab title the widget already carries (seeded from the feed
 			// item) — the renderer does not extract a page <title>.
-			b.Deliver(target, pix, iw, ih, width, bl, b.ActiveTitle())
+			b.DeliverStage(target, pix, iw, ih, width, bl, b.ActiveTitle(), final)
 		})
 	}
 	if pr, ok := a.webRender.(webrender.ProgressiveRenderer); ok {
-		// Progressive: deliver every staged frame (first paint → refine → final).
+		// Progressive: deliver every staged frame (first paint → refine → final),
+		// keeping the pane in its loading state until the final frame lands.
 		if err := pr.RenderProgressive(ctx, target, width, func(f webrender.Frame) {
-			deliver(f.Img, f.Links)
+			deliver(f.Img, f.Links, f.Final)
 		}); err != nil {
-			deliver(nil, nil) // clear the spinner on a fetch failure (no frames)
+			deliver(nil, nil, true) // clear the spinner on a fetch failure (no frames)
 		}
 		return
 	}
-	// Non-progressive fallback: one render, one delivery.
+	// Non-progressive fallback: one render, one (final) delivery.
 	img, links, _, err := a.webRender.Render(ctx, target, width)
 	if err != nil {
-		deliver(nil, nil)
+		deliver(nil, nil, true)
 		return
 	}
-	deliver(img, links)
+	deliver(img, links, true)
 }
 
 // toBrowserLinks converts webrender links to the toolkit.Browser's link type

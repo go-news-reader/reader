@@ -22,10 +22,10 @@ require (
 	github.com/go-reddit/reddit v0.2.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
-	github.com/go-webengine/engine v0.3.4
+	github.com/go-webengine/engine v0.3.5
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.2.0
-	github.com/go-widgets/toolkit v0.131.0
+	github.com/go-widgets/toolkit v0.133.0
 	github.com/go-widgets/tray v0.1.1
 	github.com/jezek/xgb v1.3.1
 	golang.org/x/sys v0.47.0
