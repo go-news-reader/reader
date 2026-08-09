@@ -39,21 +39,12 @@ import (
 type Options struct {
 	// RedditSessionCookie authenticates Reddit reads with the user's own
 	// logged-in browser reddit_session cookie (bare value or a full
-	// "reddit_session=...; ..." Cookie string). It takes precedence over the
-	// OAuth fields below — Reddit's self-serve OAuth registration is effectively
-	// closed to new personal projects, so the cookie is the practical path for
-	// individual read-only use.
+	// "reddit_session=...; ..." Cookie string). Reddit's self-serve OAuth
+	// registration is effectively closed to new personal projects, so the cookie
+	// — which the reader can import straight from Firefox — is the practical path
+	// for individual read-only use. Empty falls back to the anonymous ".json"
+	// endpoints.
 	RedditSessionCookie string
-
-	// RedditClientID + RedditClientSecret switch Reddit from the anonymous
-	// ".json" endpoints to authenticated OAuth against oauth.reddit.com (app-only
-	// "client_credentials" grant), which reads public listings from IPs where the
-	// anonymous endpoints are 403-blocked. Supplying RedditUsername +
-	// RedditPassword additionally selects the per-user "script" grant.
-	RedditClientID     string
-	RedditClientSecret string
-	RedditUsername     string
-	RedditPassword     string
 
 	// MastodonInstance (e.g. "https://mastodon.social") enables the Mastodon
 	// provider; MastodonToken optionally authenticates it.
@@ -93,7 +84,7 @@ func Registry(opts Options) *source.Registry {
 	r := source.NewRegistry()
 	hc := loggedClient(opts.Recorder) // nil when no recorder is configured
 
-	// Reddit: authenticated OAuth when credentials are present, else anonymous.
+	// Reddit: authenticated with the user's session cookie when present, else anonymous.
 	r.Register(newReddit(hc, opts))
 	r.Register(newHackerNews(hc))
 	r.Register(newBluesky(hc))
@@ -153,9 +144,6 @@ func MediaClient(rec *httplog.Recorder) *http.Client {
 func newReddit(hc *http.Client, opts Options) source.Provider {
 	if opts.RedditSessionCookie != "" {
 		return reddit.NewWithCookie(hc, opts.RedditSessionCookie)
-	}
-	if opts.RedditClientID != "" && opts.RedditClientSecret != "" {
-		return reddit.NewOAuth(hc, opts.RedditClientID, opts.RedditClientSecret, opts.RedditUsername, opts.RedditPassword)
 	}
 	if hc != nil {
 		return reddit.NewWithHTTPClient(hc)

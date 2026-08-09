@@ -8,6 +8,8 @@ import (
 	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/app"
+	"github.com/go-news-reader/reader/feeds"
+	"github.com/go-news-reader/reader/internal/browsercookies"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
@@ -403,6 +405,35 @@ func TestAccountsRouting(t *testing.T) {
 	h.Key("Escape", 0)
 	if s.Mode() != ui.ModeFeed {
 		t.Fatal("Escape in the accounts editor should return to the feed")
+	}
+}
+
+// fakeImporter is a redditCookieImporter stub for the Firefox-import routing test.
+type fakeImporter struct{ v string }
+
+func (f fakeImporter) RedditSession() (browsercookies.RedditSession, error) {
+	return browsercookies.RedditSession{Value: f.v, Host: ".reddit.com"}, nil
+}
+
+func TestImportRedditFirefoxRouting(t *testing.T) {
+	a := profApp(t)
+	a.SetCookieFinder(fakeImporter{v: "FF-COOKIE"})
+	a.SetRegistryBuilder(func(feeds.Options) *source.Registry { return source.NewRegistry() })
+	h := New(a)
+	s := a.Scene()
+
+	// Reddit is the default provider when the editor opens, so its "Import session
+	// from Firefox" button is present. Clicking it routes to the app import method.
+	click(t, h, ui.HitAccounts)
+	if s.SelectedAccount() != source.Reddit {
+		t.Fatalf("accounts editor should default to Reddit, got %v", s.SelectedAccount())
+	}
+	click(t, h, ui.HitImportRedditFirefox)
+
+	// The imported cookie landed in the Reddit account's session_cookie field.
+	acct, ok := s.Settings().Account(source.Reddit)
+	if !ok || acct.Fields["session_cookie"] != "FF-COOKIE" {
+		t.Fatalf("Firefox import did not store the cookie: %+v ok=%v", acct, ok)
 	}
 }
 

@@ -9,15 +9,27 @@ import (
 	"image/png"
 	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-news-reader/reader/feeds"
+	"github.com/go-news-reader/reader/internal/browsercookies"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
+
+// fakeCookieFinder is a redditCookieImporter stub for the Firefox-import tests.
+type fakeCookieFinder struct {
+	rs  browsercookies.RedditSession
+	err error
+}
+
+func (f fakeCookieFinder) RedditSession() (browsercookies.RedditSession, error) {
+	return f.rs, f.err
+}
 
 // hasRGB reports whether an RGBA buffer contains any pixel of the given colour.
 func hasRGB(buf []byte, r, g, b uint8) bool {
@@ -485,14 +497,14 @@ func TestApplyAccountsRebuildsRegistryAndPersists(t *testing.T) {
 	var refreshed int
 	a.SetRefreshHook(func() { refreshed++; a.Refresh(context.Background()) })
 
-	// Enter Reddit credentials via the scene editor buffers, then commit.
-	a.Scene().SetAccounts([]settings.Account{{Kind: source.Reddit, Fields: map[string]string{"client_id": "cid", "client_secret": "csec"}}})
+	// Enter the Reddit session cookie via the scene editor buffers, then commit.
+	a.Scene().SetAccounts([]settings.Account{{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "reddit_session=xyz"}}})
 	a.ApplyAccounts()
 
 	if refreshed != 1 {
 		t.Fatalf("refresh hook not called: %d", refreshed)
 	}
-	if gotOpts.RedditClientID != "cid" || gotOpts.RedditClientSecret != "csec" {
+	if gotOpts.RedditSessionCookie != "reddit_session=xyz" {
 		t.Fatalf("reddit creds not mapped into rebuild options: %+v", gotOpts)
 	}
 	if gotOpts.Recorder != rec {
@@ -510,6 +522,83 @@ func TestApplyAccountsRebuildsRegistryAndPersists(t *testing.T) {
 	}
 }
 
+func TestImportRedditSessionFromFirefoxSuccess(t *testing.T) {
+	set := &settings.Settings{
+		Profiles: []settings.Profile{{Name: "Home", Subs: []source.Subscription{{Source: source.Reddit, Channel: "golang"}}}},
+		Active:   0, Theme: settings.ThemeSystem,
+	}
+	path := filepath.Join(t.TempDir(), "s.json")
+	a := New(Config{
+		Registry: newReg(fakeProv{kind: source.Reddit, items: []source.Item{{ID: "x", Source: source.Reddit}}}),
+		Settings: set, Store: settings.NewStore(path), Options: feeds.Options{}, OS: ui.OSMac,
+	})
+	var gotOpts feeds.Options
+	a.SetRegistryBuilder(func(o feeds.Options) *source.Registry {
+		gotOpts = o
+		return newReg(fakeProv{kind: source.Reddit})
+	})
+	a.SetRefreshHook(func() {})
+	a.SetCookieFinder(fakeCookieFinder{rs: browsercookies.RedditSession{Value: "COOKIEVAL", Host: ".reddit.com"}})
+
+	ok, err := a.ImportRedditSessionFromFirefox()
+	if err != nil || !ok {
+		t.Fatalf("import = %v, %v; want true, nil", ok, err)
+	}
+	// The imported cookie is mapped into the rebuilt registry options...
+	if gotOpts.RedditSessionCookie != "COOKIEVAL" {
+		t.Fatalf("session cookie not applied to rebuilt options: %+v", gotOpts)
+	}
+	// ...persisted to disk...
+	loaded, err := settings.NewStore(path).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	acct, ok := loaded.Account(source.Reddit)
+	if !ok || acct.Fields["session_cookie"] != "COOKIEVAL" {
+		t.Fatalf("cookie not persisted: %+v ok=%v", acct, ok)
+	}
+	// ...surfaced in the editor buffer, and reported on the status line.
+	if a.VM().Status.Get() == "" {
+		t.Fatal("status line should report the import outcome")
+	}
+}
+
+func TestImportRedditSessionFromFirefoxFailure(t *testing.T) {
+	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit}), OS: ui.OSMac})
+	a.SetRefreshHook(func() {})
+	var rebuilt bool
+	a.SetRegistryBuilder(func(feeds.Options) *source.Registry { rebuilt = true; return newReg() })
+
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"no cookie", browsercookies.ErrNoCookie, "log into Reddit in Firefox first"},
+		{"no firefox", browsercookies.ErrNoFirefox, "Firefox not found"},
+		{"no profile", browsercookies.ErrNoProfile, "no readable Firefox profile"},
+		{"other", errors.New("disk exploded"), "disk exploded"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a.SetCookieFinder(fakeCookieFinder{err: tc.err})
+			ok, err := a.ImportRedditSessionFromFirefox()
+			if ok || err == nil {
+				t.Fatalf("import = %v, %v; want false, err", ok, err)
+			}
+			if got := a.VM().Status.Get(); !strings.Contains(got, tc.want) {
+				t.Fatalf("status = %q, want to contain %q", got, tc.want)
+			}
+		})
+	}
+	if rebuilt {
+		t.Fatal("a failed import must not rebuild the registry")
+	}
+	// No Reddit account should have been stored by the failures.
+	if _, ok := a.Scene().Settings().Account(source.Reddit); ok {
+		t.Fatal("failed import must not persist a reddit account")
+	}
+}
+
 func TestApplyAccountsNoStore(t *testing.T) {
 	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit})})
 	a.SetRegistryBuilder(func(feeds.Options) *source.Registry { return newReg() })
@@ -519,7 +608,7 @@ func TestApplyAccountsNoStore(t *testing.T) {
 
 func TestAccountsToOptions(t *testing.T) {
 	accts := []settings.Account{
-		{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "reddit_session=xyz", "client_id": "id", "client_secret": "sec", "username": "u", "password": "p"}},
+		{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "reddit_session=xyz"}},
 		{Kind: source.Mastodon, Fields: map[string]string{"instance": "https://m", "token": "mt"}},
 		{Kind: source.Lemmy, Fields: map[string]string{"instance": "https://l"}},
 		{Kind: source.Usenet, Fields: map[string]string{"addr": "news:119", "tls": "true", "username": "usr", "password": "pw", "indexer_url": "https://ix", "indexer_key": "k"}},
@@ -527,7 +616,7 @@ func TestAccountsToOptions(t *testing.T) {
 		{Kind: source.TikTok, Fields: map[string]string{"ms_token": "ms", "session": "ts"}},
 	}
 	o := AccountsToOptions(feeds.Options{}, accts)
-	if o.RedditSessionCookie != "reddit_session=xyz" || o.RedditClientID != "id" || o.RedditClientSecret != "sec" || o.RedditUsername != "u" || o.RedditPassword != "p" {
+	if o.RedditSessionCookie != "reddit_session=xyz" {
 		t.Fatalf("reddit mapping wrong: %+v", o)
 	}
 	if o.MastodonInstance != "https://m" || o.MastodonToken != "mt" || o.LemmyInstance != "https://l" {
@@ -559,7 +648,7 @@ func TestAccountsToOptions(t *testing.T) {
 		t.Fatal("absent tls key should preserve the base bool")
 	}
 	// An unknown kind is ignored (default-less switch, no-op).
-	if got := AccountsToOptions(feeds.Options{}, []settings.Account{{Kind: source.Bluesky, Fields: map[string]string{"x": "y"}}}); got.RedditClientID != "" {
+	if got := AccountsToOptions(feeds.Options{}, []settings.Account{{Kind: source.Bluesky, Fields: map[string]string{"x": "y"}}}); got.RedditSessionCookie != "" {
 		t.Fatalf("unknown kind should be a no-op: %+v", got)
 	}
 }

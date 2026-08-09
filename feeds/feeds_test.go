@@ -85,34 +85,15 @@ func TestRegistryWithRecorder(t *testing.T) {
 	}
 }
 
-func TestRegistryRedditOAuth(t *testing.T) {
-	// With Reddit credentials the reddit provider is still registered (now via
-	// the OAuth constructor), both with and without a shared logged client.
-	r := Registry(Options{RedditClientID: "id", RedditClientSecret: "sec", RedditUsername: "u", RedditPassword: "p"})
-	if !has(r.Kinds(), source.Reddit) {
-		t.Fatal("reddit not registered with OAuth creds (no recorder)")
-	}
-	rec := httplog.NewRecorder(8)
-	r2 := Registry(Options{Recorder: rec, RedditClientID: "id", RedditClientSecret: "sec"})
-	if !has(r2.Kinds(), source.Reddit) {
-		t.Fatal("reddit not registered with OAuth creds (with recorder)")
-	}
-	// A client id without a secret keeps the anonymous path (OAuth guard false).
-	r3 := Registry(Options{RedditClientID: "id"})
-	if !has(r3.Kinds(), source.Reddit) {
-		t.Fatal("reddit should still register anonymously without a secret")
-	}
-}
-
 func TestRegistryRedditSessionCookie(t *testing.T) {
-	// A session cookie registers Reddit (taking precedence over OAuth) both with
+	// A session cookie registers the (authenticated) Reddit provider both with
 	// and without a shared logged client.
 	r := Registry(Options{RedditSessionCookie: "reddit_session=abc"})
 	if !has(r.Kinds(), source.Reddit) {
 		t.Fatal("reddit not registered with a session cookie (no recorder)")
 	}
 	rec := httplog.NewRecorder(8)
-	r2 := Registry(Options{Recorder: rec, RedditSessionCookie: "reddit_session=abc", RedditClientID: "id", RedditClientSecret: "sec"})
+	r2 := Registry(Options{Recorder: rec, RedditSessionCookie: "reddit_session=abc"})
 	if !has(r2.Kinds(), source.Reddit) {
 		t.Fatal("reddit not registered with a session cookie (with recorder)")
 	}

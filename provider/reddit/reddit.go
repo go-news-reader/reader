@@ -1,7 +1,9 @@
 // Package reddit adapts the standalone github.com/go-reddit/reddit client to
 // the aggregator's source.Provider contract. Anonymous fetches go through the
 // shared browserhttp uTLS client so Reddit's TLS-fingerprint anti-bot 403 does
-// not fire; an OAuth-authenticated client can be supplied instead.
+// not fire; a session-cookie-authenticated client can be supplied instead (the
+// user's own logged-in reddit_session), since Reddit's self-serve OAuth app
+// registration is effectively closed to new personal projects.
 package reddit
 
 import (
@@ -47,28 +49,6 @@ func NewWithHTTPClient(hc *http.Client) *Provider {
 	return &Provider{client: c}
 }
 
-// NewOAuth returns an authenticated Reddit provider driving hc (the shared,
-// request-logging client the aggregator builds). clientID + clientSecret enable
-// application-only ("client_credentials") OAuth against oauth.reddit.com — which
-// reads public listings and, crucially, works from IPs where Reddit 403s the
-// anonymous ".json" endpoints. When username and password are both supplied, the
-// per-user "script" grant is used instead. A nil hc falls back to the portable
-// browser-fingerprint client (so the constructor is safe on its own).
-func NewOAuth(hc *http.Client, clientID, clientSecret, username, password string) *Provider {
-	if hc == nil {
-		hc = browserhttp.NewClient(30 * time.Second)
-	}
-	opts := []goreddit.Option{
-		goreddit.WithHTTPClient(hc),
-		goreddit.WithUserAgent(browserhttp.DefaultUserAgent),
-		goreddit.WithOAuth(clientID, clientSecret),
-	}
-	if username != "" && password != "" {
-		opts = append(opts, goreddit.WithOAuthScript(clientID, clientSecret, username, password))
-	}
-	return &Provider{client: goreddit.NewClient(opts...)}
-}
-
 // NewWithCookie returns a Reddit provider that authenticates reads with the
 // user's own logged-in browser reddit_session cookie, driving hc (the shared,
 // request-logging client the aggregator builds). Reddit's self-serve OAuth
@@ -90,8 +70,8 @@ func NewWithCookie(hc *http.Client, sessionCookie string) *Provider {
 	return &Provider{client: c}
 }
 
-// NewWithClient wraps an already-configured reddit client — e.g. an OAuth
-// (logged-in) client, or a fake in tests.
+// NewWithClient wraps an already-configured reddit client — e.g. a
+// session-cookie (logged-in) client, or a fake in tests.
 func NewWithClient(c fetcher) *Provider { return &Provider{client: c} }
 
 // Kind reports source.Reddit.
@@ -122,14 +102,14 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 }
 
 // mapErr translates a Reddit client failure into a typed source.AuthError when
-// it is a 401/403 — the anonymous ".json" endpoints 403 from data-center IPs and
-// a rejected OAuth grant returns 401 — so the UI can prompt the user to sign in
-// with a Reddit app instead of showing a raw status. Other failures (network,
-// 429, 5xx) pass through unchanged as transient errors.
+// it is a 401/403 — the anonymous ".json" endpoints 403 from data-center IPs, and
+// a stale/rejected session cookie returns 401 — so the UI can prompt the user to
+// sign in instead of showing a raw status. Other failures (network, 429, 5xx)
+// pass through unchanged as transient errors.
 func mapErr(err error) error {
 	var apiErr *goreddit.APIError
 	if errors.As(err, &apiErr) && source.HTTPAuthStatus(apiErr.StatusCode) {
-		return source.NeedsAuth(source.Reddit, "sign in with a Reddit app (oauth)")
+		return source.NeedsAuth(source.Reddit, "log into Reddit in your browser, then import the session cookie")
 	}
 	return err
 }

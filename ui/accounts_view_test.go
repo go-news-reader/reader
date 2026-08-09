@@ -13,7 +13,7 @@ func center(x, y, w, h int) (int, int) { return x + w/2, y + h/2 }
 func TestAccountsOpenCloseAndSelect(t *testing.T) {
 	s := New(900, 600, ThemeFor(OSLinux, false))
 	// Fresh scene: accBuf is nil until seeded.
-	if got := s.accFieldValue(source.Reddit, "client_id"); got != "" {
+	if got := s.accFieldValue(source.Reddit, "session_cookie"); got != "" {
 		t.Fatalf("nil buffer lookup = %q", got)
 	}
 	s.OpenAccounts() // accSel == "" -> defaults to Reddit
@@ -37,7 +37,7 @@ func TestAccountsOpenCloseAndSelect(t *testing.T) {
 func TestAccountsSeedAndEdit(t *testing.T) {
 	s := New(900, 600, ThemeFor(OSLinux, false))
 	s.SetAccounts([]settings.Account{
-		{Kind: source.Reddit, Fields: map[string]string{"client_id": "cid", "client_secret": "sec"}},
+		{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "cook"}},
 		{Kind: source.Lemmy, Fields: nil},                                     // empty map -> skipped by EditedAccounts
 		{Kind: source.Mastodon, Fields: map[string]string{"instance": "   "}}, // blank -> skipped
 	})
@@ -49,7 +49,7 @@ func TestAccountsSeedAndEdit(t *testing.T) {
 	}
 	// EditedAccounts keeps only providers with a non-empty field.
 	ed := s.EditedAccounts()
-	if len(ed) != 1 || ed[0].Kind != source.Reddit || ed[0].Fields["client_id"] != "cid" {
+	if len(ed) != 1 || ed[0].Kind != source.Reddit || ed[0].Fields["session_cookie"] != "cook" {
 		t.Fatalf("edited accounts = %+v", ed)
 	}
 
@@ -58,25 +58,27 @@ func TestAccountsSeedAndEdit(t *testing.T) {
 		t.Fatal("Settings() should include the reddit account")
 	}
 
-	// Type into a focused field (ModeAccounts path).
+	// Type into a focused field (ModeAccounts path). Clear the seeded buffer so
+	// the typed value stands alone.
+	s.SetAccounts(nil)
 	s.OpenAccounts()
-	s.FocusAccountField("username")
+	s.FocusAccountField("session_cookie")
 	s.TypeRune('b')
 	s.TypeRune('o')
-	if s.accFieldValue(source.Reddit, "username") != "bo" {
-		t.Fatalf("typed value = %q", s.accFieldValue(source.Reddit, "username"))
+	if s.accFieldValue(source.Reddit, "session_cookie") != "bo" {
+		t.Fatalf("typed value = %q", s.accFieldValue(source.Reddit, "session_cookie"))
 	}
 	s.Backspace()
-	if s.accFieldValue(source.Reddit, "username") != "b" {
-		t.Fatalf("after backspace = %q", s.accFieldValue(source.Reddit, "username"))
+	if s.accFieldValue(source.Reddit, "session_cookie") != "b" {
+		t.Fatalf("after backspace = %q", s.accFieldValue(source.Reddit, "session_cookie"))
 	}
 	// Backspace with no focus is a no-op.
 	s.FocusAccountField("")
 	s.Backspace()
 	// TypeRune with no focus is ignored.
 	s.TypeRune('x')
-	if s.accFieldValue(source.Reddit, "username") != "b" {
-		t.Fatalf("unfocused edits leaked: %q", s.accFieldValue(source.Reddit, "username"))
+	if s.accFieldValue(source.Reddit, "session_cookie") != "b" {
+		t.Fatalf("unfocused edits leaked: %q", s.accFieldValue(source.Reddit, "session_cookie"))
 	}
 }
 
@@ -169,7 +171,8 @@ func TestAccountsScroll(t *testing.T) {
 	// scroll path and its clamp run.
 	s := New(360, 240, ThemeFor(OSLinux, false))
 	s.OpenAccounts()
-	s.Scroll(1 << 20) // to the bottom
+	s.SelectAccount(source.Usenet) // Usenet's six-field form comfortably overflows
+	s.Scroll(1 << 20)              // to the bottom
 	if s.accScroll.offset <= 0 {
 		t.Fatalf("form did not scroll: %d", s.accScroll.offset)
 	}
@@ -182,10 +185,10 @@ func TestAccountsScroll(t *testing.T) {
 func TestAccountsSnapshot(t *testing.T) {
 	s := New(900, 700, ThemeFor(OSLinux, false)) // adwaita has Extra["OnAccent"]
 	s.SetAccounts([]settings.Account{
-		{Kind: source.Reddit, Fields: map[string]string{"client_id": "myid", "client_secret": "supersecret"}},
+		{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "supersecret"}},
 	})
-	s.OpenAccounts()                // Reddit fields, with a masked secret
-	s.FocusAccountField("username") // exercise the focused-caret branch
+	s.OpenAccounts()                      // Reddit fields, with a masked secret
+	s.FocusAccountField("session_cookie") // exercise the focused-caret branch
 	s.TypeRune('u')
 	buf := renderPNG(t, s, "accounts")
 
@@ -196,27 +199,76 @@ func TestAccountsSnapshot(t *testing.T) {
 		t.Fatalf("accounts topbar pixel = %v, want accent %v", got, acc)
 	}
 
-	// The client_secret field renders masked: its stored value never appears as
+	// The session_cookie field renders masked: its stored value never appears as
 	// raw text, but its bullet mask is drawn. Assert via the layout: the secret
 	// row exists and its buffer holds the raw secret (drawn as bullets).
 	s.layoutAccounts()
 	var sawSecret bool
 	for _, r := range s.accRows {
-		if r.key == "client_secret" && r.secret {
+		if r.key == "session_cookie" && r.secret {
 			sawSecret = true
-			if s.accFieldValue(source.Reddit, "client_secret") != "supersecret" {
-				t.Fatal("secret buffer not preserved")
+			if s.accFieldValue(source.Reddit, "session_cookie") != "supersecretu" {
+				t.Fatalf("secret buffer not preserved: %q", s.accFieldValue(source.Reddit, "session_cookie"))
 			}
 		}
 	}
 	if !sawSecret {
-		t.Fatal("client_secret should be a masked field")
+		t.Fatal("session_cookie should be a masked field")
 	}
 
 	// The Usenet provider draws a bool toggle (On/Off) — render that state too.
 	s.SelectAccount(source.Usenet)
 	s.ToggleAccountBool("tls")
 	renderPNG(t, s, "accounts-usenet")
+}
+
+func TestSetAccountField(t *testing.T) {
+	s := New(900, 600, ThemeFor(OSLinux, false))
+	// nil buffer path: allocates the outer + inner maps.
+	s.SetAccountField(source.Reddit, "session_cookie", "one")
+	if got := s.accFieldValue(source.Reddit, "session_cookie"); got != "one" {
+		t.Fatalf("first write = %q", got)
+	}
+	// existing buffer path: reuses the maps, overwrites.
+	s.SetAccountField(source.Reddit, "session_cookie", "two")
+	if got := s.accFieldValue(source.Reddit, "session_cookie"); got != "two" {
+		t.Fatalf("second write = %q", got)
+	}
+}
+
+func TestAccountsImportButton(t *testing.T) {
+	s := New(900, 700, ThemeFor(OSLinux, false))
+	s.OpenAccounts() // Reddit selected by default
+	s.layoutAccounts()
+	if s.accImportR.W == 0 {
+		t.Fatal("Reddit editor should show the Firefox import button")
+	}
+	ix, iy := center(s.accImportR.X, s.accImportR.Y, s.accImportR.W, s.accImportR.H)
+	if h := s.accountsHitTest(ix, iy); h.Kind != HitImportRedditFirefox {
+		t.Fatalf("import button hit = %+v, want HitImportRedditFirefox", h)
+	}
+
+	// A non-Reddit provider shows no import button and never yields the hit.
+	s.SelectAccount(source.Mastodon)
+	s.layoutAccounts()
+	if s.accImportR.W != 0 {
+		t.Fatal("non-Reddit provider must not show the import button")
+	}
+}
+
+func TestAccountsImportButtonScrolls(t *testing.T) {
+	// A short window forces the Reddit form (incl. the import button) to overflow,
+	// exercising the scroll-shift of the import-button rect.
+	s := New(360, 220, ThemeFor(OSLinux, false))
+	s.OpenAccounts() // Reddit
+	s.Scroll(1 << 20)
+	s.layoutAccounts()
+	if s.accScroll.offset <= 0 {
+		t.Fatalf("form did not scroll: %d", s.accScroll.offset)
+	}
+	if s.accImportR.W == 0 {
+		t.Fatal("import button should still be laid out while scrolled")
+	}
 }
 
 func TestAccountsProviderWrap(t *testing.T) {

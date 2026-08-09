@@ -12,9 +12,10 @@ import (
 )
 
 // The in-canvas per-provider credentials editor (ModeAccounts). Its primary
-// purpose is to authenticate Reddit: pasting a client id + secret switches the
-// Reddit provider from the anonymous, intermittently-403ing ".json" endpoints
-// to OAuth against oauth.reddit.com. The view is a provider selector plus the
+// purpose is to authenticate Reddit: pasting the logged-in browser's
+// reddit_session cookie switches the Reddit provider off the anonymous,
+// intermittently-403ing ".json" endpoints. The cookie can also be imported
+// straight from Firefox with one click. The view is a provider selector plus the
 // selected provider's credential fields (from settings.CredentialSchema),
 // rendered with the same painter + anti-aliased text as the rest of the app.
 // Secret fields are masked; the Usenet TLS field renders as a toggle.
@@ -112,6 +113,23 @@ func (s *Scene) ToggleAccountBool(key string) {
 	} else {
 		s.accSetField(key, "true")
 	}
+	s.touch()
+}
+
+// SetAccountField writes value into provider k's credential buffer for key,
+// lazily allocating. It lets the app inject a credential obtained outside the
+// editor — e.g. a reddit_session cookie imported from Firefox — so the editor
+// reflects it and a commit persists it.
+func (s *Scene) SetAccountField(k source.Kind, key, value string) {
+	if s.accBuf == nil {
+		s.accBuf = map[source.Kind]map[string]string{}
+	}
+	m := s.accBuf[k]
+	if m == nil {
+		m = map[string]string{}
+		s.accBuf[k] = m
+	}
+	m[key] = value
 	s.touch()
 }
 
@@ -215,7 +233,7 @@ func (s *Scene) layoutAccounts() {
 	label(pad, y, strings.ToUpper(pc.Label)+" CREDENTIALS")
 	y += m.side.height + gap
 	if s.accSel == source.Reddit {
-		label(pad, y, "Create a script app at reddit.com/prefs/apps → paste client id + secret")
+		label(pad, y, "Log into Reddit in Firefox, then import the reddit_session cookie below")
 		y += m.side.height + gap
 	}
 
@@ -238,6 +256,18 @@ func (s *Scene) layoutAccounts() {
 		})
 		y += btnH + gap
 	}
+
+	// Reddit gets a one-click "import from Firefox" affordance: it lifts the
+	// logged-in reddit_session cookie out of the user's Firefox profile so signing
+	// in is a single button rather than a manual copy-paste. Other providers show
+	// no button (its rect stays zero, so it never hit-tests).
+	s.accImportR = toolkit.Rect{}
+	if s.accSel == source.Reddit {
+		iw := m.tab.width("Import session from Firefox") + rpxOf(s, 24)
+		s.accImportR = toolkit.Rect{X: pad, Y: y, W: iw, H: btnH}
+		y += btnH + gap
+	}
+
 	// Everything above was laid out unscrolled; clamp the offset (the refresh-time
 	// clamp, robust to a resize) and shift the scrollable body up by it. The topbar
 	// Back/Done live in the fixed band and are not shifted — mirrors layoutSettings.
@@ -251,6 +281,9 @@ func (s *Scene) layoutAccounts() {
 		}
 		for i := range s.accLabels {
 			s.accLabels[i].y += dy
+		}
+		if s.accImportR.W > 0 {
+			s.accImportR.Y += dy
 		}
 	}
 }
@@ -310,6 +343,14 @@ func (s *Scene) drawAccounts(buf []byte) {
 		w.Draw(p, th)
 	}
 
+	// Reddit's "Import session from Firefox" button.
+	if s.accImportR.W > 0 {
+		w := &toolkit.Button{Label: "Import session from Firefox"}
+		w.Font = pillFont
+		w.SetBounds(s.accImportR)
+		w.Draw(p, th)
+	}
+
 	// Topbar (accent) with Back, title and Done, over any scroll overflow.
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
 	p.FillRoundRect(painter.Rect(s.accBackR), rpxOf(s, 6), onAccent)
@@ -329,6 +370,9 @@ func (s *Scene) accountsHitTest(x, y int) Hit {
 	// that band must not select a provider or field through the chrome.
 	if y < s.m.topbarH {
 		return Hit{Kind: HitNone}
+	}
+	if s.accImportR.W > 0 && inRect(s.accImportR, x, y) {
+		return Hit{Kind: HitImportRedditFirefox}
 	}
 	for _, b := range s.accProvBtns {
 		if inRect(b.rect, x, y) {

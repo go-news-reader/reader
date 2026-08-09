@@ -242,17 +242,17 @@ func TestAccountLookupAndUpsert(t *testing.T) {
 	if _, ok := s.Account(source.Reddit); ok {
 		t.Fatal("empty settings should have no reddit account")
 	}
-	s.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"client_id": "a"}})
+	s.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "a"}})
 	if len(s.Accounts) != 1 {
 		t.Fatalf("append expected, got %d", len(s.Accounts))
 	}
 	// Upsert replaces in place rather than appending a duplicate.
-	s.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"client_id": "b"}})
+	s.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "b"}})
 	if len(s.Accounts) != 1 {
 		t.Fatalf("upsert should not append: %d", len(s.Accounts))
 	}
 	got, ok := s.Account(source.Reddit)
-	if !ok || got.Fields["client_id"] != "b" {
+	if !ok || got.Fields["session_cookie"] != "b" {
 		t.Fatalf("account = %+v ok=%v", got, ok)
 	}
 	// A second provider appends.
@@ -278,8 +278,8 @@ func TestNormalizeDedupAccounts(t *testing.T) {
 		Theme:     ThemeDark,
 		CachePath: "/c",
 		Accounts: []Account{
-			{Kind: source.Reddit, Fields: map[string]string{"client_id": "first"}},
-			{Kind: source.Reddit, Fields: map[string]string{"client_id": "dup"}},
+			{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "first"}},
+			{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "dup"}},
 			{Kind: "", Fields: map[string]string{"x": "y"}},
 			{Kind: source.Mastodon, Fields: map[string]string{"instance": "m"}},
 		},
@@ -289,7 +289,7 @@ func TestNormalizeDedupAccounts(t *testing.T) {
 		t.Fatalf("dedup => %d accounts: %+v", len(s.Accounts), s.Accounts)
 	}
 	r, _ := s.Account(source.Reddit)
-	if r.Fields["client_id"] != "first" {
+	if r.Fields["session_cookie"] != "first" {
 		t.Fatalf("first duplicate should win: %+v", r)
 	}
 	if _, ok := s.Account(source.Mastodon); !ok {
@@ -302,7 +302,7 @@ func TestCredentialSchema(t *testing.T) {
 	if len(sc) == 0 || sc[0].Kind != source.Reddit {
 		t.Fatalf("schema should start with reddit: %+v", sc)
 	}
-	// Reddit exposes the four OAuth fields, with the two secrets masked.
+	// Reddit exposes only the session-cookie field (OAuth was removed), masked.
 	var reddit ProviderCreds
 	for _, pc := range sc {
 		if pc.Kind == source.Reddit {
@@ -313,16 +313,20 @@ func TestCredentialSchema(t *testing.T) {
 	for _, f := range reddit.Fields {
 		keys[f.Key] = f
 	}
-	for _, k := range []string{"session_cookie", "client_id", "client_secret", "username", "password"} {
-		if _, ok := keys[k]; !ok {
-			t.Fatalf("reddit missing field %q", k)
+	if len(reddit.Fields) != 1 {
+		t.Fatalf("reddit should expose exactly one field, got %+v", reddit.Fields)
+	}
+	if _, ok := keys["session_cookie"]; !ok {
+		t.Fatal("reddit missing session_cookie field")
+	}
+	if !keys["session_cookie"].Secret {
+		t.Fatal("reddit session_cookie should be masked")
+	}
+	// The removed OAuth fields must not resurface.
+	for _, k := range []string{"client_id", "client_secret", "username", "password"} {
+		if _, ok := keys[k]; ok {
+			t.Fatalf("reddit should no longer expose OAuth field %q", k)
 		}
-	}
-	if !keys["client_secret"].Secret || !keys["password"].Secret || !keys["session_cookie"].Secret {
-		t.Fatal("reddit secrets should be masked")
-	}
-	if keys["client_id"].Secret {
-		t.Fatal("client_id should not be secret")
 	}
 	// Usenet exposes a bool TLS toggle.
 	var tlsBool bool
@@ -344,7 +348,7 @@ func TestAccountsRoundTrip(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "s.json")
 	st := NewStore(p)
 	in := Default()
-	in.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"client_id": "id", "client_secret": "sec"}})
+	in.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "reddit_session=sec"}})
 	if err := st.Save(in); err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +357,7 @@ func TestAccountsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok := out.Account(source.Reddit)
-	if !ok || got.Fields["client_secret"] != "sec" {
+	if !ok || got.Fields["session_cookie"] != "reddit_session=sec" {
 		t.Fatalf("account not persisted: %+v ok=%v", got, ok)
 	}
 }

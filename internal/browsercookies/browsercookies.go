@@ -1,0 +1,278 @@
+// Package browsercookies imports authentication cookies straight from a locally
+// installed browser, so the reader can pick up a session the user already
+// established by logging in normally — no API app registration, no manual
+// copy-paste of an opaque token.
+//
+// Today it targets Firefox, whose cookie store is the plaintext SQLite database
+// cookies.sqlite (unlike Chromium, Firefox does not encrypt cookie values, so no
+// OS keychain is involved). The primary use is Reddit: Reddit's self-serve OAuth
+// app registration is effectively closed to new personal projects, so lifting
+// the logged-in reddit_session cookie is the practical path to authenticated
+// reads for an individual.
+//
+// Robustness notes:
+//   - Profile discovery parses profiles.ini and honours the [Install*] Default
+//     pointer, then a [Profile*] with Default=1, then any *.default* directory —
+//     mirroring how Firefox itself resolves the default profile. Multiple or
+//     absent profiles are handled gracefully with typed errors.
+//   - cookies.sqlite is frequently WAL-locked while Firefox runs. Rather than
+//     fight the lock, the whole cookie database (the main file plus any -wal /
+//     -shm sidecars) is copied to a private temp directory and the copy is read,
+//     then the temp files are removed. This is immune to concurrent writes and
+//     needs no exclusive access to the live file.
+//   - The SQLite reader is pure Go (modernc.org/sqlite, CGO=0), so the whole
+//     reader stays CGO-free and cross-compiles to every target.
+package browsercookies
+
+import (
+	"bufio"
+	"database/sql"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	_ "modernc.org/sqlite" // pure-Go database/sql driver, registered as "sqlite"
+)
+
+// Seams for the rare, otherwise-untriggerable failure paths, so tests can force
+// them deterministically without depending on the host filesystem or OS.
+var (
+	mkdirTemp = os.MkdirTemp
+	sqlOpen   = sql.Open
+)
+
+// Sentinel errors let callers (the UI) message the user precisely — e.g. "log
+// into Reddit in Firefox first" — instead of surfacing a raw failure. Test with
+// errors.Is.
+var (
+	// ErrNoFirefox reports that no Firefox profile directory could be located
+	// (Firefox is not installed, or has never been run).
+	ErrNoFirefox = errors.New("no Firefox profile found")
+	// ErrNoProfile reports that a Firefox install exists but no usable profile
+	// (or its cookies database) could be resolved.
+	ErrNoProfile = errors.New("no usable Firefox profile")
+	// ErrNoCookie reports that the profile was read but the requested cookie was
+	// absent — for Reddit, the user is not logged in.
+	ErrNoCookie = errors.New("cookie not found in Firefox profile")
+)
+
+// RedditSession is the imported reddit_session cookie.
+type RedditSession struct {
+	Value string // the bare cookie value (what goreddit's WithSessionCookie wants)
+	Host  string // the host the cookie was scoped to (e.g. ".reddit.com")
+}
+
+// Finder locates and reads Firefox cookies. Its fields are seams so tests can
+// point discovery at a fixture HOME and a chosen GOOS without touching the real
+// environment. The zero value is not usable; construct with [New].
+type Finder struct {
+	goos     string
+	getenv   func(string) string
+	userHome func() (string, error)
+}
+
+// New returns a Finder bound to the real runtime OS and environment.
+func New() *Finder {
+	return &Finder{goos: runtime.GOOS, getenv: os.Getenv, userHome: os.UserHomeDir}
+}
+
+// profileRoot returns the per-OS Firefox root directory (the parent of
+// profiles.ini and the Profiles/ folder).
+func (f *Finder) profileRoot() (string, error) {
+	switch f.goos {
+	case "darwin":
+		home, err := f.userHome()
+		if err != nil {
+			return "", fmt.Errorf("%w: %v", ErrNoFirefox, err)
+		}
+		return filepath.Join(home, "Library", "Application Support", "Firefox"), nil
+	case "windows":
+		appData := f.getenv("APPDATA")
+		if appData == "" {
+			return "", fmt.Errorf("%w: APPDATA is unset", ErrNoFirefox)
+		}
+		return filepath.Join(appData, "Mozilla", "Firefox"), nil
+	default: // linux and other unixes
+		home, err := f.userHome()
+		if err != nil {
+			return "", fmt.Errorf("%w: %v", ErrNoFirefox, err)
+		}
+		return filepath.Join(home, ".mozilla", "firefox"), nil
+	}
+}
+
+// iniSection is one [Name] block of a profiles.ini file with its key/value pairs.
+type iniSection struct {
+	name string
+	keys map[string]string
+}
+
+// parseProfilesINI parses the minimal INI dialect Firefox writes: [Section]
+// headers and Key=Value lines, ignoring blanks and ';'/'#' comments. Later keys
+// in a section overwrite earlier ones.
+func parseProfilesINI(r io.Reader) []iniSection {
+	var out []iniSection
+	var cur *iniSection
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			out = append(out, iniSection{name: line[1 : len(line)-1], keys: map[string]string{}})
+			cur = &out[len(out)-1]
+			continue
+		}
+		if cur == nil {
+			continue // a key before any section header: skip it
+		}
+		if eq := strings.IndexByte(line, '='); eq >= 0 {
+			key := strings.TrimSpace(line[:eq])
+			val := strings.TrimSpace(line[eq+1:])
+			cur.keys[key] = val
+		}
+	}
+	return out
+}
+
+// ProfileDir resolves the default Firefox profile directory. It reads
+// profiles.ini under the per-OS root and applies Firefox's own precedence: the
+// [Install*] section's Default pointer, then a [Profile*] marked Default=1, then
+// any profile whose path looks like a "*.default*" directory.
+func (f *Finder) ProfileDir() (string, error) {
+	root, err := f.profileRoot()
+	if err != nil {
+		return "", err
+	}
+	iniPath := filepath.Join(root, "profiles.ini")
+	file, err := os.Open(iniPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("%w: %s missing", ErrNoFirefox, iniPath)
+		}
+		return "", fmt.Errorf("%w: %v", ErrNoProfile, err)
+	}
+	defer file.Close()
+	sections := parseProfilesINI(file)
+
+	rel := resolveProfilePath(sections)
+	if rel == "" {
+		return "", fmt.Errorf("%w: no default profile in %s", ErrNoProfile, iniPath)
+	}
+	if filepath.IsAbs(rel) {
+		return rel, nil
+	}
+	return filepath.Join(root, filepath.FromSlash(rel)), nil
+}
+
+// resolveProfilePath picks the default profile's Path (as written in
+// profiles.ini, forward-slashed and possibly relative) from parsed sections,
+// applying Firefox's precedence. It returns "" when nothing usable is present.
+func resolveProfilePath(sections []iniSection) string {
+	// 1. An [Install*] section names the active default profile directly.
+	for _, s := range sections {
+		if strings.HasPrefix(s.name, "Install") {
+			if d := s.keys["Default"]; d != "" {
+				return d
+			}
+		}
+	}
+	// 2. A [Profile*] explicitly flagged Default=1.
+	for _, s := range sections {
+		if strings.HasPrefix(s.name, "Profile") && s.keys["Default"] == "1" {
+			if p := s.keys["Path"]; p != "" {
+				return p
+			}
+		}
+	}
+	// 3. Fallback: any profile whose path looks like the stock "*.default*" dir.
+	for _, s := range sections {
+		if !strings.HasPrefix(s.name, "Profile") {
+			continue
+		}
+		if p := s.keys["Path"]; strings.Contains(p, ".default") {
+			return p
+		}
+	}
+	return ""
+}
+
+// RedditSession imports the logged-in reddit_session cookie from the default
+// Firefox profile. It returns [ErrNoFirefox] when Firefox/profile is absent,
+// [ErrNoProfile] when the cookies database cannot be located, and [ErrNoCookie]
+// when the user is not logged into Reddit.
+func (f *Finder) RedditSession() (RedditSession, error) {
+	dir, err := f.ProfileDir()
+	if err != nil {
+		return RedditSession{}, err
+	}
+	dbPath := filepath.Join(dir, "cookies.sqlite")
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			return RedditSession{}, fmt.Errorf("%w: %s missing", ErrNoProfile, dbPath)
+		}
+		return RedditSession{}, fmt.Errorf("%w: %v", ErrNoProfile, err)
+	}
+	return readRedditSession(dbPath)
+}
+
+// readRedditSession copies the cookie database to a private temp location
+// (dodging Firefox's WAL lock) and queries the copy for the reddit_session
+// cookie. The temp copies are always cleaned up.
+func readRedditSession(dbPath string) (RedditSession, error) {
+	tmpDir, err := mkdirTemp("", "rd-ffcookies-")
+	if err != nil {
+		return RedditSession{}, err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Copy the main database plus any WAL/shm sidecars so the copy is consistent
+	// even while Firefox holds the live file open in WAL mode.
+	tmpDB := filepath.Join(tmpDir, "cookies.sqlite")
+	if err := copyFile(dbPath, tmpDB); err != nil {
+		return RedditSession{}, err
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		src := dbPath + suffix
+		if _, statErr := os.Stat(src); statErr == nil {
+			if err := copyFile(src, tmpDB+suffix); err != nil {
+				return RedditSession{}, err
+			}
+		}
+	}
+
+	db, err := sqlOpen("sqlite", "file:"+tmpDB+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		return RedditSession{}, err
+	}
+	defer db.Close()
+
+	// Prefer the most specific host (longest name) so a scoped cookie wins over a
+	// stale broader one, and require a non-empty value.
+	const q = `SELECT value, host FROM moz_cookies
+		WHERE name = 'reddit_session' AND host LIKE '%reddit.com%' AND value <> ''
+		ORDER BY LENGTH(host) DESC LIMIT 1`
+	var rs RedditSession
+	switch err := db.QueryRow(q).Scan(&rs.Value, &rs.Host); {
+	case err == sql.ErrNoRows:
+		return RedditSession{}, fmt.Errorf("%w: reddit_session (log into Reddit in Firefox first)", ErrNoCookie)
+	case err != nil:
+		return RedditSession{}, err
+	}
+	return rs, nil
+}
+
+// copyFile copies src to dst byte-for-byte. A cookie database is small (tens of
+// KB), so reading it whole is simpler and just as fast as streaming.
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o600)
+}

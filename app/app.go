@@ -7,6 +7,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-newsgroups/par2"
 
 	"github.com/go-news-reader/reader/feeds"
+	"github.com/go-news-reader/reader/internal/browsercookies"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/viewmodel"
@@ -52,6 +54,11 @@ type App struct {
 	recorder    *httplog.Recorder
 	baseOpts    feeds.Options
 	newRegistry func(feeds.Options) *source.Registry
+
+	// cookieFinder imports a browser session cookie (Firefox) so the user can sign
+	// into Reddit in their browser and have the reader pick it up. An interface so
+	// tests inject a fake with no real profile on disk.
+	cookieFinder redditCookieImporter
 
 	osName string
 	dark   bool
@@ -237,7 +244,8 @@ func New(cfg Config) *App {
 		reg: cfg.Registry, store: cfg.Store, set: set,
 		subs: set.ActiveProfile().Subs, scene: scene,
 		recorder: cfg.Recorder, baseOpts: cfg.Options, newRegistry: feeds.Registry,
-		osName: cfg.OS, dark: cfg.Dark, lastRev: -1,
+		cookieFinder: browsercookies.New(),
+		osName:       cfg.OS, dark: cfg.Dark, lastRev: -1,
 		webDebounceFrames: 9, // ~150ms at 60fps: fetch only after arrowing settles
 	}
 	a.refresh = func() { go a.Refresh(context.Background()) }
@@ -355,8 +363,8 @@ func (a *App) persistSettings() {
 
 // ApplyAccounts snapshots the scene's edited accounts into the settings,
 // persists them, rebuilds the provider registry with the new credentials
-// (Reddit switches to authenticated OAuth) while keeping the same HTTP recorder
-// wired so the Network log keeps updating, then re-aggregates the feed. The
+// (Reddit switches to session-cookie authentication) while keeping the same HTTP
+// recorder wired so the Network log keeps updating, then re-aggregates the feed. The
 // front-end calls it after the accounts editor is committed.
 func (a *App) ApplyAccounts() {
 	a.set = a.scene.Settings() // Settings() now carries the edited Accounts
@@ -365,6 +373,52 @@ func (a *App) ApplyAccounts() {
 	}
 	a.rebuildRegistry()
 	a.refresh()
+}
+
+// redditCookieImporter reads the logged-in reddit_session cookie from a local
+// browser (Firefox). The app depends on this narrow interface so tests can
+// substitute a fake without a real browser profile.
+type redditCookieImporter interface {
+	RedditSession() (browsercookies.RedditSession, error)
+}
+
+// SetCookieFinder overrides the browser-cookie importer (tests inject a fake).
+func (a *App) SetCookieFinder(f redditCookieImporter) { a.cookieFinder = f }
+
+// ImportRedditSessionFromFirefox lifts the user's logged-in reddit_session
+// cookie out of their Firefox profile and installs it as the Reddit account's
+// session cookie: it writes the value into the accounts editor buffer (so the
+// editor shows it), then commits through ApplyAccounts — persisting the account,
+// rebuilding the provider registry so authenticated reads take effect
+// immediately, and re-aggregating. It reports whether a cookie was imported and
+// surfaces success/failure on the status line. A failure (Firefox not installed,
+// no profile, or not logged into Reddit) leaves the existing credentials
+// untouched.
+func (a *App) ImportRedditSessionFromFirefox() (bool, error) {
+	rs, err := a.cookieFinder.RedditSession()
+	if err != nil {
+		a.vm.SetStatus("Reddit import failed: " + importFailureHint(err))
+		return false, err
+	}
+	a.scene.SetAccountField(source.Reddit, "session_cookie", rs.Value)
+	a.ApplyAccounts() // persist + rebuild registry (Reddit→authenticated) + re-aggregate
+	a.vm.SetStatus("Imported Reddit session from Firefox")
+	return true, nil
+}
+
+// importFailureHint turns a browser-cookie import error into a short,
+// user-actionable status message.
+func importFailureHint(err error) string {
+	switch {
+	case errors.Is(err, browsercookies.ErrNoCookie):
+		return "log into Reddit in Firefox first"
+	case errors.Is(err, browsercookies.ErrNoFirefox):
+		return "Firefox not found"
+	case errors.Is(err, browsercookies.ErrNoProfile):
+		return "no readable Firefox profile"
+	default:
+		return err.Error()
+	}
 }
 
 // rebuildRegistry constructs a fresh registry from the base options overlaid
@@ -395,10 +449,6 @@ func AccountsToOptions(base feeds.Options, accts []settings.Account) feeds.Optio
 		switch a.Kind {
 		case source.Reddit:
 			setIf(&out.RedditSessionCookie, a.Fields["session_cookie"])
-			setIf(&out.RedditClientID, a.Fields["client_id"])
-			setIf(&out.RedditClientSecret, a.Fields["client_secret"])
-			setIf(&out.RedditUsername, a.Fields["username"])
-			setIf(&out.RedditPassword, a.Fields["password"])
 		case source.Mastodon:
 			setIf(&out.MastodonInstance, a.Fields["instance"])
 			setIf(&out.MastodonToken, a.Fields["token"])

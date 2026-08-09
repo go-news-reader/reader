@@ -134,18 +134,15 @@ type ProviderCreds struct {
 }
 
 // CredentialSchema returns the per-provider credential fields the accounts
-// editor renders. Reddit is first because authenticated OAuth is its primary
-// purpose: client id + secret enable app-only OAuth (reads public listings from
-// IPs where the anonymous ".json" endpoints 403); adding username + password
-// switches to the per-user "script" grant.
+// editor renders. Reddit is first because signing in is its primary purpose:
+// pasting the logged-in browser's reddit_session cookie authenticates reads
+// (Reddit's self-serve OAuth app registration is effectively closed to new
+// personal projects, so the cookie is the practical path for individual
+// read-only use — and it can be imported straight from Firefox).
 func CredentialSchema() []ProviderCreds {
 	return []ProviderCreds{
 		{Kind: source.Reddit, Label: "Reddit", Fields: []CredField{
 			{Key: "session_cookie", Label: "Session cookie (reddit_session)", Secret: true},
-			{Key: "client_id", Label: "Client ID"},
-			{Key: "client_secret", Label: "Client secret", Secret: true},
-			{Key: "username", Label: "Username"},
-			{Key: "password", Label: "Password", Secret: true},
 		}},
 		{Kind: source.Mastodon, Label: "Mastodon", Fields: []CredField{
 			{Key: "instance", Label: "Instance URL"},

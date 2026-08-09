@@ -91,8 +91,8 @@ func defaultBuildApp(c config) *app.App {
 	// feeds the scene's Network-log view.
 	rec := httplog.NewRecorder(200)
 	// The initial registry already honours any persisted per-provider credentials
-	// (so stored Reddit OAuth is live from launch); the accounts editor rebuilds
-	// it live from the same base options afterwards.
+	// (so a stored Reddit session cookie is live from launch); the accounts editor
+	// rebuilds it live from the same base options afterwards.
 	initOpts := c.opts
 	if c.set != nil {
 		initOpts = app.AccountsToOptions(c.opts, c.set.Accounts)

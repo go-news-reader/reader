@@ -122,11 +122,12 @@ const (
 	HitCloseSettings // leave the settings view
 
 	// Accounts-view actions (Mode == ModeAccounts):
-	HitAccounts          // the sidebar 👤 Accounts entry (open the accounts editor)
-	HitCloseAccounts     // leave the accounts view (commit)
-	HitSelectAccount     // Value = source kind for the provider being edited
-	HitFocusAccountField // Value = credential field key to focus
-	HitToggleAccountBool // Value = bool credential field key to flip (Usenet TLS)
+	HitAccounts            // the sidebar 👤 Accounts entry (open the accounts editor)
+	HitCloseAccounts       // leave the accounts view (commit)
+	HitSelectAccount       // Value = source kind for the provider being edited
+	HitFocusAccountField   // Value = credential field key to focus
+	HitToggleAccountBool   // Value = bool credential field key to flip (Usenet TLS)
+	HitImportRedditFirefox // the Reddit editor's "Import session from Firefox" button
 )
 
 // Mode selects which view the scene renders.
@@ -216,6 +217,7 @@ type Scene struct {
 	accRows     []accFieldRow
 	accBackR    toolkit.Rect
 	accDoneR    toolkit.Rect
+	accImportR  toolkit.Rect // Reddit-only "Import session from Firefox" button (zero when hidden)
 
 	// Optional decoded thumbnails keyed by Item.ID (blitted when present).
 	Thumbs map[string]*image.RGBA

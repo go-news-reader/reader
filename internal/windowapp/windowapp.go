@@ -187,13 +187,18 @@ func (h *Handler) MouseDown(x, y int) {
 		vm.OpenAccounts.Execute()
 	case ui.HitCloseAccounts:
 		vm.CloseView.Execute()
-		h.a.ApplyAccounts() // persist creds + rebuild registry (Reddit→OAuth) + re-aggregate
+		h.a.ApplyAccounts() // persist creds + rebuild registry (Reddit→session cookie) + re-aggregate
 	case ui.HitSelectAccount:
 		vm.SelectAccount(source.Kind(hit.Value))
 	case ui.HitFocusAccountField:
 		s.FocusAccountField(hit.Value)
 	case ui.HitToggleAccountBool:
 		s.ToggleAccountBool(hit.Value)
+	case ui.HitImportRedditFirefox:
+		// Import the logged-in reddit_session cookie from the user's Firefox profile
+		// into the Reddit account; the app persists it, rebuilds the registry and
+		// re-aggregates, reporting success/failure on the status line.
+		_, _ = h.a.ImportRedditSessionFromFirefox()
 	default:
 		vm.FocusSearch(false)
 		// A press on a reading surface (the detail view, or the preview pane's
