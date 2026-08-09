@@ -80,7 +80,6 @@ type Options struct {
 	InstagramSession string
 	TikTokMSToken    string
 	TikTokSession    string
-	TwitterToken     string
 
 	// Recorder, when set, captures every provider's HTTP exchanges so the app's
 	// Network log can display them. Nil disables logging (each provider keeps its
@@ -103,7 +102,7 @@ func Registry(opts Options) *source.Registry {
 	// Best-effort scrapers; credentials optional.
 	r.Register(newInstagram(hc, opts.InstagramSession))
 	r.Register(newTikTok(hc, opts.TikTokMSToken, opts.TikTokSession))
-	r.Register(newTwitter(hc, opts.TwitterToken))
+	r.Register(newTwitter(hc))
 
 	// Require mandatory endpoint config.
 	if opts.MastodonInstance != "" {
@@ -197,11 +196,11 @@ func newTikTok(hc *http.Client, msToken, session string) source.Provider {
 	return tiktok.New(msToken, session)
 }
 
-func newTwitter(hc *http.Client, token string) source.Provider {
+func newTwitter(hc *http.Client) source.Provider {
 	if hc != nil {
-		return twitter.NewWithHTTPClient(hc, token)
+		return twitter.NewWithHTTPClient(hc)
 	}
-	return twitter.New(token)
+	return twitter.New()
 }
 
 func newMastodon(hc *http.Client, instance, token string) source.Provider {

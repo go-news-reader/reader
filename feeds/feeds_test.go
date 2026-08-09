@@ -43,7 +43,6 @@ func TestRegistryConfigGated(t *testing.T) {
 		InstagramSession: "s",
 		TikTokMSToken:    "m",
 		TikTokSession:    "ts",
-		TwitterToken:     "tw",
 	})
 	kinds := r.Kinds()
 	for _, k := range []source.Kind{source.Mastodon, source.Lemmy, source.Usenet} {
@@ -80,7 +79,6 @@ func TestRegistryWithRecorder(t *testing.T) {
 		InstagramSession:    "s",
 		TikTokMSToken:       "m",
 		TikTokSession:       "ts",
-		TwitterToken:        "tw",
 	})
 	if len(r.Kinds()) != 10 {
 		t.Fatalf("want 10 providers with recorder, got %d: %v", len(r.Kinds()), r.Kinds())

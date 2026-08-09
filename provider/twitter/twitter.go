@@ -38,14 +38,14 @@ type Provider struct {
 	client client
 }
 
-// New returns a provider. authToken is an optional bearer token; public
-// timelines do not need one.
-func New(authToken string) *Provider { return newWith(nil, authToken) }
+// New returns a provider. Public timelines need no auth token — the reader
+// reads them through the syndication endpoint (see newWith).
+func New() *Provider { return newWith(nil) }
 
 // NewWithHTTPClient returns a provider whose reads go through hc (e.g. the
 // shared, request-logging client so the Network log captures Twitter/X traffic).
-func NewWithHTTPClient(hc *http.Client, authToken string) *Provider {
-	return newWith(hc, authToken)
+func NewWithHTTPClient(hc *http.Client) *Provider {
+	return newWith(hc)
 }
 
 // newWith builds the provider. When the caller supplies no client this builds a
@@ -53,15 +53,11 @@ func NewWithHTTPClient(hc *http.Client, authToken string) *Provider {
 // syndication endpoint answers 429 to Go's stock transport whatever the account
 // quota says, because it fingerprints the TLS/HTTP2 handshake. The stock client
 // is not a degraded path here, it is a guaranteed failure.
-func newWith(hc *http.Client, authToken string) *Provider {
+func newWith(hc *http.Client) *Provider {
 	if hc == nil {
 		hc = browserhttp.NewClient(defaultTimeout)
 	}
-	opts := []gotw.Option{gotw.WithHTTPClient(hc)}
-	if authToken != "" {
-		opts = append(opts, gotw.WithAuthToken(authToken))
-	}
-	return &Provider{client: gotw.New(opts...)}
+	return &Provider{client: gotw.New(gotw.WithHTTPClient(hc))}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).

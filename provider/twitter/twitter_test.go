@@ -40,17 +40,17 @@ func feedOne(t *testing.T, tw gotw.Tweet, channel string) source.Item {
 }
 
 func TestNewWithHTTPClient(t *testing.T) {
-	if p := NewWithHTTPClient(&http.Client{}, "tok"); p.client == nil {
+	if p := NewWithHTTPClient(&http.Client{}); p.client == nil {
 		t.Fatal("client not set from injected HTTP client")
 	}
 }
 
 func TestKindAndNew(t *testing.T) {
-	if New("").Kind() != source.Twitter {
+	if New().Kind() != source.Twitter {
 		t.Fatal("kind")
 	}
-	if New("tok") == nil {
-		t.Fatal("token ctor nil")
+	if New() == nil {
+		t.Fatal("ctor nil")
 	}
 }
 
@@ -58,7 +58,7 @@ func TestKindAndNew(t *testing.T) {
 // back to net/http's default: the endpoint 429s the stock transport whatever the
 // quota says, so that fallback was a guaranteed failure, not a degraded path.
 func TestNewBuildsFingerprintClient(t *testing.T) {
-	p := New("")
+	p := New()
 	c, ok := p.client.(*gotw.Client)
 	if !ok {
 		t.Fatalf("client = %T, want *gotw.Client", p.client)
@@ -70,12 +70,7 @@ func TestNewBuildsFingerprintClient(t *testing.T) {
 		t.Fatalf("timeout = %v, want %v", c.HTTPClient.Timeout, defaultTimeout)
 	}
 	if c.AuthToken != "" {
-		t.Fatalf("token = %q, want none", c.AuthToken)
-	}
-	// A supplied token is threaded through.
-	withTok, _ := New("tok").client.(*gotw.Client)
-	if withTok.AuthToken != "tok" {
-		t.Fatalf("token = %q, want %q", withTok.AuthToken, "tok")
+		t.Fatalf("token = %q, want none (public reads use no auth)", c.AuthToken)
 	}
 }
 

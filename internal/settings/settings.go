@@ -169,9 +169,9 @@ func CredentialSchema() []ProviderCreds {
 			{Key: "ms_token", Label: "ms_token", Secret: true},
 			{Key: "session", Label: "Session cookie", Secret: true},
 		}},
-		{Kind: source.Twitter, Label: "X / Twitter", Fields: []CredField{
-			{Key: "token", Label: "Bearer token", Secret: true},
-		}},
+		// X / Twitter has no credential fields: public timelines need no auth, and
+		// the official API (the only source of a bearer token) is paywalled and
+		// unused here — so a "Bearer token" field would be dead, misleading UI.
 	}
 }
 

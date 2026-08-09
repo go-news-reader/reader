@@ -525,7 +525,6 @@ func TestAccountsToOptions(t *testing.T) {
 		{Kind: source.Usenet, Fields: map[string]string{"addr": "news:119", "tls": "true", "username": "usr", "password": "pw", "indexer_url": "https://ix", "indexer_key": "k"}},
 		{Kind: source.Instagram, Fields: map[string]string{"session": "ig"}},
 		{Kind: source.TikTok, Fields: map[string]string{"ms_token": "ms", "session": "ts"}},
-		{Kind: source.Twitter, Fields: map[string]string{"token": "tw"}},
 	}
 	o := AccountsToOptions(feeds.Options{}, accts)
 	if o.RedditSessionCookie != "reddit_session=xyz" || o.RedditClientID != "id" || o.RedditClientSecret != "sec" || o.RedditUsername != "u" || o.RedditPassword != "p" {
@@ -538,7 +537,7 @@ func TestAccountsToOptions(t *testing.T) {
 		o.UsenetIndexerURL != "https://ix" || o.UsenetIndexerAPIKey != "k" {
 		t.Fatalf("usenet mapping wrong: %+v", o)
 	}
-	if o.InstagramSession != "ig" || o.TikTokMSToken != "ms" || o.TikTokSession != "ts" || o.TwitterToken != "tw" {
+	if o.InstagramSession != "ig" || o.TikTokMSToken != "ms" || o.TikTokSession != "ts" {
 		t.Fatalf("scraper mapping wrong: %+v", o)
 	}
 

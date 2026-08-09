@@ -418,8 +418,6 @@ func AccountsToOptions(base feeds.Options, accts []settings.Account) feeds.Optio
 		case source.TikTok:
 			setIf(&out.TikTokMSToken, a.Fields["ms_token"])
 			setIf(&out.TikTokSession, a.Fields["session"])
-		case source.Twitter:
-			setIf(&out.TwitterToken, a.Fields["token"])
 		}
 	}
 	return out
