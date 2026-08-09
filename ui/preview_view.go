@@ -321,6 +321,14 @@ func webPreviewURL(it source.Item) string {
 	}
 	u := it.Link
 	if u == "" {
+		// No external link. A self/text post (e.g. a Reddit text post) carries its
+		// content in Body, so it is shown as text — do NOT web-render its platform
+		// permalink, which for Reddit and other JS-app sites is an unhydratable page
+		// that would paint blank in place of the post's text. Only fall back to the
+		// permalink for a post with no readable body of its own.
+		if strings.TrimSpace(it.Body) != "" {
+			return ""
+		}
 		u = it.Permalink
 	}
 	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {

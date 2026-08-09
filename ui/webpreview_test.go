@@ -17,9 +17,14 @@ func TestWebPreviewURL(t *testing.T) {
 	if got := webPreviewURL(webTestItem()); got != "https://example.com/a" {
 		t.Errorf("Link URL = %q", got)
 	}
-	// No Link → falls back to Permalink.
+	// No Link and no Body → falls back to Permalink.
 	if got := webPreviewURL(source.Item{Source: source.Reddit, Permalink: "https://p"}); got != "https://p" {
 		t.Errorf("Permalink URL = %q", got)
+	}
+	// A self/text post (no Link, but a Body) shows its text — it must NOT
+	// web-render its platform permalink (a Reddit comments SPA that paints blank).
+	if got := webPreviewURL(source.Item{Source: source.Reddit, Body: "self text", Permalink: "https://www.reddit.com/r/x/comments/1/"}); got != "" {
+		t.Errorf("self-post with Body should not web-preview; got %q", got)
 	}
 	// Usenet never web-renders.
 	if got := webPreviewURL(source.Item{Source: source.Usenet, Link: "https://x"}); got != "" {
