@@ -149,17 +149,38 @@ func mapPost(p goreddit.Post) source.Item {
 		NSFW:      p.Over18,
 		Pinned:    p.Stickied,
 	}
-	if !p.IsSelf {
-		it.Link = p.URL
-	}
 	if p.Flair != "" {
 		it.Tags = []string{p.Flair}
 	}
 	if isThumbURL(p.Thumbnail) {
 		it.Media = append(it.Media, source.Media{URL: p.Thumbnail, Kind: source.MediaThumbnail})
 	}
-	if !p.IsSelf && isImageURL(p.URL) {
-		it.Media = append(it.Media, source.Media{URL: p.URL, Kind: source.MediaImage})
+	if p.IsSelf {
+		return it // a text post: its content is Body, no link/media to resolve
+	}
+
+	// A media post — an image, a gallery, or a reddit-hosted video — shows a
+	// resolved picture: the image itself, the gallery's first image, or the
+	// video's poster. Point Link at that direct image (the preview pane renders
+	// it) rather than at a gallery / v.redd.it permalink, which is a JavaScript
+	// page that would paint blank. A plain external link falls through to its
+	// article page. p.PreviewImage() prefers Reddit's resolved preview; it is a
+	// direct image URL even when p.URL is a permalink.
+	display := p.PreviewImage()
+	isMedia := p.IsGallery || p.IsVideo || p.PostHint == "image" || isImageURL(p.URL)
+	if isMedia && display != "" {
+		it.Link = display
+		it.Media = append(it.Media, source.Media{URL: display, Kind: source.MediaImage})
+	} else {
+		// A plain external article (or a media post whose image could not be
+		// resolved): render the linked page. A real image URL is always caught
+		// above (PreviewImage resolves it), so nothing is mapped as media here.
+		it.Link = p.URL
+	}
+	// Expose a reddit-hosted video's stream as media (the poster shows now; a
+	// future front-end could offer playback).
+	if v := p.VideoURL(); v != "" {
+		it.Media = append(it.Media, source.Media{URL: v, Kind: source.MediaVideo})
 	}
 	return it
 }

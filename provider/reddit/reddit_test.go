@@ -2,6 +2,7 @@ package reddit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -257,5 +258,104 @@ func TestFeedAuthErrorMapping(t *testing.T) {
 	}
 	if _, ok := source.AsAuthError(err); ok {
 		t.Fatalf("500 misclassified as auth: %v", err)
+	}
+}
+
+// postFromJSON builds a goreddit.Post from a Reddit-shaped JSON body (the media
+// sub-structs use unexported types, so a composite literal can't set them —
+// unmarshalling exercises the same decode path the client uses).
+func postFromJSON(t *testing.T, body string) goreddit.Post {
+	t.Helper()
+	var p goreddit.Post
+	if err := json.Unmarshal([]byte(body), &p); err != nil {
+		t.Fatalf("unmarshal test post: %v", err)
+	}
+	return p
+}
+
+func mapOne(t *testing.T, p goreddit.Post) source.Item {
+	t.Helper()
+	f := &fakeFetcher{page: &goreddit.Page{Posts: []goreddit.Post{p}}}
+	res, err := NewWithClient(f).Feed(context.Background(), source.Query{Channel: "r/x"})
+	if err != nil {
+		t.Fatalf("Feed: %v", err)
+	}
+	if len(res.Items) != 1 {
+		t.Fatalf("got %d items", len(res.Items))
+	}
+	return res.Items[0]
+}
+
+func hasMedia(it source.Item, kind source.MediaKind, url string) bool {
+	for _, m := range it.Media {
+		if m.Kind == kind && m.URL == url {
+			return true
+		}
+	}
+	return false
+}
+
+// A gallery post shows its first image (a resolved gallery item), not the
+// gallery permalink.
+func TestMapGalleryPost(t *testing.T) {
+	p := postFromJSON(t, `{"id":"g1","subreddit":"pics","title":"gallery",
+		"url":"https://www.reddit.com/gallery/g1","permalink":"/r/pics/comments/g1/gallery/",
+		"is_gallery":true,
+		"gallery_data":{"items":[{"media_id":"m1"},{"media_id":"m2"}]},
+		"media_metadata":{"m1":{"status":"valid","s":{"u":"https://i.redd.it/m1.jpg?s=a&amp;t=b"}},
+		                  "m2":{"status":"valid","s":{"u":"https://i.redd.it/m2.jpg"}}}}`)
+	it := mapOne(t, p)
+	if it.Link != "https://i.redd.it/m1.jpg?s=a&t=b" {
+		t.Errorf("gallery Link = %q, want the first gallery image", it.Link)
+	}
+	if !hasMedia(it, source.MediaImage, "https://i.redd.it/m1.jpg?s=a&t=b") {
+		t.Errorf("gallery media missing first image: %+v", it.Media)
+	}
+}
+
+// A reddit-hosted video shows its poster and exposes the video stream.
+func TestMapVideoPost(t *testing.T) {
+	p := postFromJSON(t, `{"id":"v1","subreddit":"videos","title":"clip",
+		"url":"https://v.redd.it/v1","permalink":"/r/videos/comments/v1/clip/",
+		"is_video":true,"post_hint":"hosted:video",
+		"media":{"reddit_video":{"fallback_url":"https://v.redd.it/v1/DASH_720.mp4?source=fallback"}},
+		"preview":{"images":[{"source":{"url":"https://external-preview.redd.it/v1.jpg?width=640"}}]}}`)
+	it := mapOne(t, p)
+	if it.Link != "https://external-preview.redd.it/v1.jpg?width=640" {
+		t.Errorf("video Link = %q, want the poster image", it.Link)
+	}
+	if !hasMedia(it, source.MediaImage, "https://external-preview.redd.it/v1.jpg?width=640") {
+		t.Errorf("video poster missing: %+v", it.Media)
+	}
+	if !hasMedia(it, source.MediaVideo, "https://v.redd.it/v1/DASH_720.mp4?source=fallback") {
+		t.Errorf("video stream missing: %+v", it.Media)
+	}
+}
+
+// An image post whose URL is not a direct image (post_hint=image, preview only)
+// still shows the resolved preview image.
+func TestMapImagePostFromPreview(t *testing.T) {
+	p := postFromJSON(t, `{"id":"i1","subreddit":"art","title":"art","post_hint":"image",
+		"url":"https://example.com/view/i1","permalink":"/r/art/comments/i1/art/",
+		"preview":{"images":[{"source":{"url":"https://preview.redd.it/i1.png?width=1024&amp;crop=smart"}}]}}`)
+	it := mapOne(t, p)
+	if it.Link != "https://preview.redd.it/i1.png?width=1024&crop=smart" {
+		t.Errorf("image Link = %q, want the preview image", it.Link)
+	}
+}
+
+// A plain external article link (no media) web-renders its article and carries
+// no image media.
+func TestMapExternalLink(t *testing.T) {
+	p := postFromJSON(t, `{"id":"l1","subreddit":"news","title":"story",
+		"url":"https://example.com/article","permalink":"/r/news/comments/l1/story/","post_hint":"link"}`)
+	it := mapOne(t, p)
+	if it.Link != "https://example.com/article" {
+		t.Errorf("link Link = %q", it.Link)
+	}
+	for _, m := range it.Media {
+		if m.Kind == source.MediaImage {
+			t.Errorf("external link should map no image media: %+v", it.Media)
+		}
 	}
 }
