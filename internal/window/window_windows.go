@@ -58,6 +58,7 @@ const (
 	swShow             = 5
 
 	wmDestroy     = 0x0002
+	wmMove        = 0x0003
 	wmSize        = 0x0005
 	wmPaint       = 0x000F
 	wmKeyDown     = 0x0100
@@ -158,6 +159,9 @@ func present() bool {
 	wmu.Lock()
 	wBuf, wW, wH = buf, w, h
 	wmu.Unlock()
+	// This is the single damage gate, so it is also the one place where the
+	// accessibility tree can be republished without ever lagging the pixels.
+	refreshA11yWindows()
 	return true
 }
 
@@ -205,6 +209,13 @@ func paint(hdc uintptr) {
 // wndProc is the window procedure; it maps native messages to Handler calls.
 func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	switch uint32(msg) {
+	case wmGetObject:
+		// Only a request for the UI Automation root is ours; every other object
+		// id on this message belongs to MSAA and must fall through to the
+		// default handling.
+		if ret, ok := a11yGetObject(hwnd, wparam, lparam); ok {
+			return ret
+		}
 	case wmPaint:
 		var ps paintStruct
 		hdc, _, _ := procBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
@@ -216,7 +227,13 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			procInvalidateRect.Call(hwnd, 0, 0)
 		}
 		return 0
+	case wmMove:
+		// Only the UI thread may ask the window where it is; the accessibility
+		// bridge reads the answer from a cache.
+		noteWindowOrigin(hwnd)
+		return 0
 	case wmSize:
+		noteWindowOrigin(hwnd)
 		w, h := winSize(uint32(lparam))
 		scale := dpiScale(hwnd)
 		wmu.Lock()
@@ -395,6 +412,9 @@ func Run(cfg Config, h Handler) error {
 		return callErr
 	}
 	wHwnd = hwnd
+	// UI Automation calls arrive on their own threads with no path back to this
+	// function, so the handler and the window handle are published once here.
+	setA11yHandlerWindows(h, hwnd)
 
 	// Seed the scene from the actual client size and backing scale.
 	scale := dpiScale(hwnd)
