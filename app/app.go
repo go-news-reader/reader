@@ -149,6 +149,13 @@ type App struct {
 	// A field so tests can substitute a synchronous variant.
 	groupStatsFetch func(name string)
 
+	// loadMoreFetch / pullRefreshFetch are the scene's feed-loading seams: the
+	// bottom-of-feed next-page trigger and the top overscroll refresh trigger. Both
+	// default to launching the corresponding App method on a background goroutine; a
+	// field so tests substitute a synchronous variant.
+	loadMoreFetch    func()
+	pullRefreshFetch func()
+
 	// dl is the parallel image download manager (feed-wide thumbnail prefetch);
 	// fdl is the parallel file download manager (reconstruct+save checked posts).
 	dl  *downloader
@@ -189,6 +196,17 @@ type App struct {
 	// goroutine at a time. This is distinct from the scene-write marshaling above:
 	// post/queued protect the SCENE; vmu protects the VIEW-MODEL that feeds it.
 	vmu sync.Mutex
+
+	// moreMu guards the pagination state used by infinite scroll: cursors maps each
+	// subscription's [source.SubKey] to its next-page token (populated by
+	// RefreshStreaming, advanced by LoadMore, empty/absent = exhausted), and
+	// loadingMore is the in-flight guard that keeps overlapping at-bottom scroll
+	// events from firing concurrent AggregateMore calls. Held only briefly (snapshot
+	// / merge / flag) and never across a network fetch or a vmDo, so it cannot
+	// deadlock against vmu.
+	moreMu      sync.Mutex
+	cursors     map[string]string
+	loadingMore bool
 }
 
 // vmDo runs a view-model mutation under the VM lock. Subscriber callbacks fired
@@ -330,9 +348,17 @@ func New(cfg Config) *App {
 	a.scene.SetBrowserChromeHidden(set.HideBrowserChrome)     // apply the persisted toolbar-visibility preference
 	a.scene.SetBrowserZoomKeys(set.ZoomInKey, set.ZoomOutKey) // apply the persisted browser zoom keybindings
 	a.scene.SetBookmarks(set.Bookmarks)                       // apply the persisted bookmarks
+	a.scene.SetInfiniteScroll(set.InfiniteScrollEnabled())    // apply the persisted infinite-scroll preference (default on)
 	a.groupStatsFetch = func(name string) {
 		go a.loadGroupStats(context.Background(), name)
 	}
+	// Feed-loading seams: the scene fires OnReachBottom / OnPullRefresh from the
+	// wheel path; run the fetches off the render thread (a field so tests drive them
+	// synchronously).
+	a.loadMoreFetch = func() { go a.LoadMore(context.Background()) }
+	a.pullRefreshFetch = func() { go a.PullRefresh(context.Background()) }
+	a.scene.OnReachBottom = func() { a.loadMoreFetch() }
+	a.scene.OnPullRefresh = func() { a.pullRefreshFetch() }
 	a.dl = newDownloader(a)
 	a.fdl = newFileDownloader(a)
 	a.seen = loadSeen()
@@ -397,6 +423,14 @@ func (a *App) SetRefreshHook(f func()) { a.refresh = f }
 // SetReconstructHook overrides the asynchronous reconstruction trigger (tests
 // use a synchronous variant for determinism).
 func (a *App) SetReconstructHook(f func(base string)) { a.reconstruct = f }
+
+// SetLoadMoreHook overrides the infinite-scroll (OnReachBottom) trigger's async
+// launch (tests use a synchronous variant for determinism).
+func (a *App) SetLoadMoreHook(f func()) { a.loadMoreFetch = f }
+
+// SetPullRefreshHook overrides the pull-to-refresh (OnPullRefresh) trigger's async
+// launch (tests use a synchronous variant for determinism).
+func (a *App) SetPullRefreshHook(f func()) { a.pullRefreshFetch = f }
 
 // SetRegistryBuilder overrides how ApplyAccounts rebuilds the provider registry
 // (a seam so tests inject a fake registry instead of real providers).
@@ -790,6 +824,11 @@ func (a *App) Refresh(ctx context.Context) []error {
 // [Refresh]. It returns the collected failures (subscription order).
 func (a *App) RefreshStreaming(ctx context.Context) []error {
 	subs := a.subs
+	// A full refresh restarts pagination: drop every source's carried cursor so
+	// the next LoadMore pages from the fresh first-page tokens this run records.
+	a.moreMu.Lock()
+	a.cursors = map[string]string{}
+	a.moreMu.Unlock()
 	a.vmDo(func() {
 		a.vm.SetPending(subs)
 		a.vm.SetLoad(true, 0, len(subs))
@@ -799,6 +838,14 @@ func (a *App) RefreshStreaming(ctx context.Context) []error {
 	a.reg.AggregateStream(ctx, subs, func(u source.StreamUpdate) {
 		if u.Err != nil && u.Index >= 0 {
 			byIndex[u.Index] = u.Err // byIndex is this call's local, touched only here
+		}
+		if u.Index >= 0 {
+			// Record this source's next-page token (kept apart from the vmDo block so
+			// moreMu and vmu are never held at once). "" means exhausted / failed.
+			// cursors was reset to a fresh map above, so it is never nil here.
+			a.moreMu.Lock()
+			a.cursors[source.SubKey(u.Sub)] = u.Cursor
+			a.moreMu.Unlock()
 		}
 		a.vmDo(func() {
 			a.vm.SetItems(u.Items)
@@ -814,6 +861,89 @@ func (a *App) RefreshStreaming(ctx context.Context) []error {
 	a.post(a.PrefetchImages) // prefetch shown Usenet images in parallel (UI thread)
 	a.post(a.PrefetchMedia)  // and every other source's remote thumbnails over HTTP
 	return compactErrs(byIndex)
+}
+
+// LoadMore fetches the next page of every subscription that still has a live
+// cursor and appends the new, deduplicated items to the shown feed. It is the
+// infinite-scroll seam the scene's OnReachBottom trigger drives. It is a no-op
+// when infinite scroll is off, when a load-more is already in flight (the guard
+// coalesces the burst of at-bottom wheel events), or when no source has an
+// unexhausted cursor. Returns the collected per-subscription failures.
+func (a *App) LoadMore(ctx context.Context) []error {
+	if !a.set.InfiniteScrollEnabled() {
+		return nil
+	}
+	// Claim the in-flight guard and snapshot the cursors under one lock; bail if a
+	// load-more is already running or nothing is left to page.
+	a.moreMu.Lock()
+	if a.loadingMore {
+		a.moreMu.Unlock()
+		return nil
+	}
+	snap := map[string]string{}
+	has := false
+	for k, v := range a.cursors {
+		if v != "" {
+			snap[k] = v
+			has = true
+		}
+	}
+	if !has {
+		a.moreMu.Unlock()
+		return nil
+	}
+	a.loadingMore = true
+	a.moreMu.Unlock()
+	defer func() {
+		a.moreMu.Lock()
+		a.loadingMore = false
+		a.moreMu.Unlock()
+	}()
+
+	subs := a.subs
+	items, next, errs := a.reg.AggregateMore(ctx, subs, snap)
+
+	// Advance the carried cursors with the fresh tokens (exhausted sources come
+	// back "" and stop paging). We only get here with a non-empty snapshot, which
+	// means RefreshStreaming already initialized a.cursors.
+	a.moreMu.Lock()
+	for k, v := range next {
+		a.cursors[k] = v
+	}
+	a.moreMu.Unlock()
+
+	// Append the new page to the shown feed, deduped by (Source, ID) against what
+	// is already displayed, and publish the merged list. Reading the current items
+	// and setting the merged list both happen under vmDo so the view-model is only
+	// touched by one goroutine at a time.
+	a.vmDo(func() {
+		cur := a.vm.Items.Slice()
+		seen := make(map[string]bool, len(cur))
+		for _, it := range cur {
+			seen[itemKey(it)] = true
+		}
+		merged := cur
+		for _, it := range items {
+			if k := itemKey(it); !seen[k] {
+				seen[k] = true
+				merged = append(merged, it)
+			}
+		}
+		a.vm.SetItems(merged)
+	})
+	return errs
+}
+
+// itemKey is a feed item's dedup identity: its source kind and stable ID joined
+// by a NUL (which cannot occur in either), so the next page's items are appended
+// without re-showing a post already on screen.
+func itemKey(it source.Item) string { return string(it.Source) + "\x00" + it.ID }
+
+// PullRefresh re-aggregates the feed from scratch — the pull-to-refresh seam the
+// scene's OnPullRefresh trigger drives. It runs the same streaming path as a
+// manual refresh, which resets pagination.
+func (a *App) PullRefresh(ctx context.Context) []error {
+	return a.RefreshStreaming(ctx)
 }
 
 // compactErrs drops the nil entries from an index-keyed error slice, preserving

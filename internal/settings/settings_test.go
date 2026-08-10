@@ -102,6 +102,43 @@ func TestBrowserSingleTabDefaultAndRoundTrip(t *testing.T) {
 	}
 }
 
+func TestInfiniteScrollDefaultAndRoundTrip(t *testing.T) {
+	// Default seeds infinite scroll enabled.
+	d := Default()
+	if d.InfiniteScroll == nil || !*d.InfiniteScroll || !d.InfiniteScrollEnabled() {
+		t.Fatalf("default infinite scroll = %v, want enabled", d.InfiniteScroll)
+	}
+	// InfiniteScrollEnabled() on an unset field applies the enabled default.
+	s := &Settings{}
+	if s.InfiniteScrollEnabled() != DefaultInfiniteScroll {
+		t.Fatal("InfiniteScrollEnabled() on an unset field should apply the default")
+	}
+	// Normalize backfills an unset field (a settings file predating it) to enabled.
+	s.Normalize()
+	if s.InfiniteScroll == nil || !*s.InfiniteScroll {
+		t.Fatal("Normalize should backfill an unset infinite-scroll flag to enabled")
+	}
+	// An explicit opt-out to off survives Normalize and Save/Load.
+	off := false
+	s2 := &Settings{Profiles: []Profile{{Name: "x"}}, Theme: ThemeDark, CachePath: "/c", InfiniteScroll: &off}
+	s2.Normalize()
+	if s2.InfiniteScroll == nil || *s2.InfiniteScroll || s2.InfiniteScrollEnabled() {
+		t.Fatal("Normalize clobbered an explicit infinite-scroll opt-out")
+	}
+	p := filepath.Join(t.TempDir(), "s.json")
+	st := NewStore(p)
+	if err := st.Save(s2); err != nil {
+		t.Fatal(err)
+	}
+	out, err := st.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.InfiniteScroll == nil || *out.InfiniteScroll {
+		t.Fatalf("round-trip infinite scroll = %v, want persisted off", out.InfiniteScroll)
+	}
+}
+
 func TestSignInBrowserDefaultAndRoundTrip(t *testing.T) {
 	// A fresh install defaults to Firefox — the only browser whose session cookie
 	// the reader can subsequently import.

@@ -82,6 +82,15 @@ type Settings struct {
 	// safari|edge. Blank means the default (Firefox); Normalize backfills it.
 	SignInBrowser string `json:"signInBrowser,omitempty"`
 
+	// InfiniteScroll enables fetching and appending the next page of posts when
+	// the feed list is scrolled to the bottom. Like BrowserSingleTab it is a
+	// tri-state pointer so an unset preference (a fresh install, or a settings file
+	// predating this field) is told apart from an explicit false: nil defaults to
+	// enabled (DefaultInfiniteScroll) so infinite scroll is on out of the box, while
+	// a user who turns it off persists an explicit false that survives reload. Read
+	// it through [Settings.InfiniteScrollEnabled], which applies that default.
+	InfiniteScroll *bool `json:"infiniteScroll,omitempty"`
+
 	// PreviewTextScale multiplies the reader/preview text size (a text/self
 	// post's title, body and meta, and the header of any previewed post). The
 	// A−/A+ controls in the preview toolbar adjust it. DefaultPreviewTextScale
@@ -128,6 +137,10 @@ const (
 // multiple tabs.
 const DefaultBrowserSingleTab = true
 
+// DefaultInfiniteScroll is whether a fresh install fetches the next page of
+// posts on scrolling to the bottom of the feed: enabled.
+const DefaultInfiniteScroll = true
+
 // boolPtr returns a pointer to b, for the tri-state BrowserSingleTab field.
 func boolPtr(b bool) *bool { return &b }
 
@@ -138,6 +151,15 @@ func (s *Settings) SingleTab() bool {
 		return DefaultBrowserSingleTab
 	}
 	return *s.BrowserSingleTab
+}
+
+// InfiniteScrollEnabled reports the effective infinite-scroll setting, applying
+// the enabled default when the preference is unset (nil).
+func (s *Settings) InfiniteScrollEnabled() bool {
+	if s.InfiniteScroll == nil {
+		return DefaultInfiniteScroll
+	}
+	return *s.InfiniteScroll
 }
 
 // Account holds a user's credentials for one provider. Fields are keyed by the
@@ -260,6 +282,7 @@ func Default() *Settings {
 		Theme:            ThemeSystem,
 		CachePath:        defaultCachePath(),
 		BrowserSingleTab: boolPtr(DefaultBrowserSingleTab),
+		InfiniteScroll:   boolPtr(DefaultInfiniteScroll),
 		ZoomInKey:        DefaultZoomInKey,
 		ZoomOutKey:       DefaultZoomOutKey,
 		SignInBrowser:    DefaultSignInBrowser,
@@ -323,6 +346,11 @@ func (s *Settings) Normalize() {
 		// A settings file predating this field (or a fresh one) defaults to
 		// single-tab so the preview shows no tab strip.
 		s.BrowserSingleTab = boolPtr(DefaultBrowserSingleTab)
+	}
+	if s.InfiniteScroll == nil {
+		// A settings file predating this field (or a fresh one) defaults to
+		// infinite scroll enabled.
+		s.InfiniteScroll = boolPtr(DefaultInfiniteScroll)
 	}
 	s.dedupAccounts()
 }

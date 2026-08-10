@@ -59,6 +59,23 @@ func click(t *testing.T, h *Handler, kind ui.HitKind) {
 	h.MouseUp(x, y)
 }
 
+// clickValue is click for a kind whose several buttons differ only by Value (e.g.
+// the infinite-scroll on/off pair): it presses the first region matching both.
+func clickValue(t *testing.T, h *Handler, kind ui.HitKind, value string) {
+	t.Helper()
+	s := h.a.Scene()
+	for y := 0; y < s.H; y += 3 {
+		for x := 0; x < s.W; x += 3 {
+			if hit := s.HitTest(x, y); hit.Kind == kind && hit.Value == value {
+				h.MouseDown(x, y)
+				h.MouseUp(x, y)
+				return
+			}
+		}
+	}
+	t.Fatalf("no hit region for kind %d value %q", kind, value)
+}
+
 // newApp builds an App with an empty registry at a known size and scale.
 func newApp(t *testing.T) *app.App {
 	t.Helper()
@@ -303,7 +320,20 @@ func TestMouseDownProfileAndSettings(t *testing.T) {
 	click(t, h, ui.HitTheme)         // pick a theme
 	click(t, h, ui.HitBrowserTabs)   // switch the web-preview browser tab mode
 	click(t, h, ui.HitBrowserChrome) // toggle the web-preview toolbar visibility
-	click(t, h, ui.HitDeleteProfile)
+	click(t, h, ui.HitDeleteProfile) // (near the top; click before scrolling away)
+	// The FEED infinite-scroll toggle is laid out last, so scroll to the bottom of
+	// the settings view once to bring it on-screen, then flip it off then on and
+	// assert the route reached SetInfiniteScroll (Done stays in the fixed topbar).
+	s.SetInfiniteScroll(true)
+	s.Scroll(1 << 20) // pin the settings view to its bottom
+	clickValue(t, h, ui.HitInfiniteScroll, "off")
+	if s.InfiniteScroll() {
+		t.Fatal("infinite scroll still on after clicking off")
+	}
+	clickValue(t, h, ui.HitInfiniteScroll, "on")
+	if !s.InfiniteScroll() {
+		t.Fatal("infinite scroll still off after clicking on")
+	}
 	// Close the editor -> back to the feed.
 	click(t, h, ui.HitCloseSettings)
 	if s.Mode() != ui.ModeFeed {

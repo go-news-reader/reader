@@ -93,6 +93,18 @@ type StreamUpdate struct {
 	Index       int
 	Sub         Subscription
 	Err         error
+	// Cursor is the just-completed subscription's next-page token (from its
+	// [Result.Cursor]) — feed it back through [Registry.AggregateMore] to append
+	// the following page. Empty when the source is exhausted or the fetch failed.
+	Cursor string
+}
+
+// SubKey is a stable per-subscription pagination key: the source kind and
+// channel joined by a NUL, which cannot occur in either. Cursors returned by
+// [Registry.AggregateStream]/[Registry.AggregateMore] are keyed by it so a
+// caller can carry each subscription's next-page token across load-more calls.
+func SubKey(s Subscription) string {
+	return string(s.Source) + "\x00" + s.Channel
 }
 
 // sortItems orders items newest-first (by [Item.Created] descending; ties broken
@@ -124,10 +136,11 @@ func (r *Registry) AggregateStream(ctx context.Context, subs []Subscription, onU
 	}
 
 	type outcome struct {
-		index int
-		sub   Subscription
-		items []Item
-		err   error
+		index  int
+		sub    Subscription
+		items  []Item
+		cursor string
+		err    error
 	}
 	ch := make(chan outcome, total)
 	for i, sub := range subs {
@@ -141,7 +154,7 @@ func (r *Registry) AggregateStream(ctx context.Context, subs []Subscription, onU
 				ch <- outcome{index: i, sub: sub, err: &SubscriptionError{Sub: sub, Err: err}}
 				return
 			}
-			ch <- outcome{index: i, sub: sub, items: res.Items}
+			ch <- outcome{index: i, sub: sub, items: res.Items, cursor: res.Cursor}
 		}(i, sub)
 	}
 
@@ -154,8 +167,90 @@ func (r *Registry) AggregateStream(ctx context.Context, subs []Subscription, onU
 		merged := make([]Item, len(acc))
 		copy(merged, acc)
 		sortItems(merged)
-		onUpdate(StreamUpdate{Items: merged, Done: done, Total: total, Index: o.index, Sub: o.sub, Err: o.err})
+		onUpdate(StreamUpdate{Items: merged, Done: done, Total: total, Index: o.index, Sub: o.sub, Err: o.err, Cursor: o.cursor})
 	}
+}
+
+// AggregateMore fetches the NEXT page of every subscription that still has an
+// unexhausted cursor, concurrently, and returns the new page merged newest-first.
+// A subscription is paged only when cursors[SubKey(sub)] is a non-empty token
+// (from a prior [StreamUpdate.Cursor] or an earlier AggregateMore); subscriptions
+// with an empty or missing cursor are exhausted or never loaded and are skipped.
+//
+// items is the merged+sorted new page (never nil). next maps every paged
+// subscription's [SubKey] to its fresh [Result.Cursor], so the caller learns
+// exhaustion (a token that came back "") as well as advancement — merge it over
+// the running cursor map. errs holds each paged subscription's failure in
+// subscription order, wrapped in the same [*SubscriptionError] shape
+// AggregateStream uses (never nil). A failing subscription does not abort the
+// others: its items are absent and its next cursor is left "" (exhausted).
+func (r *Registry) AggregateMore(ctx context.Context, subs []Subscription, cursors map[string]string) (items []Item, next map[string]string, errs []error) {
+	items = []Item{}
+	next = map[string]string{}
+	errs = []error{}
+
+	type outcome struct {
+		index  int
+		sub    Subscription
+		items  []Item
+		cursor string
+		err    error
+	}
+	// Page only the subscriptions carrying a live cursor, preserving their order.
+	type paged struct {
+		index int
+		sub   Subscription
+		cur   string
+	}
+	var todo []paged
+	for i, sub := range subs {
+		if cur := cursors[SubKey(sub)]; cur != "" {
+			todo = append(todo, paged{index: i, sub: sub, cur: cur})
+		}
+	}
+	if len(todo) == 0 {
+		return items, next, errs
+	}
+
+	ch := make(chan outcome, len(todo))
+	for _, p := range todo {
+		go func(p paged) {
+			res, err := r.Feed(ctx, p.sub.Source, Query{
+				Channel: p.sub.Channel,
+				Sort:    p.sub.Sort,
+				Limit:   p.sub.Limit,
+				Cursor:  p.cur,
+			})
+			if err != nil {
+				ch <- outcome{index: p.index, sub: p.sub, err: &SubscriptionError{Sub: p.sub, Err: err}}
+				return
+			}
+			ch <- outcome{index: p.index, sub: p.sub, items: res.Items, cursor: res.Cursor}
+		}(p)
+	}
+
+	byIndex := make([]error, len(subs))
+	acc := []Item{}
+	for range todo {
+		o := <-ch
+		// Record the next-page cursor for every paged sub (even a failed one, which
+		// stays "" = exhausted) so the caller's map converges on the real state.
+		next[SubKey(o.sub)] = o.cursor
+		if o.err != nil {
+			byIndex[o.index] = o.err
+			continue
+		}
+		acc = append(acc, o.items...)
+	}
+	sortItems(acc)
+	items = acc
+
+	for _, e := range byIndex {
+		if e != nil {
+			errs = append(errs, e)
+		}
+	}
+	return items, next, errs
 }
 
 // Aggregate fetches every subscription concurrently and merges the results

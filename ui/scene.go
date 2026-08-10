@@ -122,6 +122,7 @@ const (
 	HitSignInBrowser    // Value = "default"|"firefox"|"chrome"|"safari"|"edge" (sign-in browser)
 	HitBrowserTabs      // Value = "multi"|"single" (web-preview browser tab mode)
 	HitBrowserChrome    // Value = "shown"|"hidden" (web-preview toolbar/urlbar visibility)
+	HitInfiniteScroll   // Value = "on"|"off" (fetch next page on scroll-to-bottom)
 	HitClearRenderCache // empty the web-preview render cache
 	HitCloseSettings    // leave the settings view
 
@@ -171,6 +172,18 @@ type Scene struct {
 	authPrompts []AuthPrompt
 	feedScroll  panelScroll // the feed card list's scroll position (see panelScroll)
 	Scale       float64     // display scale (zoom × devicePixelRatio); 0 => 1
+
+	// Feed-loading triggers. OnReachBottom fires (when infiniteScroll is on) as the
+	// feed list is wheeled to its bottom, so the app can fetch and append the next
+	// page. OnPullRefresh fires on an insistent upward overscroll while already at
+	// the top, so the app can re-aggregate. Both are nil-safe (only called when
+	// installed). pullAccum accumulates upward overscroll at the top; it crosses
+	// pullRefreshThreshold to fire OnPullRefresh, and resets whenever the feed
+	// scrolls away from the top so only an insistent pull triggers.
+	OnReachBottom  func()
+	OnPullRefresh  func()
+	infiniteScroll bool
+	pullAccum      int
 
 	// Live-loading feedback (streaming aggregation). loading is set while a
 	// refresh is in progress; loadDone/loadTotal track how many sources have
@@ -596,6 +609,20 @@ func (s *Scene) SetBrowserSingleTab(v bool) {
 // BrowserSingleTab reports whether the embedded browser is in single-tab mode.
 func (s *Scene) BrowserSingleTab() bool { return s.browser.Mode() == toolkit.SingleTab }
 
+// SetInfiniteScroll enables or disables fetching the next page of posts when the
+// feed list is scrolled to the bottom (the OnReachBottom trigger). Pull-to-refresh
+// is always on and unaffected — only the bottom trigger is gated.
+func (s *Scene) SetInfiniteScroll(v bool) { s.infiniteScroll = v; s.touch() }
+
+// InfiniteScroll reports whether the bottom-of-feed next-page trigger is enabled.
+func (s *Scene) InfiniteScroll() bool { return s.infiniteScroll }
+
+// pullRefreshThreshold is how much insistent upward overscroll (in device pixels,
+// accumulated at the very top of the feed) fires a pull-to-refresh. It is roughly
+// two-to-three wheel lines, so a single small nudge past the top does not refresh
+// but a deliberate pull does.
+const pullRefreshThreshold = 48
+
 // SetBrowserChromeHidden hides (v=true) or shows the embedded browser's toolbar
 // + tab strip, so a page can render chrome-free in the preview.
 func (s *Scene) SetBrowserChromeHidden(v bool) { s.browser.HideChrome = v; s.touch() }
@@ -862,6 +889,7 @@ func (s *Scene) Settings() *settings.Settings {
 	// Persist the tab mode explicitly (a *bool) so an opt-out to multiple tabs is
 	// stored as false and is not re-defaulted to single-tab on the next load.
 	singleTab := s.BrowserSingleTab()
+	infinite := s.infiniteScroll
 	return &settings.Settings{
 		Profiles:          s.Profiles,
 		Active:            s.activeProf,
@@ -869,6 +897,7 @@ func (s *Scene) Settings() *settings.Settings {
 		CachePath:         s.cachePath,
 		Accounts:          s.EditedAccounts(),
 		BrowserSingleTab:  &singleTab,
+		InfiniteScroll:    &infinite,
 		HideBrowserChrome: s.BrowserChromeHidden(),
 		SignInBrowser:     s.signInBrowser,
 		ZoomInKey:         s.BrowserZoomInKey(),
@@ -1200,9 +1229,44 @@ func (s *Scene) Scroll(dy int) {
 	// Nudge the offset, then relayout: layout() measures the feed's content height
 	// and calls feedScroll.refresh, which clamps against the fresh sizes (so the dy
 	// must be added before, not clamped against stale sizes).
+	atTopBefore := s.feedScroll.offset <= 0
 	s.feedScroll.offset += dy
 	s.layout()
+	s.feedTriggers(dy, atTopBefore)
 	s.touch()
+}
+
+// feedTriggers fires the infinite-scroll (OnReachBottom) and pull-to-refresh
+// (OnPullRefresh) seams from a feed wheel event. dy is the raw wheel delta
+// (positive = toward the bottom); atTopBefore is whether the feed sat at the very
+// top before this nudge. It runs after layout() has re-clamped feedScroll against
+// fresh sizes, so the at-bottom/at-top tests read settled geometry.
+func (s *Scene) feedTriggers(dy int, atTopBefore bool) {
+	// Infinite scroll: wheeling down while the (overflowing) feed is pinned to its
+	// bottom asks for the next page. The app's loadingMore guard throttles repeats,
+	// so firing on each at-bottom wheel is fine; a non-overflowing list never fires.
+	if s.infiniteScroll && dy > 0 && len(s.rows) > 0 &&
+		s.feedScroll.needsBar() && s.feedScroll.offset >= s.feedScroll.max() {
+		if s.OnReachBottom != nil {
+			s.OnReachBottom()
+		}
+	}
+	// Pull-to-refresh: an insistent upward overscroll while already at the top
+	// accumulates; crossing the threshold refreshes once and resets. Any scroll
+	// that moves off the top clears the accumulator, so only a deliberate pull —
+	// not a single small nudge past the top — triggers.
+	switch {
+	case dy < 0 && atTopBefore:
+		s.pullAccum += -dy
+		if s.pullAccum >= pullRefreshThreshold {
+			s.pullAccum = 0
+			if s.OnPullRefresh != nil {
+				s.OnPullRefresh()
+			}
+		}
+	case s.feedScroll.offset > 0:
+		s.pullAccum = 0
+	}
 }
 
 // NavItem moves the feed selection by dir card rows (dir<0 up, dir>0 down),

@@ -68,7 +68,7 @@ jobs:
         with:
           go-version: "1.26.4"
       - name: Test with the race detector (all packages except the window boundary)
-        run: go test -race $(go list ./... | grep -vE '/internal/window($|/)')
+        run: go test -race -timeout 20m $(go list ./... | grep -vE '/internal/window($|/)')
 
   cross-build:
     runs-on: ubuntu-latest

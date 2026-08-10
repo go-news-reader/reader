@@ -405,6 +405,20 @@ func (s *Scene) layoutSettings() {
 	s.sCacheR = toolkit.Rect{X: pad, Y: y, W: s.W - 2*pad, H: btnH}
 	y += btnH + pad
 
+	// FEED: infinite scroll on/off — fetch and append the next page of posts when
+	// the feed list is scrolled to the bottom. Placed last so it does not shift the
+	// sections above. (Pull-to-refresh at the top is always on and needs no toggle.)
+	label(pad, y, "FEED")
+	y += m.side.height + gap
+	label(pad, y, "Fetch the next page when you scroll to the bottom (pull down at the top to refresh)")
+	y += m.side.height + gap
+	infinite := s.InfiniteScroll()
+	s.layoutBtnRow(pad, y, []sButton{
+		{label: "Infinite scroll on", kind: HitInfiniteScroll, value: "on", active: infinite},
+		{label: "Infinite scroll off", kind: HitInfiniteScroll, value: "off", active: !infinite},
+	})
+	y += btnH + pad
+
 	// The editor can be taller than the surface (many subscriptions, high zoom, a
 	// short window); the whole body scrolls, with the topbar + Done painted over
 	// the overflow. Everything above was laid out unscrolled; clamp the offset

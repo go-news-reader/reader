@@ -293,6 +293,9 @@ func (h *Handler) runHit(hit ui.Hit) {
 	case ui.HitBrowserChrome:
 		s.SetBrowserChromeHidden(hit.Value == "hidden") // web-preview toolbar visibility
 		h.a.ApplySceneSettings()
+	case ui.HitInfiniteScroll:
+		s.SetInfiniteScroll(hit.Value == "on") // fetch next page on scroll-to-bottom
+		h.a.ApplySceneSettings()
 	case ui.HitClearRenderCache:
 		h.a.ClearRenderCache() // drop every cached web-preview render
 	case ui.HitAccounts:
