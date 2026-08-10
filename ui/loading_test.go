@@ -72,6 +72,28 @@ func TestLoadingStateSettersAndGetters(t *testing.T) {
 	s.SetLoading(false, 2, 2)
 }
 
+// TestGIFPlayingAnimates proves the GIF-playing flag both reports through
+// GIFPlaying and forces Animating true (so the present loop keeps ticking while
+// a GIF plays), and that clearing it releases the scene back to idle.
+func TestGIFPlayingAnimates(t *testing.T) {
+	s := newScene()
+	if s.GIFPlaying() || s.Animating() {
+		t.Fatal("a fresh scene should not be GIF-playing or animating")
+	}
+	r0 := s.Rev()
+	s.SetGIFPlaying(true)
+	if !s.GIFPlaying() || !s.Animating() {
+		t.Fatal("SetGIFPlaying(true) should mark GIF-playing and animating")
+	}
+	if s.Rev() == r0 {
+		t.Fatal("SetGIFPlaying should bump the damage sequence")
+	}
+	s.SetGIFPlaying(false)
+	if s.GIFPlaying() || s.Animating() {
+		t.Fatal("SetGIFPlaying(false) should stop GIF-playing and animation")
+	}
+}
+
 func TestAdvanceAnim(t *testing.T) {
 	s := newScene()
 	f0 := s.AnimFrame()

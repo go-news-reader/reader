@@ -31,6 +31,14 @@ import (
 // forever. The default webFetch runs this on its own goroutine; tests call it
 // directly for determinism.
 func (a *App) loadPreviewPage(ctx context.Context, target string, width int) {
+	// A fresh navigation supersedes any animated GIF that was playing.
+	a.clearActiveGIF()
+	// Animated-GIF interception: a direct .gif target the page renderer would show
+	// as a single frozen frame is decoded here and driven frame-by-frame into the
+	// browser instead (skipping both the engine render and the render cache).
+	if a.playAnimatedGIF(ctx, target, width) {
+		return
+	}
 	key := renderKey{url: target, width: width}
 	// Cache hit: deliver the stored final frame and return without rendering.
 	if e, ok := a.rcache.get(key); ok {

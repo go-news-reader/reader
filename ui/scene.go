@@ -322,6 +322,12 @@ type Scene struct {
 	// EventMouseDrag (letting a scrollbar thumb track the pointer). Set when
 	// ForwardBrowserClick consumes a press inside the browser, cleared on release.
 	browserPressed bool
+	// gifPlaying is set while the app is driving an animated GIF's frames into the
+	// embedded browser itself (bypassing the page renderer, which only produces a
+	// single static frame). It keeps Animating true so the present loop keeps
+	// ticking — otherwise the GIF would freeze on its first frame the moment the
+	// scene went idle. The app sets/clears it via SetGIFPlaying.
+	gifPlaying bool
 	// bookmarks is the set of bookmarked page URLs (persisted via Settings); the
 	// address bar's star reflects/toggles membership for the current page.
 	bookmarks map[string]bool
@@ -753,8 +759,18 @@ func (s *Scene) LoadingProgress() (done, total int) { return s.loadDone, s.loadT
 // damage-gated present loop never re-draws — so animation costs nothing when
 // nothing is loading.
 func (s *Scene) Animating() bool {
-	return s.loading || s.previewImgPending || s.browser.Loading()
+	return s.loading || s.previewImgPending || s.browser.Loading() || s.gifPlaying
 }
+
+// SetGIFPlaying marks whether the app is currently driving an animated GIF's
+// frames into the embedded browser. While true, Animating stays true so the
+// present loop keeps ticking and the GIF advances; the app clears it when the
+// preview navigates away or closes.
+func (s *Scene) SetGIFPlaying(v bool) { s.gifPlaying = v; s.touch() }
+
+// GIFPlaying reports whether an animated GIF is currently being driven into the
+// preview (front-ends/tests observe it).
+func (s *Scene) GIFPlaying() bool { return s.gifPlaying }
 
 // AdvanceAnim advances the animation clock by one frame and marks the scene
 // dirty. A present loop calls it once per tick while [Animating] is true; the

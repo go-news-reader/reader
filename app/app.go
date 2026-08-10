@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/go-newsgroups/par2"
 
@@ -197,6 +198,20 @@ type App struct {
 	// post/queued protect the SCENE; vmu protects the VIEW-MODEL that feeds it.
 	vmu sync.Mutex
 
+	// Animated-GIF preview playback. When the web-preview target is an animated
+	// GIF, the app decodes every frame and drives them into the embedded browser
+	// itself — the page renderer only ever produces one static frame, so a GIF URL
+	// navigated to directly would freeze on frame 0. activeGIF holds the frames +
+	// per-frame delays of the GIF currently playing (nil when none), guarded by
+	// gifMu because it is stored from the fetch goroutine and advanced on the render
+	// thread (tickGIF). now is the clock seam (time.Now by default) so frame-timing
+	// tests are deterministic; gifFetch downloads the GIF bytes through the media
+	// client (a seam so tests inject canned bytes without touching the network).
+	gifMu     sync.Mutex
+	activeGIF *previewGIF
+	now       func() time.Time
+	gifFetch  func(ctx context.Context, url string) ([]byte, error)
+
 	// moreMu guards the pagination state used by infinite scroll: cursors maps each
 	// subscription's [source.SubKey] to its next-page token (populated by
 	// RefreshStreaming, advanced by LoadMore, empty/absent = exhausted), and
@@ -309,6 +324,8 @@ func New(cfg Config) *App {
 	a.mediaFetch = func(reqs []ui.MediaRequest) {
 		go a.loadMediaThumbs(context.Background(), reqs)
 	}
+	a.now = time.Now
+	a.gifFetch = func(ctx context.Context, url string) ([]byte, error) { return a.fetchGIFBytes(ctx, url) }
 	a.webRender = webrender.New()
 	a.rcache = newRenderCache(renderCacheMaxBytes)
 	a.webFetch = func(target string, width int) {
@@ -772,6 +789,7 @@ func (a *App) Frame() (buf []byte, changed bool) {
 	// Apply any scene mutations enqueued by background goroutines first, on this
 	// (the render) thread, so the scene is only ever touched here.
 	a.drainScene()
+	a.tickGIF()         // advance the playing animated-GIF preview (if any) to its due frame
 	a.tickWebDebounce() // fire a debounced page render once the selection settles
 	s := a.scene
 	if s.Animating() {
