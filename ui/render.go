@@ -124,6 +124,7 @@ func (s *Scene) layout() {
 	if s.usenetAddr != "" {
 		nRows++ // Browse entry
 	}
+	nRows++ // "Search Reddit" entry (always shown — Reddit needs no configuration)
 	s.sideBandTop = sideTop
 	s.sideBandBot = s.accountsR.Y // the pinned footer begins here
 	band := s.sideBandBot - s.sideBandTop
@@ -152,6 +153,10 @@ func (s *Scene) layout() {
 	} else {
 		s.browseR = toolkit.Rect{}
 	}
+	// "🔍 Search Reddit" entry, below the subscriptions (and the Browse entry when
+	// shown). Reddit works anonymously, so this is always offered.
+	s.searchRedditR = toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}
+	y += m.sideItemH
 
 	// Burger button (left of the topbar) toggles the sidebar. Always present in
 	// the feed view so a collapsed sidebar can be reopened.
@@ -231,6 +236,9 @@ func (s *Scene) Draw(buf []byte) {
 		return
 	case ModeBrowse:
 		s.drawBrowse(buf)
+		return
+	case ModeSearch:
+		s.drawSearch(buf)
 		return
 	}
 	s.layout()
@@ -492,6 +500,15 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		ir := toolkit.Rect{X: m.pad, Y: ly + (m.sideItemH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
 		drawPlusIcon(p, ir, th.Accent, s.iconStroke())
 		m.side.draw(img, m.pad+rpxOf(s, 14), ly+(m.sideItemH-m.side.height)/2, "Browse newsgroups", th.Accent)
+	}
+
+	// "Search Reddit" entry (sidebar-local coords), below the subs / Browse entry.
+	if s.searchRedditR.W > 0 &&
+		s.searchRedditR.Y >= s.sideBandTop && s.searchRedditR.Y+m.sideItemH <= s.sideBandBot {
+		ly := s.searchRedditR.Y - m.topbarH
+		ir := toolkit.Rect{X: m.pad, Y: ly + (m.sideItemH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
+		drawSearchIcon(p, ir, th.Accent)
+		m.side.draw(img, m.pad+rpxOf(s, 14), ly+(m.sideItemH-m.side.height)/2, "Search Reddit", th.Accent)
 	}
 
 	// Pinned entries at the bottom: Accounts, Network log, Settings. Each icon is
@@ -988,6 +1005,8 @@ func (s *Scene) HitTest(x, y int) Hit {
 		return s.accountsHitTest(x, y)
 	case ModeBrowse:
 		return s.browseHitTest(x, y)
+	case ModeSearch:
+		return s.searchHitTest(x, y)
 	}
 	s.layout()
 	s.layoutPreview()
@@ -1045,6 +1064,9 @@ func (s *Scene) HitTest(x, y int) Hit {
 		}
 		if s.usenetAddr != "" && s.browseR.W > 0 && inBand(s.browseR) && inRect(s.browseR, x, y) {
 			return Hit{Kind: HitBrowse}
+		}
+		if s.searchRedditR.W > 0 && inBand(s.searchRedditR) && inRect(s.searchRedditR, x, y) {
+			return Hit{Kind: HitSearchReddit}
 		}
 		for _, e := range s.subs {
 			if inBand(e.rect) && inRect(e.rect, x, y) {

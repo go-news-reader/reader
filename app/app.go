@@ -157,6 +157,12 @@ type App struct {
 	loadMoreFetch    func()
 	pullRefreshFetch func()
 
+	// searchFetch is the Reddit search view's seam: it runs the query (subreddits or
+	// posts) against the Reddit provider off the render thread and delivers results
+	// through a.post. It defaults to launching RunRedditSearch on a goroutine; a
+	// field so tests substitute a synchronous variant.
+	searchFetch func(query string, posts bool)
+
 	// dl is the parallel image download manager (feed-wide thumbnail prefetch);
 	// fdl is the parallel file download manager (reconstruct+save checked posts).
 	dl  *downloader
@@ -376,6 +382,11 @@ func New(cfg Config) *App {
 	a.pullRefreshFetch = func() { go a.PullRefresh(context.Background()) }
 	a.scene.OnReachBottom = func() { a.loadMoreFetch() }
 	a.scene.OnPullRefresh = func() { a.pullRefreshFetch() }
+	// The Reddit search view runs its query off the render thread; a field so tests
+	// drive it synchronously.
+	a.searchFetch = func(query string, posts bool) {
+		go a.RunRedditSearch(context.Background(), query, posts)
+	}
 	a.dl = newDownloader(a)
 	a.fdl = newFileDownloader(a)
 	a.seen = loadSeen()

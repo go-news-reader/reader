@@ -110,6 +110,10 @@ func TestVMDrivesSceneMode(t *testing.T) {
 	if s.Mode() != ui.ModeBrowse {
 		t.Fatalf("mode = %v, want browse", s.Mode())
 	}
+	vm.OpenSearch.Execute() // applyMode ModeSearch branch
+	if s.Mode() != ui.ModeSearch {
+		t.Fatalf("mode = %v, want search", s.Mode())
+	}
 	vm.CloseView.Execute() // -> ModeFeed (applyMode default branch)
 	if s.Mode() != ui.ModeFeed {
 		t.Fatalf("mode = %v, want feed", s.Mode())

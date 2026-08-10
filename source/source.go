@@ -104,6 +104,19 @@ type GroupInfo struct {
 	Count int
 }
 
+// SubredditResult is one entry of a Reddit subreddit-search result: enough to
+// show a discovery row and let the user subscribe by Name (as r/<Name>).
+// Reddit does not let subreddits be enumerated, so a query against its search
+// endpoint is the only way to discover them; a caller may further narrow the
+// returned Name/Description locally (e.g. with a regular expression).
+type SubredditResult struct {
+	Name        string // display name, e.g. "golang" (subscribe as r/<Name>)
+	Title       string // human title
+	Description string // short public blurb
+	Subscribers int64  // subscriber count
+	NSFW        bool   // over-18 flag
+}
+
 // GroupStats is a sampled estimate of a newsgroup's content mix: within the last
 // Sampled article overviews scanned, how many are binary posts (Binaries) and,
 // of those, how many name an image file (Images ⊆ Binaries). A full scan of a

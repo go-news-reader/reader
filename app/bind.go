@@ -73,6 +73,8 @@ func applyMode(s *ui.Scene, m ui.Mode, detail source.Item) {
 		s.OpenAccounts()
 	case ui.ModeBrowse:
 		s.OpenBrowse()
+	case ui.ModeSearch:
+		s.OpenSearch()
 	default: // ui.ModeFeed
 		s.CloseDetail()
 	}

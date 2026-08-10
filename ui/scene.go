@@ -135,6 +135,16 @@ const (
 	HitImportRedditFirefox // the Reddit editor's "Import session from Firefox" button
 	HitImportRedditSubs    // the Reddit editor's "Import subscriptions" button (pull the account's subreddits)
 	HitRedditSignIn        // the Reddit editor's "Sign in to Reddit in browser" button
+
+	// Reddit search view actions (Mode == ModeSearch):
+	HitSearchReddit        // the sidebar "🔍 Search Reddit" entry (open the search view)
+	HitCloseSearch         // the search view's "‹ Back" button (return to the feed)
+	HitSearchTab           // switch the results tab — Value = "subreddits"|"posts"
+	HitFocusSearchQuery    // focus the search-query input
+	HitFocusSearchRegex    // focus the subreddit-results regexp filter input
+	HitRunSearch           // run the search for the current query + tab
+	HitSubscribeSubreddit  // subscribe to a subreddit result — Value = subreddit name
+	HitSubscribePostSearch // save the post keyword search as a live channel — Value = query
 )
 
 // Mode selects which view the scene renders.
@@ -147,6 +157,7 @@ const (
 	ModeLog                  // the in-canvas HTTP-exchange (Network) log
 	ModeAccounts             // the in-canvas per-provider credentials editor
 	ModeBrowse               // the in-canvas newsgroup browser / subscribe view
+	ModeSearch               // the in-canvas Reddit search / discover view
 )
 
 // Hit is the result of [Scene.HitTest].
@@ -457,6 +468,13 @@ type Scene struct {
 	browseFilterErr  string
 	browseMatchCount int
 
+	// Reddit search (ModeSearch) view state. The bulk of it — the query/regex
+	// widgets, the active tab, the result slices and the laid-out rects — lives in
+	// searchState (defined in search_view.go) so this struct stays lean; searchRedditR
+	// is the sidebar "Search Reddit" entry, laid out alongside the Browse entry.
+	search        searchState
+	searchRedditR toolkit.Rect
+
 	m         metrics
 	subs      []subHit
 	profTabs  []profTabHit
@@ -759,7 +777,7 @@ func (s *Scene) LoadingProgress() (done, total int) { return s.loadDone, s.loadT
 // damage-gated present loop never re-draws — so animation costs nothing when
 // nothing is loading.
 func (s *Scene) Animating() bool {
-	return s.loading || s.previewImgPending || s.browser.Loading() || s.gifPlaying
+	return s.loading || s.previewImgPending || s.browser.Loading() || s.gifPlaying || s.search.loading
 }
 
 // SetGIFPlaying marks whether the app is currently driving an animated GIF's
@@ -1077,6 +1095,10 @@ func (s *Scene) TypeRune(r rune) {
 		}
 		return
 	}
+	if s.mode == ModeSearch {
+		s.search.typeRune(s, r)
+		return
+	}
 	if s.searchFocused {
 		// Feed the printable rune through the SearchEntry widget itself, so the
 		// widget's OnChange (bound to vm.Search) fires exactly as a real widget
@@ -1109,6 +1131,10 @@ func (s *Scene) Backspace() {
 			s.browseScroll.offset = 0
 			s.touch()
 		}
+		return
+	}
+	if s.mode == ModeSearch {
+		s.search.backspace(s)
 		return
 	}
 	if s.searchFocused && s.searchEntry.Text != "" {
@@ -1229,6 +1255,12 @@ func (s *Scene) Scroll(dy int) {
 	if s.mode == ModeBrowse {
 		s.browseScroll.offset += dy
 		s.layoutBrowse() // self-clamps browseScrollY
+		s.touch()
+		return
+	}
+	if s.mode == ModeSearch {
+		s.search.scroll.offset += dy
+		s.layoutSearch() // self-clamps the results scroll
 		s.touch()
 		return
 	}

@@ -92,6 +92,8 @@ type ViewModel struct {
 	OpenAccounts *mvvm.Command
 	OpenLog      *mvvm.Command
 	OpenBrowse   *mvvm.Command
+	// OpenSearch switches Mode into the Reddit search / discover view.
+	OpenSearch *mvvm.Command
 	// CloseView returns to the feed.
 	CloseView *mvvm.Command
 }
@@ -122,6 +124,7 @@ func New(act Actions) *ViewModel {
 	vm.OpenAccounts = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeAccounts) }, nil)
 	vm.OpenLog = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeLog) }, nil)
 	vm.OpenBrowse = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeBrowse) }, nil)
+	vm.OpenSearch = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeSearch) }, nil)
 	vm.CloseView = mvvm.NewCommand(func() { vm.Mode.Set(ui.ModeFeed) }, nil)
 	return vm
 }

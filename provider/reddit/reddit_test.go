@@ -29,6 +29,25 @@ type fakeFetcher struct {
 	sawCmtID    string
 	mySubs      []goreddit.SubredditInfo
 	mySubsErr   error
+
+	// Search seams.
+	subPage       *goreddit.SubredditPage
+	subSearchErr  error
+	sawSubQuery   string
+	postSearchErr error
+	sawSearchQ    string
+	sawSearchSub  string
+	sawSearchSort goreddit.SearchSort
+}
+
+func (f *fakeFetcher) SearchSubreddits(_ context.Context, query string, _ goreddit.ListingOptions) (*goreddit.SubredditPage, error) {
+	f.sawSubQuery = query
+	return f.subPage, f.subSearchErr
+}
+
+func (f *fakeFetcher) SearchPosts(_ context.Context, query, subreddit string, sort goreddit.SearchSort, _ goreddit.ListingOptions) (*goreddit.Page, error) {
+	f.sawSearchQ, f.sawSearchSub, f.sawSearchSort = query, subreddit, sort
+	return f.page, f.err
 }
 
 func (f *fakeFetcher) MySubreddits(_ context.Context) ([]goreddit.SubredditInfo, error) {
@@ -620,5 +639,127 @@ func TestMapHostedVideoHintPost(t *testing.T) {
 	it := mapOne(t, p)
 	if it.Link != "https://external-preview.redd.it/hv1.jpg" {
 		t.Errorf("hosted:video Link = %q, want the poster", it.Link)
+	}
+}
+
+// --- Search: subreddit discovery + post search + the search: feed channel ---
+
+func TestSearchSubredditsMapsResults(t *testing.T) {
+	f := &fakeFetcher{subPage: &goreddit.SubredditPage{
+		After: "t5_next",
+		Subreddits: []goreddit.SubredditInfo{
+			{Name: "golang", Title: "The Go Programming Language", PublicDescription: "Gophers", Subscribers: 250000, Over18: false},
+			{Name: "", Title: "skip me"}, // an empty name is skipped
+			{Name: "nsfwsub", Title: "Spicy", Subscribers: 10, Over18: true},
+		},
+	}}
+	p := NewWithClient(f)
+
+	rs, err := p.SearchSubreddits(context.Background(), "  go  ")
+	if err != nil {
+		t.Fatalf("SearchSubreddits: %v", err)
+	}
+	if f.sawSubQuery != "go" {
+		t.Fatalf("query passed to client = %q, want trimmed 'go'", f.sawSubQuery)
+	}
+	if len(rs) != 2 {
+		t.Fatalf("results = %d, want 2 (empty name skipped)", len(rs))
+	}
+	if rs[0] != (source.SubredditResult{Name: "golang", Title: "The Go Programming Language", Description: "Gophers", Subscribers: 250000, NSFW: false}) {
+		t.Fatalf("result[0] = %+v", rs[0])
+	}
+	if !rs[1].NSFW || rs[1].Name != "nsfwsub" {
+		t.Fatalf("result[1] = %+v, want the NSFW sub", rs[1])
+	}
+}
+
+func TestSearchSubredditsBlankQuery(t *testing.T) {
+	p := NewWithClient(&fakeFetcher{})
+	if _, err := p.SearchSubreddits(context.Background(), "   "); err == nil {
+		t.Fatal("blank query should error")
+	}
+}
+
+func TestSearchSubredditsPropagatesError(t *testing.T) {
+	f := &fakeFetcher{subSearchErr: errors.New("boom")}
+	if _, err := NewWithClient(f).SearchSubreddits(context.Background(), "go"); err == nil {
+		t.Fatal("client error should propagate")
+	}
+}
+
+func TestSearchPostsMapsAndScopes(t *testing.T) {
+	f := &fakeFetcher{page: &goreddit.Page{Posts: []goreddit.Post{{
+		ID: "s1", Subreddit: "golang", Title: "Generics", Author: "gopher",
+		Permalink: "/r/golang/comments/s1/generics/", IsSelf: true,
+	}}}}
+	p := NewWithClient(f)
+
+	// Site-wide (empty subreddit).
+	items, err := p.SearchPosts(context.Background(), "generics", "")
+	if err != nil {
+		t.Fatalf("SearchPosts: %v", err)
+	}
+	if f.sawSearchQ != "generics" || f.sawSearchSub != "" || f.sawSearchSort != goreddit.SearchRelevance {
+		t.Fatalf("client saw q=%q sub=%q sort=%q", f.sawSearchQ, f.sawSearchSub, f.sawSearchSort)
+	}
+	if len(items) != 1 || items[0].ID != "s1" || items[0].Channel != "golang" {
+		t.Fatalf("mapped items = %+v", items)
+	}
+
+	// Restricted to a subreddit.
+	if _, err := p.SearchPosts(context.Background(), "generics", "r/golang"); err != nil {
+		t.Fatalf("SearchPosts(sub): %v", err)
+	}
+	if f.sawSearchSub != "r/golang" {
+		t.Fatalf("subreddit passed = %q, want r/golang", f.sawSearchSub)
+	}
+}
+
+func TestSearchPostsPropagatesError(t *testing.T) {
+	f := &fakeFetcher{err: errors.New("nope")}
+	if _, err := NewWithClient(f).SearchPosts(context.Background(), "go", ""); err == nil {
+		t.Fatal("client error should propagate")
+	}
+}
+
+// TestFeedSearchChannelRoutesToPostSearch: a "search:<query>" channel routes the
+// feed to a site-wide post search and tags each item with the search: channel so
+// the per-subscription feed filter matches.
+func TestFeedSearchChannelRoutesToPostSearch(t *testing.T) {
+	f := &fakeFetcher{page: &goreddit.Page{After: "t3_next", Posts: []goreddit.Post{{
+		ID: "sc1", Subreddit: "golang", Title: "hit", Permalink: "/r/golang/comments/sc1/hit/", IsSelf: true,
+	}}}}
+	p := NewWithClient(f)
+
+	res, err := p.Feed(context.Background(), source.Query{Channel: "search:go generics", Limit: 25})
+	if err != nil {
+		t.Fatalf("Feed: %v", err)
+	}
+	if f.sawFront || f.sawSub != "" || f.sawUser != "" {
+		t.Fatalf("search channel must not hit Frontpage/Subreddit/UserPosts")
+	}
+	if f.sawSearchQ != "go generics" || f.sawSearchSub != "" || f.sawSearchSort != goreddit.SearchRelevance {
+		t.Fatalf("search args wrong: q=%q sub=%q sort=%q", f.sawSearchQ, f.sawSearchSub, f.sawSearchSort)
+	}
+	if len(res.Items) != 1 {
+		t.Fatalf("items = %d", len(res.Items))
+	}
+	// Tagged with the subscription's own search: channel (not the post's r/golang).
+	if res.Items[0].Channel != "search:go generics" {
+		t.Fatalf("item channel = %q, want the search: subscription form", res.Items[0].Channel)
+	}
+	if res.Cursor != "t3_next" {
+		t.Fatalf("cursor = %q", res.Cursor)
+	}
+}
+
+// A capitalised "Search:" prefix is accepted case-insensitively too.
+func TestFeedSearchChannelCaseInsensitive(t *testing.T) {
+	f := &fakeFetcher{page: &goreddit.Page{}}
+	if _, err := NewWithClient(f).Feed(context.Background(), source.Query{Channel: "Search:foo"}); err != nil {
+		t.Fatalf("Feed: %v", err)
+	}
+	if f.sawSearchQ != "foo" {
+		t.Fatalf("case-insensitive search prefix not routed: q=%q", f.sawSearchQ)
 	}
 }

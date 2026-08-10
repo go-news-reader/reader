@@ -140,6 +140,10 @@ func TestCommands(t *testing.T) {
 	if vm.Mode.Get() != ui.ModeBrowse {
 		t.Fatalf("mode = %v", vm.Mode.Get())
 	}
+	vm.OpenSearch.Execute()
+	if vm.Mode.Get() != ui.ModeSearch {
+		t.Fatalf("mode = %v", vm.Mode.Get())
+	}
 	vm.CloseView.Execute()
 	if vm.Mode.Get() != ui.ModeFeed {
 		t.Fatalf("mode = %v", vm.Mode.Get())

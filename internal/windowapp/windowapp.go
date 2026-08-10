@@ -251,6 +251,26 @@ func (h *Handler) runHit(hit ui.Hit) {
 	case ui.HitUnsubscribeGroup:
 		s.FocusBrowseFilter(false)
 		h.a.UnsubscribeGroup(hit.Value) // remove usenet:<group> from the active profile
+	case ui.HitSearchReddit:
+		vm.OpenSearch.Execute() // open the Reddit search / discover view
+	case ui.HitCloseSearch:
+		vm.CloseView.Execute()
+		s.FocusSearchQuery(false)
+		s.FocusSearchRegex(false)
+	case ui.HitSearchTab:
+		s.SetSearchTab(hit.Value == "posts") // switch the subreddits/posts results tab
+	case ui.HitFocusSearchQuery:
+		s.FocusSearchQuery(true) // focus the search-query field
+	case ui.HitFocusSearchRegex:
+		s.FocusSearchRegex(true) // focus the subreddit-results regexp filter
+	case ui.HitRunSearch:
+		s.FocusSearchQuery(false)
+		s.FocusSearchRegex(false)
+		h.a.RunSearch() // run the query against the Reddit provider (async)
+	case ui.HitSubscribeSubreddit:
+		h.a.SubscribeSubreddit(hit.Value) // add r/<name> to the active profile
+	case ui.HitSubscribePostSearch:
+		h.a.SubscribePostSearch(hit.Value) // save search:<query> as a live subscription
 	case ui.HitCloseSettings:
 		s.CommitRename()
 		s.CommitCache()

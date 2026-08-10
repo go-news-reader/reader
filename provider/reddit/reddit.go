@@ -27,6 +27,8 @@ type fetcher interface {
 	Frontpage(ctx context.Context, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 	Comments(ctx context.Context, subreddit, id string, opts goreddit.ListingOptions) (*goreddit.PostWithComments, error)
 	MySubreddits(ctx context.Context) ([]goreddit.SubredditInfo, error)
+	SearchSubreddits(ctx context.Context, query string, opts goreddit.ListingOptions) (*goreddit.SubredditPage, error)
+	SearchPosts(ctx context.Context, query, subreddit string, sort goreddit.SearchSort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 }
 
 // Provider fetches Reddit posts as normalized source items.
@@ -96,6 +98,12 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	switch {
 	case ch == "":
 		page, err = p.client.Frontpage(ctx, sort, opts)
+	case strings.HasPrefix(strings.ToLower(ch), searchPrefix):
+		// A saved keyword search ("search:<query>"): a live subscription whose feed
+		// is Reddit's site-wide post search for the query, so fresh matches keep
+		// flowing into the aggregated feed. The default relevance order applies.
+		query := strings.TrimSpace(ch[len(searchPrefix):])
+		page, err = p.client.SearchPosts(ctx, query, "", goreddit.SearchRelevance, opts)
 	case strings.HasPrefix(strings.ToLower(ch), "u/"):
 		page, err = p.client.UserPosts(ctx, ch, sort, opts)
 	default:
@@ -188,6 +196,60 @@ func (p *Provider) MySubscriptions(ctx context.Context) ([]string, error) {
 		out = append(out, "r/"+s.Name)
 	}
 	return out, nil
+}
+
+// searchPrefix marks a subscription channel as a saved keyword search
+// ("search:<query>"): [Provider.Feed] routes it to a site-wide post search
+// instead of a subreddit fetch, and [normalizeChannel] leaves it verbatim (it is
+// not an r/ subreddit). The comparison is done in lower-case, so any casing of
+// the prefix is accepted.
+const searchPrefix = "search:"
+
+// SearchSubreddits discovers subreddits whose name, title or description matches
+// query, mapping Reddit's search results onto the aggregator's [source.SubredditResult]
+// discovery type. A blank query is rejected. The caller may narrow the returned
+// names/descriptions further with a local regexp filter (Reddit itself cannot
+// enumerate subreddits, so this search is the only discovery path).
+func (p *Provider) SearchSubreddits(ctx context.Context, query string) ([]source.SubredditResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, errors.New("reddit: empty search query")
+	}
+	page, err := p.client.SearchSubreddits(ctx, query, goreddit.ListingOptions{})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]source.SubredditResult, 0, len(page.Subreddits))
+	for _, si := range page.Subreddits {
+		if si.Name == "" {
+			continue
+		}
+		out = append(out, source.SubredditResult{
+			Name:        si.Name,
+			Title:       si.Title,
+			Description: si.PublicDescription,
+			Subscribers: si.Subscribers,
+			NSFW:        si.Over18,
+		})
+	}
+	return out, nil
+}
+
+// SearchPosts searches Reddit for posts matching query and maps them onto the
+// normalized feed items (through the same mapPost the feed uses). When subreddit
+// is non-empty the search is restricted to it; otherwise it is site-wide. The
+// default relevance order applies. A blank query is rejected by the underlying
+// client.
+func (p *Provider) SearchPosts(ctx context.Context, query, subreddit string) ([]source.Item, error) {
+	page, err := p.client.SearchPosts(ctx, query, subreddit, goreddit.SearchRelevance, goreddit.ListingOptions{})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	items := make([]source.Item, 0, len(page.Posts))
+	for _, post := range page.Posts {
+		items = append(items, mapPost(post))
+	}
+	return items, nil
 }
 
 // mapErr translates a Reddit client failure into a typed source.AuthError when
