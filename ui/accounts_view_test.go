@@ -256,6 +256,40 @@ func TestAccountsImportButton(t *testing.T) {
 	}
 }
 
+func TestAccountsImportSubsButton(t *testing.T) {
+	s := New(1100, 700, ThemeFor(OSLinux, false))
+	s.OpenAccounts() // Reddit selected by default
+	s.layoutAccounts()
+	if s.accImportSubsR.W == 0 {
+		t.Fatal("Reddit editor should show the import-subscriptions button")
+	}
+	// It sits to the right of the Firefox import button on the same row.
+	if s.accImportSubsR.X <= s.accImportR.X || s.accImportSubsR.Y != s.accImportR.Y {
+		t.Fatalf("import-subs button should be right of import on same row: import=%+v subs=%+v", s.accImportR, s.accImportSubsR)
+	}
+	// Render the accounts view so the button's draw path runs.
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	ix, iy := center(s.accImportSubsR.X, s.accImportSubsR.Y, s.accImportSubsR.W, s.accImportSubsR.H)
+	if h := s.accountsHitTest(ix, iy); h.Kind != HitImportRedditSubs {
+		t.Fatalf("import-subs hit = %+v, want HitImportRedditSubs", h)
+	}
+	// A click just past its right edge must not yield the hit.
+	if h := s.accountsHitTest(s.accImportSubsR.X+s.accImportSubsR.W+5, iy); h.Kind == HitImportRedditSubs {
+		t.Fatalf("click outside the button should not hit it: %+v", h)
+	}
+
+	// A non-Reddit provider shows no import-subscriptions button.
+	s.SelectAccount(source.Mastodon)
+	s.layoutAccounts()
+	if s.accImportSubsR.W != 0 {
+		t.Fatal("non-Reddit provider must not show the import-subscriptions button")
+	}
+	if h := s.accountsHitTest(ix, iy); h.Kind == HitImportRedditSubs {
+		t.Fatalf("non-Reddit provider must not yield HitImportRedditSubs: %+v", h)
+	}
+}
+
 func TestAccountsImportButtonScrolls(t *testing.T) {
 	// A short window forces the Reddit form (incl. the import button) to overflow,
 	// exercising the scroll-shift of the import-button rect.
@@ -268,6 +302,9 @@ func TestAccountsImportButtonScrolls(t *testing.T) {
 	}
 	if s.accImportR.W == 0 {
 		t.Fatal("import button should still be laid out while scrolled")
+	}
+	if s.accImportSubsR.W == 0 {
+		t.Fatal("import-subscriptions button should still be laid out while scrolled")
 	}
 }
 

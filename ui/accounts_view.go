@@ -23,8 +23,9 @@ import (
 // Reddit editor button captions. Sign-in launches the configured browser at
 // Reddit's login page; import lifts the resulting cookie (Firefox only).
 const (
-	redditSignInLabel = "Sign in to Reddit in browser"
-	redditImportLabel = "Import session from Firefox"
+	redditSignInLabel     = "Sign in to Reddit in browser"
+	redditImportLabel     = "Import session from Firefox"
+	redditImportSubsLabel = "Import subscriptions"
 )
 
 // accProvBtn is one provider pill in the selector.
@@ -269,15 +270,20 @@ func (s *Scene) layoutAccounts() {
 	// in is a single button rather than a manual copy-paste. Other providers show
 	// no button (its rect stays zero, so it never hit-tests).
 	s.accImportR = toolkit.Rect{}
+	s.accImportSubsR = toolkit.Rect{}
 	s.accSignInR = toolkit.Rect{}
 	if s.accSel == source.Reddit {
 		// "Sign in to Reddit in browser" launches the configured browser at Reddit's
-		// login page; "Import session from Firefox" lifts the resulting cookie. They
-		// sit on one row (sign-in first, then import), each hidden for other providers.
+		// login page; "Import session from Firefox" lifts the resulting cookie;
+		// "Import subscriptions" pulls the connected account's followed subreddits.
+		// They sit on one row (sign-in, import-session, import-subs), each hidden for
+		// other providers.
 		sw := m.tab.width(redditSignInLabel) + rpxOf(s, 24)
 		s.accSignInR = toolkit.Rect{X: pad, Y: y, W: sw, H: btnH}
 		iw := m.tab.width(redditImportLabel) + rpxOf(s, 24)
 		s.accImportR = toolkit.Rect{X: pad + sw + gap, Y: y, W: iw, H: btnH}
+		isw := m.tab.width(redditImportSubsLabel) + rpxOf(s, 24)
+		s.accImportSubsR = toolkit.Rect{X: s.accImportR.X + iw + gap, Y: y, W: isw, H: btnH}
 		y += btnH + gap
 	}
 
@@ -297,6 +303,9 @@ func (s *Scene) layoutAccounts() {
 		}
 		if s.accImportR.W > 0 {
 			s.accImportR.Y += dy
+		}
+		if s.accImportSubsR.W > 0 {
+			s.accImportSubsR.Y += dy
 		}
 		if s.accSignInR.W > 0 {
 			s.accSignInR.Y += dy
@@ -372,6 +381,12 @@ func (s *Scene) drawAccounts(buf []byte) {
 		w.SetBounds(s.accImportR)
 		w.Draw(p, th)
 	}
+	if s.accImportSubsR.W > 0 {
+		w := &toolkit.Button{Label: redditImportSubsLabel}
+		w.Font = pillFont
+		w.SetBounds(s.accImportSubsR)
+		w.Draw(p, th)
+	}
 
 	// Topbar (accent) with Back, title and Done, over any scroll overflow.
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
@@ -398,6 +413,9 @@ func (s *Scene) accountsHitTest(x, y int) Hit {
 	}
 	if s.accImportR.W > 0 && inRect(s.accImportR, x, y) {
 		return Hit{Kind: HitImportRedditFirefox}
+	}
+	if s.accImportSubsR.W > 0 && inRect(s.accImportSubsR, x, y) {
+		return Hit{Kind: HitImportRedditSubs}
 	}
 	for _, b := range s.accProvBtns {
 		if inRect(b.rect, x, y) {

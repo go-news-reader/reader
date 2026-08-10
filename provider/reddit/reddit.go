@@ -26,6 +26,7 @@ type fetcher interface {
 	UserPosts(ctx context.Context, name string, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 	Frontpage(ctx context.Context, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 	Comments(ctx context.Context, subreddit, id string, opts goreddit.ListingOptions) (*goreddit.PostWithComments, error)
+	MySubreddits(ctx context.Context) ([]goreddit.SubredditInfo, error)
 }
 
 // Provider fetches Reddit posts as normalized source items.
@@ -169,6 +170,24 @@ func flattenComments(nodes []goreddit.Comment, depth int, out *[]source.Comment)
 		}
 		flattenComments(c.Replies, depth+1, out)
 	}
+}
+
+// MySubscriptions returns the r/<name> channels of every subreddit the
+// authenticated account follows, ready to add as subscriptions. It requires a
+// session-cookie (logged-in) client; an anonymous client yields an error.
+func (p *Provider) MySubscriptions(ctx context.Context) ([]string, error) {
+	subs, err := p.client.MySubreddits(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]string, 0, len(subs))
+	for _, s := range subs {
+		if s.Name == "" {
+			continue
+		}
+		out = append(out, "r/"+s.Name)
+	}
+	return out, nil
 }
 
 // mapErr translates a Reddit client failure into a typed source.AuthError when

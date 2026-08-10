@@ -27,6 +27,12 @@ type fakeFetcher struct {
 	commentsErr error
 	sawCmtSub   string
 	sawCmtID    string
+	mySubs      []goreddit.SubredditInfo
+	mySubsErr   error
+}
+
+func (f *fakeFetcher) MySubreddits(_ context.Context) ([]goreddit.SubredditInfo, error) {
+	return f.mySubs, f.mySubsErr
 }
 
 func (f *fakeFetcher) Subreddit(_ context.Context, name string, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error) {
@@ -233,6 +239,40 @@ func TestFeedError(t *testing.T) {
 	f := &fakeFetcher{err: errors.New("403")}
 	if _, err := NewWithClient(f).Feed(context.Background(), source.Query{Channel: "x"}); err == nil {
 		t.Fatal("want error propagated")
+	}
+}
+
+func TestMySubscriptions(t *testing.T) {
+	f := &fakeFetcher{mySubs: []goreddit.SubredditInfo{
+		{Name: "golang"},
+		{Name: ""}, // skipped: empty display name
+		{Name: "rust"},
+	}}
+	got, err := NewWithClient(f).MySubscriptions(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"r/golang", "r/rust"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestMySubscriptionsError(t *testing.T) {
+	f := &fakeFetcher{mySubsErr: &goreddit.APIError{StatusCode: 403, Status: "forbidden"}}
+	_, err := NewWithClient(f).MySubscriptions(context.Background())
+	if err == nil {
+		t.Fatal("want error propagated")
+	}
+	// mapErr promotes a 403 to a typed auth error.
+	var ae *source.AuthError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want mapErr AuthError, got %T: %v", err, err)
 	}
 }
 

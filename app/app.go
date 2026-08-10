@@ -525,6 +525,71 @@ func (a *App) ImportRedditSessionFromFirefox() (bool, error) {
 	return true, nil
 }
 
+// redditSubImporter is the narrow slice of the Reddit provider that lists the
+// authenticated account's subreddit subscriptions.
+type redditSubImporter interface {
+	MySubscriptions(ctx context.Context) ([]string, error)
+}
+
+// errNoRedditProvider is returned by [App.ImportRedditSubscriptions] when no
+// Reddit provider capable of listing subscriptions is registered (e.g. no
+// account is connected yet).
+var errNoRedditProvider = errors.New("no reddit subscription importer available")
+
+// ImportRedditSubscriptions pulls every subreddit the connected Reddit account
+// follows and adds any not-yet-subscribed ones as r/<name> subscriptions on the
+// active profile, then persists, re-aggregates, and reports on the status line.
+// It requires a connected (session-cookie) Reddit provider; without one it
+// prompts the user to connect an account. It runs the network call on the
+// caller's goroutine (the front-end launches it off the render thread) and
+// applies the scene mutations through a.post so they land on the render thread.
+// The returned count is meaningful only on the inline (CLI/test) path.
+func (a *App) ImportRedditSubscriptions(ctx context.Context) (int, error) {
+	prov, ok := a.reg.Get(source.Reddit)
+	imp, isImp := prov.(redditSubImporter)
+	if !ok || !isImp {
+		a.post(func() {
+			a.vm.SetStatus("Connect a Reddit account first to import subscriptions")
+		})
+		return 0, errNoRedditProvider
+	}
+	channels, err := imp.MySubscriptions(ctx)
+	if err != nil {
+		a.post(func() { a.vm.SetStatus("Reddit import failed: " + err.Error()) })
+		return 0, err
+	}
+	// apply adds the new channels, persists+re-aggregates once, and reports the
+	// count. It must run on the render thread, so it is routed through a.post.
+	var added int
+	apply := func() {
+		if len(channels) == 0 {
+			a.vm.SetStatus("No Reddit subscriptions found")
+			return
+		}
+		n := 0
+		for _, ch := range channels {
+			if a.scene.SubscribeActive(source.Reddit, ch) {
+				n++
+			}
+		}
+		// ApplySceneSettings persists, re-syncs a.subs, and re-aggregates in one
+		// shot — do not also call a.refresh separately.
+		a.ApplySceneSettings()
+		a.vm.SetStatus(fmt.Sprintf("Imported %d new subreddit(s) from Reddit", n))
+		added = n
+	}
+	// In deferred mode apply runs later on the render thread, so `added` would be
+	// written there — do not read it back here (the caller ignores it). On the
+	// inline (CLI/test) path a.post runs apply synchronously, so `added` is set
+	// before we return the real count.
+	if a.deferScene {
+		a.post(apply)
+		return 0, nil
+	}
+	apply()
+	return added, nil
+}
+
 // importFailureHint turns a browser-cookie import error into a short,
 // user-actionable status message.
 func importFailureHint(err error) string {
