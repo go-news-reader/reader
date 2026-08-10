@@ -224,6 +224,29 @@ func (s *Scene) ForwardBrowserClick(x, y int) bool {
 	}
 	s.browser.OnEvent(toolkit.Event{Kind: toolkit.EventClick, X: x - b.X, Y: y - b.Y})
 	s.setBrowserFocused(true)
+	// The button is now held inside the browser: subsequent motion drags it (so a
+	// grabbed scrollbar thumb tracks the pointer) until the release clears this.
+	s.browserPressed = true
+	s.touch()
+	return true
+}
+
+// ForwardBrowserDrag forwards pointer motion at screen coords (x, y) into the
+// embedded browser as an EventMouseDrag, but ONLY while a browser press is active
+// (a prior ForwardBrowserClick consumed a press inside the widget). This is what
+// lets a grabbed scrollbar thumb — vertical OR horizontal — follow the mouse.
+// It returns true when the drag was routed to the browser. A drag with no active
+// browser press is ignored (returns false) so the caller keeps its own drag
+// handling (e.g. text selection or a pane-divider resize).
+func (s *Scene) ForwardBrowserDrag(x, y int) bool {
+	if !s.browserPressed || !s.webPreviewItem() {
+		return false
+	}
+	b := s.browser.Bounds()
+	if b.W <= 0 {
+		return false
+	}
+	s.browser.OnEvent(toolkit.Event{Kind: toolkit.EventMouseDrag, X: x - b.X, Y: y - b.Y})
 	s.touch()
 	return true
 }
@@ -233,6 +256,10 @@ func (s *Scene) ForwardBrowserClick(x, y int) bool {
 // preceding click clears its press-feedback face. Coordinates are screen-space
 // (translated to widget-local); a release anywhere clears the press.
 func (s *Scene) ForwardBrowserRelease(x, y int) {
+	// The button is no longer held: end any in-progress browser drag regardless of
+	// where the release lands, so a thumb drag that wandered outside the widget
+	// still stops grabbing.
+	s.browserPressed = false
 	if !s.webPreviewItem() {
 		return
 	}
@@ -251,8 +278,19 @@ const browserWheelStep = 20
 // ForwardBrowserScroll forwards a wheel delta (device px) into the embedded
 // browser when the web preview is active and the pointer is over the widget,
 // converting pixels to the widget's row-based scroll intent. Returns true when
-// the browser consumed the wheel.
+// the browser consumed the wheel. It is the plain (unshifted) wheel path — a
+// convenience over ForwardBrowserScrollShift for callers with no modifier state.
 func (s *Scene) ForwardBrowserScroll(dy int) bool {
+	return s.ForwardBrowserScrollShift(dy, false)
+}
+
+// ForwardBrowserScrollShift is ForwardBrowserScroll with the Shift modifier: when
+// shift is true the wheel is delivered to the browser as a shifted EventScroll,
+// which the toolkit Browser interprets as HORIZONTAL scrolling (the vertical bar
+// has a plain-wheel path; the horizontal bar rides shift+wheel). The drag path
+// (ForwardBrowserDrag) already moves either scrollbar thumb; this adds the
+// wheel affordance once a back-end can report the Shift state on a scroll event.
+func (s *Scene) ForwardBrowserScrollShift(dy int, shift bool) bool {
 	if !s.webPreviewItem() {
 		return false
 	}
@@ -271,7 +309,7 @@ func (s *Scene) ForwardBrowserScroll(dy int) bool {
 			return false
 		}
 	}
-	s.browser.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, X: s.lastMouseX - b.X, Y: s.lastMouseY - b.Y, Delta: rows})
+	s.browser.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, X: s.lastMouseX - b.X, Y: s.lastMouseY - b.Y, Delta: rows, Shift: shift})
 	s.touch()
 	return true
 }

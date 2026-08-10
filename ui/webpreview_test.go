@@ -257,6 +257,140 @@ func TestForwardBrowserScroll(t *testing.T) {
 	}
 }
 
+// vThumbTop returns the surface-y of the topmost pixel of the browser's vertical
+// scrollbar thumb (its Accent run) within the browser bounds b, scanning a column
+// well inside the right-edge track. It returns -1 when no thumb is drawn. Because
+// the track above the thumb is SurfaceAlt and the chrome above the content is
+// neither, the first Accent pixel from the top is the thumb top — so a larger
+// value after a drag proves the page scrolled down.
+func vThumbTop(buf []byte, w int, b toolkit.Rect, accent toolkit.RGBA) int {
+	x := b.X + b.W - 3 // inside the [b.W-scrollbarWidth, b.W) vertical track
+	for y := b.Y; y < b.Y+b.H; y++ {
+		if p := px(buf, w, x, y); p.R == accent.R && p.G == accent.G && p.B == accent.B {
+			return y
+		}
+	}
+	return -1
+}
+
+// TestForwardBrowserDrag verifies the drag-forward path that fixes the (previously
+// dead) scrollbar-thumb dragging: a drag is forwarded to the browser ONLY while a
+// press it consumed is still held (the browserPressed flag), and dragging the
+// vertical thumb through the reader seam actually scrolls the page.
+func TestForwardBrowserDrag(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+
+	// No web preview yet: a drag is never forwarded (and no press is active).
+	if s.ForwardBrowserDrag(10, 10) {
+		t.Fatal("no web preview → drag not forwarded")
+	}
+
+	s.SelectPreview(webTestItem())
+	// Web preview active but not yet laid out (browser bounds zero): even with the
+	// grab flag forced on, a drag is not forwarded (the zero-bounds guard).
+	s.browserPressed = true
+	if s.ForwardBrowserDrag(10, 10) {
+		t.Fatal("drag into an un-laid-out (zero-bounds) browser must not be forwarded")
+	}
+	s.browserPressed = false
+
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf) // lay out the browser bounds
+	b := s.Browser().Bounds()
+	// Deliver a page 3× the content height so a vertical scrollbar (thumb) exists.
+	deliverPage(s, "https://example.com/a", "Title", b.W, b.H*3)
+	s.Draw(buf)
+
+	// Web active but no press yet: a drag must NOT be forwarded (grab flag clear).
+	if s.ForwardBrowserDrag(b.X+b.W-3, b.Y+b.H/2) {
+		t.Fatal("drag with no active browser press must not be forwarded")
+	}
+
+	accent := s.theme.Accent
+	topBefore := vThumbTop(buf, s.W, b, accent)
+	if topBefore < 0 {
+		t.Fatal("no vertical scrollbar thumb drawn for a 3×-tall page")
+	}
+
+	// Press ON the thumb (inside the browser): this consumes the press, grabs the
+	// thumb and arms the drag (browserPressed).
+	x := b.X + b.W - 3
+	if !s.ForwardBrowserClick(x, topBefore+2) {
+		t.Fatal("a press on the scrollbar thumb should be consumed by the browser")
+	}
+	// Now a drag downward is forwarded and moves the thumb (the page scrolls).
+	if !s.ForwardBrowserDrag(x, topBefore+b.H/3) {
+		t.Fatal("a drag while pressed inside the browser must be forwarded")
+	}
+	s.Draw(buf)
+	topAfter := vThumbTop(buf, s.W, b, accent)
+	if !(topAfter > topBefore) {
+		t.Fatalf("thumb drag did not scroll: thumb top %d -> %d (want it to move down)", topBefore, topAfter)
+	}
+
+	// Release clears the grab: a subsequent drag is no longer forwarded.
+	s.ForwardBrowserRelease(x, topBefore+b.H/3)
+	if s.ForwardBrowserDrag(x, topBefore+2) {
+		t.Fatal("after release the drag must no longer be forwarded")
+	}
+}
+
+// TestForwardBrowserScrollShiftHorizontal checks the Shift-carrying wheel path:
+// with the page zoomed so it overflows horizontally, a shift+wheel is delivered
+// to the browser as a shifted EventScroll and moves the page HORIZONTALLY (the
+// column-encoded gradient shifts), whereas the equivalent unshifted wheel does
+// not. (The native back-end supplying the Shift state is deferred; this exercises
+// the reader-side plumbing that carries it.)
+func TestForwardBrowserScrollShiftHorizontal(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	s.SelectPreview(webTestItem())
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	b := s.Browser().Bounds()
+
+	// A column-encoded gradient page (R = page column) so a horizontal scroll is
+	// visible as a change in the sampled content pixel.
+	br := s.Browser()
+	br.Open("https://example.com/a", "Title")
+	pw, ph := b.W, b.H
+	img := image.NewRGBA(image.Rect(0, 0, pw, ph))
+	for y := 0; y < ph; y++ {
+		for x := 0; x < pw; x++ {
+			o := (y*pw + x) * 4
+			img.Pix[o] = byte(x) // R encodes the page column
+			img.Pix[o+3] = 0xFF
+		}
+	}
+	br.Deliver("https://example.com/a", img.Pix, pw, ph, pw, nil, "Title")
+	// Zoom in so the page is wider than the pane → a horizontal scrollbar exists.
+	br.SetZoom(toolkit.BrowserMaxZoom)
+	s.Draw(buf)
+
+	// Pointer over the browser content (above the bottom scrollbar row).
+	s.MouseMove(b.X+b.W/2, b.Y+b.H/2)
+	sampleX, sampleY := b.X+b.W/2, b.Y+b.H/2
+	before := px(buf, s.W, sampleX, sampleY)
+
+	if !s.ForwardBrowserScrollShift(80, true) {
+		t.Fatal("shift+wheel over the browser should be consumed")
+	}
+	s.Draw(buf)
+	after := px(buf, s.W, sampleX, sampleY)
+	if after == before {
+		t.Fatalf("shift+wheel did not scroll horizontally: pixel %+v unchanged", before)
+	}
+}
+
+// TestBrowserFitIconWired asserts the reader passes a best-fit icon painter to the
+// toolkit Browser so its new best-fit toolbar button renders a real glyph rather
+// than the text fallback.
+func TestBrowserFitIconWired(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	if s.Browser().FitIcon == nil {
+		t.Fatal("Browser.FitIcon not wired: the best-fit button would fall back to a text label")
+	}
+}
+
 func TestForwardBrowserKey(t *testing.T) {
 	s := New(900, 560, ThemeFor(OSMac, false))
 	// Not web / not focused → never forwarded.

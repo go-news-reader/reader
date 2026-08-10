@@ -302,6 +302,11 @@ type Scene struct {
 	browser        *toolkit.Browser
 	browserVM      *tkbind.BrowserVM
 	browserFocused bool
+	// browserPressed records that a mouse press landed inside the browser and the
+	// button is still held, so pointer motion is forwarded to the browser as an
+	// EventMouseDrag (letting a scrollbar thumb track the pointer). Set when
+	// ForwardBrowserClick consumes a press inside the browser, cleared on release.
+	browserPressed bool
 	// bookmarks is the set of bookmarked page URLs (persisted via Settings); the
 	// address bar's star reflects/toggles membership for the current page.
 	bookmarks map[string]bool
@@ -505,6 +510,7 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	s.browser.ReloadIcon = s.chromeIcon(iconRefresh)
 	s.browser.ZoomOutIcon = s.chromeIcon(iconZoomOut)
 	s.browser.ZoomInIcon = s.chromeIcon(iconZoomIn)
+	s.browser.FitIcon = s.chromeIcon(iconFit) // best-fit zoom (third zoom-group button)
 	// Address-bar status/bookmark icons: a leading padlock (secure https vs a
 	// crossed lock otherwise) and a trailing bookmark star (accent when saved),
 	// both burger-sized via chromeGlyphBox to match the toolbar buttons.

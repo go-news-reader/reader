@@ -667,6 +667,9 @@ func TestWebPreviewEventForwarding(t *testing.T) {
 	if !s.BrowserFocused() {
 		t.Fatal("a click inside the browser should focus + be forwarded to it")
 	}
+	// Release the button: the wheel gestures below are made with no button held, so
+	// motion updates the hover position rather than being captured as a browser drag.
+	h.MouseUp(b.X+b.W/2, b.Y+b.H-4)
 
 	// A wheel with the pointer over the browser scrolls the page (forwarded);
 	// with the pointer over the feed it scrolls the feed instead.
@@ -686,6 +689,76 @@ func TestWebPreviewEventForwarding(t *testing.T) {
 	h.MouseDown(2, s.H-2)             // bottom-left (feed) → default, not forwarded
 	if s.BrowserFocused() {
 		t.Fatal("a click off the browser should blur its focus")
+	}
+}
+
+// vThumbTop returns the surface-y of the top of the browser's vertical scrollbar
+// thumb (its Accent run) within bounds b, scanning inside the right-edge track.
+// A larger value after a drag proves the page scrolled down.
+func vThumbTop(buf []byte, w int, b toolkit.Rect, accent toolkit.RGBA) int {
+	x := b.X + b.W - 3
+	for y := b.Y; y < b.Y+b.H; y++ {
+		i := (y*w + x) * 4
+		if buf[i] == accent.R && buf[i+1] == accent.G && buf[i+2] == accent.B {
+			return y
+		}
+	}
+	return -1
+}
+
+// mustFrame returns just the current framebuffer.
+func mustFrame(a *app.App) []byte { buf, _ := a.Frame(); return buf }
+
+// TestMouseMoveRoutesBrowserDrag checks the MouseMove seam: while a press is held
+// inside the embedded web-preview browser, pointer motion is routed to the browser
+// as a drag (moving a grabbed scrollbar thumb); once released, motion falls through
+// to the scene and no longer moves the browser.
+func TestMouseMoveRoutesBrowserDrag(t *testing.T) {
+	th := ui.ThemeFor(ui.OSMac, false)
+	a := app.New(app.Config{Registry: source.NewRegistry(), Width: 1000, Height: 700})
+	s := a.Scene()
+	s.SetScale(1)
+	s.SetTheme(th) // known accent so the drawn thumb colour is predictable
+	a.SetWebFetchHook(func(string, int) {})
+	s.SelectPreview(source.Item{ID: "w", Source: source.HackerNews, Title: "T", Link: "https://site/"})
+	a.Frame() // lay out the browser bounds
+	b := s.Browser().Bounds()
+	// Open the tab and deliver a page 3× the content height (matching the tab URL so
+	// the render is accepted) so a vertical scrollbar thumb exists.
+	s.Browser().Open("https://site/", "T")
+	page := image.NewRGBA(image.Rect(0, 0, b.W, b.H*3))
+	s.Browser().Deliver("https://site/", page.Pix, b.W, b.H*3, b.W, nil, "T")
+
+	h := New(a)
+	w := s.W
+	topBefore := vThumbTop(mustFrame(a), w, b, th.Accent)
+	if topBefore < 0 {
+		t.Fatal("no vertical scrollbar thumb drawn")
+	}
+	x := b.X + b.W - 3
+
+	// A move with NO press held must NOT drag the browser (thumb stays put).
+	h.MouseMove(x, topBefore+b.H/3)
+	if got := vThumbTop(mustFrame(a), w, b, th.Accent); got != topBefore {
+		t.Fatalf("move without a press moved the thumb: %d -> %d", topBefore, got)
+	}
+
+	// Press ON the thumb, then move: the motion is routed as a browser drag and the
+	// thumb tracks the pointer (the page scrolls).
+	h.MouseDown(x, topBefore+2)
+	h.MouseMove(x, topBefore+b.H/3)
+	topAfter := vThumbTop(mustFrame(a), w, b, th.Accent)
+	if !(topAfter > topBefore) {
+		t.Fatalf("MouseMove during a browser press did not scroll: thumb %d -> %d", topBefore, topAfter)
+	}
+
+	// Release clears the grab: a further move at the thumb column no longer drags
+	// the browser, so the thumb stays where the release left it.
+	h.MouseUp(x, topBefore+b.H/3)
+	settled := vThumbTop(mustFrame(a), w, b, th.Accent)
+	h.MouseMove(x, topBefore+2) // would drag the thumb UP if still routed
+	if got := vThumbTop(mustFrame(a), w, b, th.Accent); got != settled {
+		t.Fatalf("after release a move still dragged the browser: %d -> %d", settled, got)
 	}
 }
 

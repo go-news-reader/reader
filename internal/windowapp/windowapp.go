@@ -324,9 +324,19 @@ func (h *Handler) runHit(hit ui.Hit) {
 	}
 }
 
-// MouseMove forwards pointer motion to the scene, which applies it only while a
-// sidebar-divider drag is in progress.
-func (h *Handler) MouseMove(x, y int) { h.a.Scene().MouseMove(x, y) }
+// MouseMove forwards pointer motion to the scene. Back-ends deliver a left-button
+// drag as MouseMove, so while a press is held inside the embedded web-preview
+// browser the motion is routed there first as a drag (letting a grabbed scrollbar
+// thumb — horizontal or vertical — track the pointer); otherwise it falls through
+// to the scene, which applies it only while a sidebar/preview-divider drag is in
+// progress.
+func (h *Handler) MouseMove(x, y int) {
+	s := h.a.Scene()
+	if s.ForwardBrowserDrag(x, y) {
+		return
+	}
+	s.MouseMove(x, y)
+}
 
 // MouseUp ends any in-progress sidebar-divider drag and releases a pressed
 // web-preview toolbar button (clearing its click-feedback face).

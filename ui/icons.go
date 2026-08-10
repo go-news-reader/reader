@@ -49,6 +49,7 @@ var (
 	iconNavRight  = iconoir.MustGet("nav-arrow-right") // web preview Forward
 	iconZoomIn    = iconoir.MustGet("zoom-in")         // web preview zoom in
 	iconZoomOut   = iconoir.MustGet("zoom-out")        // web preview zoom out
+	iconFit       = iconoir.MustGet("expand")          // web preview best-fit zoom
 	iconLockSlash = iconoir.MustGet("lock-slash")      // address bar: insecure (non-https)
 	iconStar      = iconoir.MustGet("star")            // address bar: bookmark toggle (star)
 )
