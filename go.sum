@@ -64,8 +64,8 @@ github.com/go-syndication/feed v0.1.1 h1:nB//8Cp9K3HQvZBqN1jsir8jVqmnxU5SPk14MYw
 github.com/go-syndication/feed v0.1.1/go.mod h1:PR2mpm60ZMdEt3QEAEgoiC28gNi6fhCgBb/99JGwxR0=
 github.com/go-tiktok/tiktok v0.1.0 h1:I/duF5SLq+BdlbIqVmSso6O0PayYYm+u4+g4JRjbMHc=
 github.com/go-tiktok/tiktok v0.1.0/go.mod h1:YfwNRpTyk5QNWauCm4nxhdVvjmEvLd0HpxzLtivHJew=
-github.com/go-webengine/engine v0.3.9 h1:f/da84UnVgzLLDkndagUezE9kbldTVzbAgK1RWvDX5s=
-github.com/go-webengine/engine v0.3.9/go.mod h1:AsTkHIJS28Lj6jkDnXLgyN2X4oxNGWz5+bnh77jgTyo=
+github.com/go-webengine/engine v0.3.10 h1:WqNd7pU93O12/ThHQHU/b+/B4pRlN8z2GVBmMKtxoQY=
+github.com/go-webengine/engine v0.3.10/go.mod h1:AsTkHIJS28Lj6jkDnXLgyN2X4oxNGWz5+bnh77jgTyo=
 github.com/go-widgets/mvvm v0.5.0 h1:o5hh6HAxbApONcbZxmyV9q12pCAPGRd6L24aS3gaCbA=
 github.com/go-widgets/mvvm v0.5.0/go.mod h1:Phdrd434RLxXW1D6dL1PPQH1tABwYLIN2X7jQVC4TbY=
 github.com/go-widgets/painter v0.2.0 h1:C7anwlKLYnlTeCK90xKYvy0srxYXqhuvyDFismlf2Sc=
