@@ -213,15 +213,18 @@ func mapPost(p goreddit.Post) source.Item {
 		return it // a text post: its content is Body, no link/media to resolve
 	}
 
-	// A media post — an image, a gallery, or a reddit-hosted video — shows a
-	// resolved picture: the image itself, the gallery's first image, or the
-	// video's poster. Point Link at that direct image (the preview pane renders
-	// it) rather than at a gallery / v.redd.it permalink, which is a JavaScript
-	// page that would paint blank. A plain external link falls through to its
-	// article page. p.PreviewImage() prefers Reddit's resolved preview; it is a
-	// direct image URL even when p.URL is a permalink.
+	// A media post — an image, a gallery, a reddit-hosted video, or an embedded
+	// external video/GIF host (RedGIFs, Gfycat, Imgur, YouTube… which Reddit tags
+	// post_hint "rich:video"/"hosted:video") — shows a resolved picture: the image
+	// itself, the gallery's first image, or the video's poster. Point Link at that
+	// direct image (the preview pane renders it, and it zooms) rather than at the
+	// media page's URL, which for a gallery permalink or a JS embed host (a
+	// redgifs.com/watch page) would paint blank. A plain external ARTICLE link
+	// falls through to its page. p.PreviewImage() prefers Reddit's resolved
+	// preview; it is a direct image URL even when p.URL is a permalink/embed.
 	display := p.PreviewImage()
-	isMedia := p.IsGallery || p.IsVideo || p.PostHint == "image" || isImageURL(p.URL)
+	isMedia := p.IsGallery || p.IsVideo || isImageURL(p.URL) ||
+		p.PostHint == "image" || p.PostHint == "rich:video" || p.PostHint == "hosted:video"
 	if isMedia && display != "" {
 		it.Link = display
 		it.Media = append(it.Media, source.Media{URL: display, Kind: source.MediaImage})

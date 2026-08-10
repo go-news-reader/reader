@@ -515,3 +515,32 @@ func TestCommentsError(t *testing.T) {
 		t.Fatal("want error propagated")
 	}
 }
+
+// A RedGIFs (or other embedded external video) post is tagged post_hint
+// "rich:video" with the poster only in preview; it must show that poster image
+// (rendered + zoomable via the web preview), not web-render the redgifs page.
+func TestMapRichVideoEmbedPost(t *testing.T) {
+	p := postFromJSON(t, `{"id":"rv1","subreddit":"gifs","title":"clip",
+		"url":"https://www.redgifs.com/watch/somegif","permalink":"/r/gifs/comments/rv1/clip/",
+		"post_hint":"rich:video","is_video":false,
+		"preview":{"images":[{"source":{"url":"https://external-preview.redd.it/rv1.jpg?width=640&amp;auto=webp"}}]}}`)
+	it := mapOne(t, p)
+	if it.Link != "https://external-preview.redd.it/rv1.jpg?width=640&auto=webp" {
+		t.Errorf("rich:video Link = %q, want the poster image (not the redgifs page)", it.Link)
+	}
+	if !hasMedia(it, source.MediaImage, "https://external-preview.redd.it/rv1.jpg?width=640&auto=webp") {
+		t.Errorf("rich:video poster missing from media: %+v", it.Media)
+	}
+}
+
+// A reddit-hosted video via post_hint "hosted:video" (belt-and-braces with the
+// is_video flag) also resolves to its poster.
+func TestMapHostedVideoHintPost(t *testing.T) {
+	p := postFromJSON(t, `{"id":"hv1","subreddit":"videos","title":"v",
+		"url":"https://v.redd.it/hv1","permalink":"/r/videos/comments/hv1/v/","post_hint":"hosted:video",
+		"preview":{"images":[{"source":{"url":"https://external-preview.redd.it/hv1.jpg"}}]}}`)
+	it := mapOne(t, p)
+	if it.Link != "https://external-preview.redd.it/hv1.jpg" {
+		t.Errorf("hosted:video Link = %q, want the poster", it.Link)
+	}
+}
