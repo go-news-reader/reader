@@ -23,6 +23,7 @@ import (
 // an interface lets tests inject a fake without any network.
 type fetcher interface {
 	Subreddit(ctx context.Context, name string, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error)
+	UserPosts(ctx context.Context, name string, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 	Frontpage(ctx context.Context, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 	Comments(ctx context.Context, subreddit, id string, opts goreddit.ListingOptions) (*goreddit.PostWithComments, error)
 }
@@ -84,12 +85,20 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	opts := goreddit.ListingOptions{Limit: q.Limit, After: q.Cursor}
 	sort := parseSort(q.Sort)
 
+	// A subscription channel distinguishes a subreddit ("r/<name>" or a bare
+	// name) from a redditor ("u/<name>"): u/ routes to the person's submissions,
+	// everything else to a subreddit; an empty channel is the front page. goreddit
+	// strips the r/ or u/ prefix itself.
+	ch := strings.TrimSpace(q.Channel)
 	var page *goreddit.Page
 	var err error
-	if strings.TrimSpace(q.Channel) == "" {
+	switch {
+	case ch == "":
 		page, err = p.client.Frontpage(ctx, sort, opts)
-	} else {
-		page, err = p.client.Subreddit(ctx, strings.TrimPrefix(q.Channel, "r/"), sort, opts)
+	case strings.HasPrefix(strings.ToLower(ch), "u/"):
+		page, err = p.client.UserPosts(ctx, ch, sort, opts)
+	default:
+		page, err = p.client.Subreddit(ctx, ch, sort, opts)
 	}
 	if err != nil {
 		return source.Result{}, mapErr(err)
@@ -97,7 +106,14 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 
 	items := make([]source.Item, 0, len(page.Posts))
 	for _, post := range page.Posts {
-		items = append(items, mapPost(post))
+		it := mapPost(post)
+		// Tag every item with the subscription's own channel (its r/ or u/ form) so
+		// the feed's per-subscription filter matches — a redditor's posts span many
+		// subreddits, so their intrinsic subreddit would never equal the u/ channel.
+		if ch != "" {
+			it.Channel = ch
+		}
+		items = append(items, it)
 	}
 	return source.Result{Items: items, Cursor: page.After}, nil
 }

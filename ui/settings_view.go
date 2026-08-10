@@ -192,6 +192,22 @@ func (s *Scene) CommitRename() {
 // SelectKind records which source the add-subscription palette will use.
 func (s *Scene) SelectKind(k source.Kind) { s.newKind = k; s.touch() }
 
+// normalizeChannel canonicalises a user-typed subscription channel. For Reddit a
+// bare name is a subreddit, so it gains an "r/" prefix; an explicit "r/" or "u/"
+// (a redditor's feed) is kept verbatim so the sidebar and feed filter both show
+// and match the prefixed form. Other sources are returned unchanged.
+func normalizeChannel(k source.Kind, ch string) string {
+	ch = strings.TrimSpace(ch)
+	if k != source.Reddit || ch == "" {
+		return ch
+	}
+	low := strings.ToLower(ch)
+	if strings.HasPrefix(low, "r/") || strings.HasPrefix(low, "u/") {
+		return ch
+	}
+	return "r/" + ch
+}
+
 // AddInputSub appends the typed channel (under the selected source) to the
 // edited profile and clears the field. Duplicates are ignored.
 func (s *Scene) AddInputSub() {
@@ -204,6 +220,7 @@ func (s *Scene) AddInputSub() {
 	if k == "" {
 		k = source.Reddit
 	}
+	ch = normalizeChannel(k, ch)
 	p := &s.Profiles[s.selEdit]
 	for _, su := range p.Subs {
 		if su.Source == k && strings.EqualFold(su.Channel, ch) {

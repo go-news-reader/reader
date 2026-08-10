@@ -19,7 +19,7 @@ require (
 	github.com/go-newsgroups/par2 v0.1.0
 	github.com/go-newsgroups/yenc v0.1.0
 	github.com/go-opentype/fonts v0.7.0
-	github.com/go-reddit/reddit v0.4.0
+	github.com/go-reddit/reddit v0.6.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
 	github.com/go-webengine/engine v0.3.8

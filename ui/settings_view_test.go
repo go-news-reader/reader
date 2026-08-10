@@ -175,13 +175,20 @@ func TestAddRemoveSub(t *testing.T) {
 	if len(s.Profiles[0].Subs) != 3 {
 		t.Fatal("duplicate added")
 	}
-	// Empty kind defaults to Reddit.
+	// Empty kind defaults to Reddit, and a bare Reddit name gains the r/ prefix.
 	s.newKind = ""
 	s.channelInput = "rust"
 	s.AddInputSub()
 	last := s.Profiles[0].Subs[len(s.Profiles[0].Subs)-1]
-	if last.Source != source.Reddit || last.Channel != "rust" {
-		t.Fatalf("default kind = %+v", last)
+	if last.Source != source.Reddit || last.Channel != "r/rust" {
+		t.Fatalf("default kind = %+v, want reddit r/rust", last)
+	}
+	// A "u/" redditor channel is kept verbatim (routes to their submissions).
+	s.newKind = source.Reddit
+	s.channelInput = "u/spez"
+	s.AddInputSub()
+	if last := s.Profiles[0].Subs[len(s.Profiles[0].Subs)-1]; last.Channel != "u/spez" {
+		t.Fatalf("user channel = %q, want u/spez", last.Channel)
 	}
 	// Add into a non-active profile does NOT rebuild the active sidebar.
 	s.selEdit = 1

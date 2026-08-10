@@ -20,6 +20,7 @@ type fakeFetcher struct {
 	err         error
 	sawFront    bool
 	sawSub      string
+	sawUser     string
 	sawSort     goreddit.Sort
 	sawOptions  goreddit.ListingOptions
 	pwc         *goreddit.PostWithComments
@@ -30,6 +31,11 @@ type fakeFetcher struct {
 
 func (f *fakeFetcher) Subreddit(_ context.Context, name string, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error) {
 	f.sawSub, f.sawSort, f.sawOptions = name, sort, opts
+	return f.page, f.err
+}
+
+func (f *fakeFetcher) UserPosts(_ context.Context, name string, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error) {
+	f.sawUser, f.sawSort, f.sawOptions = name, sort, opts
 	return f.page, f.err
 }
 
@@ -169,13 +175,20 @@ func TestFeedSubredditWithMedia(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Feed: %v", err)
 	}
-	if f.sawSub != "pics" {
-		t.Fatalf("subreddit = %q, want pics (r/ stripped)", f.sawSub)
+	// The provider forwards the channel verbatim; goreddit's Subreddit strips the
+	// r/ itself, so the fake sees the prefixed form.
+	if f.sawSub != "r/pics" {
+		t.Fatalf("subreddit = %q, want r/pics", f.sawSub)
 	}
 	if f.sawSort != goreddit.SortHot {
 		t.Fatalf("default sort = %v, want hot", f.sawSort)
 	}
 	it := res.Items[0]
+	// Items are tagged with the subscription's own (prefixed) channel so the
+	// feed's per-subscription filter matches.
+	if it.Channel != "r/pics" {
+		t.Fatalf("item channel = %q, want r/pics (the subscription form)", it.Channel)
+	}
 	if it.Link != "https://i.redd.it/abc.jpg" {
 		t.Fatalf("link-post Link = %q", it.Link)
 	}
@@ -188,6 +201,31 @@ func TestFeedSubredditWithMedia(t *testing.T) {
 	}
 	if it.Media[0].Kind != source.MediaThumbnail || it.Media[1].Kind != source.MediaImage {
 		t.Fatalf("media kinds = %v", it.Media)
+	}
+}
+
+// TestFeedUserRoutesToUserPosts: a "u/" channel fetches the redditor's
+// submissions (not a subreddit) and tags each item with the u/ channel so the
+// per-subscription feed filter matches even though the posts span subreddits.
+func TestFeedUserRoutesToUserPosts(t *testing.T) {
+	f := &fakeFetcher{page: &goreddit.Page{Posts: []goreddit.Post{{
+		ID: "u1", Subreddit: "AskReddit", Title: "A question", Author: "spez",
+		Permalink: "/r/AskReddit/comments/u1/a_question/", IsSelf: true,
+	}}}}
+	p := NewWithClient(f)
+
+	res, err := p.Feed(context.Background(), source.Query{Channel: "u/spez", Sort: "new"})
+	if err != nil {
+		t.Fatalf("Feed: %v", err)
+	}
+	if f.sawFront || f.sawSub != "" {
+		t.Fatalf("u/ channel must not hit Frontpage or Subreddit (front=%v sub=%q)", f.sawFront, f.sawSub)
+	}
+	if f.sawUser != "u/spez" {
+		t.Fatalf("user = %q, want u/spez (goreddit strips u/ itself)", f.sawUser)
+	}
+	if it := res.Items[0]; it.Channel != "u/spez" {
+		t.Fatalf("item channel = %q, want u/spez (the subscription form, not r/AskReddit)", it.Channel)
 	}
 }
 

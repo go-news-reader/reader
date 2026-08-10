@@ -212,6 +212,7 @@ func (s *Scene) SubscribeActive(k source.Kind, channel string) bool {
 	if s.activeProf < 0 || s.activeProf >= len(s.Profiles) {
 		return false
 	}
+	channel = normalizeChannel(k, channel)
 	p := &s.Profiles[s.activeProf]
 	for _, su := range p.Subs {
 		if su.Source == k && strings.EqualFold(su.Channel, channel) {

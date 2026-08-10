@@ -234,9 +234,9 @@ func CredentialSchema() []ProviderCreds {
 // alongside Hacker News, so a fresh install shows a live multi-source feed.
 func defaultSubs() []source.Subscription {
 	return []source.Subscription{
-		{Source: source.Reddit, Channel: "golang", Limit: 25},
-		{Source: source.Reddit, Channel: "programming", Limit: 25},
-		{Source: source.Reddit, Channel: "worldnews", Limit: 25},
+		{Source: source.Reddit, Channel: "r/golang", Limit: 25},
+		{Source: source.Reddit, Channel: "r/programming", Limit: 25},
+		{Source: source.Reddit, Channel: "r/worldnews", Limit: 25},
 		{Source: source.HackerNews, Channel: "", Limit: 25},
 	}
 }
