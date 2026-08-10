@@ -2,6 +2,7 @@ package webrender
 
 import (
 	"context"
+	"image/color"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -142,5 +143,26 @@ func TestConstructors(t *testing.T) {
 	}
 	if WithEngine(engine.New()) == nil {
 		t.Fatal("WithEngine(e) returned nil")
+	}
+}
+
+// TestSetBackdrop: the configured backdrop paints under a background-less page
+// (a bare body), so a dark host frames a web-rendered preview to match.
+func TestSetBackdrop(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<html><body></body></html>`))
+	}))
+	defer srv.Close()
+
+	r := testEngine()
+	r.SetBackdrop(color.RGBA{R: 0x12, G: 0x14, B: 0x1a, A: 0xff})
+	img, _, _, err := r.Render(context.Background(), srv.URL, 40)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	o := img.PixOffset(5, 5)
+	if img.Pix[o] != 0x12 || img.Pix[o+1] != 0x14 || img.Pix[o+2] != 0x1a {
+		t.Errorf("base pixel = (%d,%d,%d), want the configured backdrop", img.Pix[o], img.Pix[o+1], img.Pix[o+2])
 	}
 }

@@ -22,7 +22,7 @@ require (
 	github.com/go-reddit/reddit v0.4.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.1.0
-	github.com/go-webengine/engine v0.3.7
+	github.com/go-webengine/engine v0.3.8
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.2.0
 	github.com/go-widgets/toolkit v0.133.0

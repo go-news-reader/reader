@@ -8,8 +8,10 @@ package webrender
 import (
 	"context"
 	"image"
+	"image/color"
 
 	"github.com/go-webengine/engine"
+	"github.com/go-webengine/engine/css"
 )
 
 // Link is one clickable anchor in a rendered page: Rect is its bounding box in
@@ -82,6 +84,14 @@ func WithEngine(e *engine.Engine) *Engine {
 		return New()
 	}
 	return &Engine{e: e}
+}
+
+// SetBackdrop sets the base colour the engine paints under a page that declares
+// no background of its own (a bare image, a background-less page). The host
+// passes its surface colour so such content is framed to match the app — most
+// visibly, a dark theme no longer flashes white behind a Reddit image post.
+func (r *Engine) SetBackdrop(c color.RGBA) {
+	r.e.Backdrop = css.Color{R: c.R, G: c.G, B: c.B, A: c.A}
 }
 
 // Render fetches, lays out and paints url at width pixels wide, returning the

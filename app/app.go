@@ -585,6 +585,12 @@ func (a *App) applyTheme() {
 		t = ui.WithAccent(t, a.accent.R, a.accent.G, a.accent.B)
 	}
 	a.scene.SetTheme(t)
+	// Frame web-rendered previews (a Reddit image/link post) on the app's surface
+	// colour, so a background-less page or a bare image matches the theme instead
+	// of flashing white in dark mode. Only the go-webengine renderer supports it.
+	if br, ok := a.webRender.(interface{ SetBackdrop(color.RGBA) }); ok {
+		br.SetBackdrop(color.RGBA{R: t.Surface.R, G: t.Surface.G, B: t.Surface.B, A: 0xFF})
+	}
 }
 
 // SetSystemAppearance applies look-and-feel harvested from the host UI: the
