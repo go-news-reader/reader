@@ -412,6 +412,7 @@ func (s *Scene) FinishPreviewImage(id string, img *image.RGBA) {
 type previewBody struct {
 	innerX, innerW      int
 	titleFace, bodyFace textFace
+	metaFace            textFace // scaled meta face (draw + row height + truncation)
 	titleLines          []string
 	bodyLines           []string
 	meta                string
@@ -429,23 +430,25 @@ func (s *Scene) previewInner() (x, w int) {
 func (s *Scene) previewContent() previewBody {
 	m := s.m
 	x, w := s.previewInner()
-	titleFace := getFace(rpxOf(s, 17), true)
-	bodyFace := getFace(rpxOf(s, 14), false)
+	titleFace := getFace(s.ptPx(17), true)
+	bodyFace := getFace(s.ptPx(14), false)
+	metaFace := getFace(s.ptPx(12), false)
 	it := s.previewItem
 	// Wrap with the SAME fonts drawPreview draws these lines with (stock toolkit
 	// Labels carrying ttFont), not with the textFaces whose heights size the
-	// rows — see wrapMeasured.
+	// rows — see wrapMeasured. Sizes route through ptPx so the A−/A+ pills scale
+	// title/body/meta together while wrapping and row heights stay consistent.
 	d := previewBody{
-		innerX: x, innerW: w, titleFace: titleFace, bodyFace: bodyFace,
-		titleLines: wrapMeasured(ttFont(true, rpxOf(s, 17)).Measure, it.Title, w),
-		bodyLines:  wrapMeasured(ttFont(false, rpxOf(s, 14)).Measure, stripHTML(it.Body), w),
+		innerX: x, innerW: w, titleFace: titleFace, bodyFace: bodyFace, metaFace: metaFace,
+		titleLines: wrapMeasured(ttFont(true, s.ptPx(17)).Measure, it.Title, w),
+		bodyLines:  wrapMeasured(ttFont(false, s.ptPx(14)).Measure, stripHTML(it.Body), w),
 		meta:       metaLine(it),
 	}
 	gap := rpxOf(s, 8)
 	// Height consumed by the header above the image (badge + title + meta).
 	headerH := m.pad + m.badgeH + gap
 	headerH += len(d.titleLines) * (titleFace.height + rpxOf(s, 2))
-	headerH += gap + m.meta.height + gap
+	headerH += gap + metaFace.height + gap
 	// Reserve the image box whenever the item declares media (or one is already
 	// decoded). Once decoded, the image grows to fill the LARGEST space available
 	// in the pane — bound by the full remaining height OR the pane width, whichever
@@ -484,6 +487,8 @@ func (s *Scene) layoutPreview() {
 	if pw == 0 {
 		s.previewR = toolkit.Rect{}
 		s.previewOpenR = toolkit.Rect{}
+		s.sTextSmallerR = toolkit.Rect{}
+		s.sTextLargerR = toolkit.Rect{}
 		s.previewImgR = toolkit.Rect{}
 		s.browser.SetBounds(toolkit.Rect{})
 		s.previewScroll.contentH = 0
@@ -493,10 +498,20 @@ func (s *Scene) layoutPreview() {
 	// "Open" pill, top-right of the pane (fixed, over the content), shown only when
 	// an item is selected and it has a full-view target.
 	if s.previewHas {
+		btnY := m.topbarH + m.pad/2
+		btnH := m.badgeH + rpxOf(s, 4)
 		ow := m.pad*2 + m.side.width("Open")
-		s.previewOpenR = toolkit.Rect{X: s.previewR.X + s.previewR.W - m.pad - ow, Y: m.topbarH + m.pad/2, W: ow, H: m.badgeH + rpxOf(s, 4)}
+		s.previewOpenR = toolkit.Rect{X: s.previewR.X + s.previewR.W - m.pad - ow, Y: btnY, W: ow, H: btnH}
+		// A−/A+ reader-text zoom pills, laid out just left of the Open pill (both
+		// same width so they read as a pair). They never overlap the Open pill.
+		aw := m.pad + max(m.side.width("A−"), m.side.width("A+"))
+		gap := rpxOf(s, 6)
+		s.sTextLargerR = toolkit.Rect{X: s.previewOpenR.X - gap - aw, Y: btnY, W: aw, H: btnH}
+		s.sTextSmallerR = toolkit.Rect{X: s.sTextLargerR.X - gap - aw, Y: btnY, W: aw, H: btnH}
 	} else {
 		s.previewOpenR = toolkit.Rect{}
+		s.sTextSmallerR = toolkit.Rect{}
+		s.sTextLargerR = toolkit.Rect{}
 	}
 	if !s.previewHas {
 		s.previewScroll.contentH = 0
@@ -532,7 +547,7 @@ func (s *Scene) layoutPreview() {
 // fixed web-preview header.
 func (s *Scene) previewHeaderLines() []string {
 	_, w := s.previewInner()
-	lines := wrapMeasured(ttFont(true, rpxOf(s, 17)).Measure, s.previewItem.Title, w)
+	lines := wrapMeasured(ttFont(true, s.ptPx(17)).Measure, s.previewItem.Title, w)
 	if len(lines) > 2 {
 		lines = lines[:2]
 	}
@@ -544,10 +559,11 @@ func (s *Scene) previewHeaderLines() []string {
 func (s *Scene) previewHeaderH() int {
 	m := s.m
 	gap := rpxOf(s, 8)
-	titleFace := getFace(rpxOf(s, 17), true)
+	titleFace := getFace(s.ptPx(17), true)
+	metaFace := getFace(s.ptPx(12), false)
 	h := m.pad + m.badgeH + gap
 	h += len(s.previewHeaderLines()) * (titleFace.height + rpxOf(s, 2))
-	h += gap + m.meta.height + gap
+	h += gap + metaFace.height + gap
 	return h
 }
 
@@ -626,7 +642,10 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	// The text widgets reuse the getFace line renderer (textLine) so wrapping and
 	// CJK stay identical — only the layout is now box-driven.
 	// Content text is stock toolkit.Label carrying the reader's fallback fonts.
-	titleFont, bodyFont, metaFont := ttFont(true, rpxOf(s, 17)), ttFont(false, rpxOf(s, 14)), ttFont(false, rpxOf(s, 12))
+	// Reader text scales with the A−/A+ pills (ptPx); the badge-row channel chip
+	// stays at the base meta size so it keeps fitting the badge row's height.
+	titleFont, bodyFont, metaFont := ttFont(true, s.ptPx(17)), ttFont(false, s.ptPx(14)), ttFont(false, s.ptPx(12))
+	chanFont := ttFont(false, rpxOf(s, 12))
 	mkLabel := func(text string, font toolkit.Font, ink toolkit.RGBA) *toolkit.Label {
 		l := toolkit.NewLabel(text)
 		l.Font, l.Ink = font, ink
@@ -639,7 +658,7 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	badgeRow := toolkit.NewHBox()
 	badgeRow.Spacing = rpxOf(s, 6)
 	badgeRow.AddFixed(badge, bw)
-	badgeRow.AddFlex(mkLabel(truncate(m.meta, it.Channel, d.innerW-bw-rpxOf(s, 6)), metaFont, muteS), 1)
+	badgeRow.AddFlex(mkLabel(truncate(m.meta, it.Channel, d.innerW-bw-rpxOf(s, 6)), chanFont, muteS), 1)
 
 	col := toolkit.NewVBox()
 	col.Spacing = -1
@@ -649,7 +668,7 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		col.AddFixed(mkLabel(ln, titleFont, th.OnSurface), d.titleFace.height+rpxOf(s, 2))
 	}
 	col.AddFixed(toolkit.NewLabel(""), gap)
-	col.AddFixed(mkLabel(truncate(m.meta, d.meta, d.innerW), metaFont, muteS), m.meta.height)
+	col.AddFixed(mkLabel(truncate(d.metaFace, d.meta, d.innerW), metaFont, muteS), d.metaFace.height)
 	col.AddFixed(toolkit.NewLabel(""), gap)
 	if d.imgH > 0 {
 		col.AddFixed(&previewImage{s: s, it: it, p: p, img: img}, d.imgH)
@@ -679,6 +698,28 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		p.FillRoundRect(painter.Rect(s.previewOpenR), rpxOf(s, 6), th.Accent)
 		m.side.draw(img, s.previewOpenR.X+m.pad, s.previewOpenR.Y+(s.previewOpenR.H-m.side.height)/2, "Open", themeOnAccent(th))
 	}
+	s.drawTextZoomButtons(p, img)
+}
+
+// drawTextZoomButtons paints the A−/A+ reader-text zoom pills at the top of the
+// preview pane (laid out by layoutPreview, left of the Open pill). They are
+// neutral chrome — a SurfaceAlt fill with a Border outline and OnSurface glyphs —
+// so they read as secondary controls beside the accent Open pill. Shared by the
+// text and web preview draws so the pills show for any previewed post. Both call
+// sites run only with an item selected, so layoutPreview has sized the pills.
+func (s *Scene) drawTextZoomButtons(p *painter.PixelPainter, img *image.RGBA) {
+	m := s.m
+	th := s.theme
+	rad := rpxOf(s, 6)
+	for _, b := range []struct {
+		r     toolkit.Rect
+		label string
+	}{{s.sTextSmallerR, "A−"}, {s.sTextLargerR, "A+"}} {
+		p.FillRoundRect(painter.Rect(b.r), rad, th.SurfaceAlt)
+		p.StrokeRoundRect(painter.Rect(b.r), rad, th.Border, rpxOf(s, 1))
+		lw := m.side.width(b.label)
+		m.side.draw(img, b.r.X+(b.r.W-lw)/2, b.r.Y+(b.r.H-m.side.height)/2, b.label, th.OnSurface)
+	}
 }
 
 // drawWebPreview paints a web-linked item: a fixed header (badge / title / meta)
@@ -694,8 +735,12 @@ func (s *Scene) drawWebPreview(p *painter.PixelPainter, img *image.RGBA) {
 	gap := rpxOf(s, 8)
 	x, innerW := s.previewInner()
 
-	metaFont := ttFont(false, rpxOf(s, 12))
-	titleFont := ttFont(true, rpxOf(s, 17))
+	// Header text scales with the A−/A+ pills (ptPx); the badge-row channel chip
+	// stays at the base meta size so it keeps fitting the badge row's height.
+	metaFont := ttFont(false, s.ptPx(12))
+	titleFont := ttFont(true, s.ptPx(17))
+	chanFont := ttFont(false, rpxOf(s, 12))
+	metaFace := getFace(s.ptPx(12), false)
 	mkLabel := func(text string, font toolkit.Font, ink toolkit.RGBA) *toolkit.Label {
 		l := toolkit.NewLabel(text)
 		l.Font, l.Ink = font, ink
@@ -708,9 +753,9 @@ func (s *Scene) drawWebPreview(p *painter.PixelPainter, img *image.RGBA) {
 	badgeRow := toolkit.NewHBox()
 	badgeRow.Spacing = rpxOf(s, 6)
 	badgeRow.AddFixed(badge, bw)
-	badgeRow.AddFlex(mkLabel(truncate(m.meta, it.Channel, innerW-bw-rpxOf(s, 6)), metaFont, muteS), 1)
+	badgeRow.AddFlex(mkLabel(truncate(m.meta, it.Channel, innerW-bw-rpxOf(s, 6)), chanFont, muteS), 1)
 
-	titleFace := getFace(rpxOf(s, 17), true)
+	titleFace := getFace(s.ptPx(17), true)
 	col := toolkit.NewVBox()
 	col.Spacing = -1
 	col.AddFixed(badgeRow, m.badgeH)
@@ -719,7 +764,7 @@ func (s *Scene) drawWebPreview(p *painter.PixelPainter, img *image.RGBA) {
 		col.AddFixed(mkLabel(ln, titleFont, th.OnSurface), titleFace.height+rpxOf(s, 2))
 	}
 	col.AddFixed(toolkit.NewLabel(""), gap)
-	col.AddFixed(mkLabel(truncate(m.meta, metaLine(it), innerW), metaFont, muteS), m.meta.height)
+	col.AddFixed(mkLabel(truncate(metaFace, metaLine(it), innerW), metaFont, muteS), metaFace.height)
 	hh := s.previewHeaderH()
 	col.SetBounds(toolkit.Rect{X: x, Y: r.Y + m.pad, W: innerW, H: hh - m.pad})
 	col.Draw(p, th)
@@ -732,6 +777,7 @@ func (s *Scene) drawWebPreview(p *painter.PixelPainter, img *image.RGBA) {
 		p.FillRoundRect(painter.Rect(s.previewOpenR), rpxOf(s, 6), th.Accent)
 		m.side.draw(img, s.previewOpenR.X+m.pad, s.previewOpenR.Y+(s.previewOpenR.H-m.side.height)/2, "Open", themeOnAccent(th))
 	}
+	s.drawTextZoomButtons(p, img)
 }
 
 // previewHitTest resolves a click inside the pane: the Open button (full detail)
@@ -743,6 +789,13 @@ func (s *Scene) previewHitTest(x, y int) (Hit, bool) {
 	}
 	if s.previewHas && s.previewOpenR.W > 0 && inRect(s.previewOpenR, x, y) {
 		return Hit{Kind: HitOpenPreview, Item: s.previewItem}, true
+	}
+	// The A−/A+ reader-text zoom pills (shown for any previewed post).
+	if s.sTextSmallerR.W > 0 && inRect(s.sTextSmallerR, x, y) {
+		return Hit{Kind: HitPreviewTextSmaller}, true
+	}
+	if s.sTextLargerR.W > 0 && inRect(s.sTextLargerR, x, y) {
+		return Hit{Kind: HitPreviewTextLarger}, true
 	}
 	// The embedded browser (web preview) handles its own clicks — the front-end
 	// forwards raw events to it (see ForwardBrowserClick), so a click inside the

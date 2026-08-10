@@ -74,26 +74,28 @@ type AuthPrompt struct {
 type HitKind int
 
 const (
-	HitNone           HitKind = iota
-	HitItem                   // a feed item (open it in the detail view) — Item set
-	HitSub                    // a sidebar subscription (filter the feed) — Sub set (AllFilter = All)
-	HitSearch                 // the topbar search field (focus it)
-	HitBack                   // the detail view's back button (return to the feed)
-	HitOpenExternal           // the detail view's "open original" button — Item set
-	HitProfile                // a sidebar profile tab (switch active profile) — Profile set
-	HitSettings               // the sidebar ⚙ Settings entry (open preferences)
-	HitLog                    // the sidebar Network-log entry (open the HTTP log)
-	HitCloseLog               // the log view's "< Back" button (return to the feed)
-	HitBurger                 // the topbar burger button (collapse/expand the sidebar)
-	HitSidebarDivider         // the draggable divider at the sidebar's right edge
-	HitFixAuth                // an in-feed "needs sign-in" banner row — Value = source kind
-	HitToggleGroup            // a Usenet group card's header/chevron — Value = release base
-	HitReconstruct            // a Usenet group card's "Reconstruct" affordance — Value = release base
-	HitPreviewGroup           // a Usenet group card's body (preview it in the pane) — Value = release base
-	HitOpenPreview            // the preview pane's "Open" button (full reading view) — Item set
-	HitPreviewDivider         // the preview pane's left-edge resize grip (start a drag)
-	HitToggleDownload         // a complete post's download checkbox — Value = release base
-	HitClearDownloads         // the download panel's "Clear" button
+	HitNone               HitKind = iota
+	HitItem                       // a feed item (open it in the detail view) — Item set
+	HitSub                        // a sidebar subscription (filter the feed) — Sub set (AllFilter = All)
+	HitSearch                     // the topbar search field (focus it)
+	HitBack                       // the detail view's back button (return to the feed)
+	HitOpenExternal               // the detail view's "open original" button — Item set
+	HitProfile                    // a sidebar profile tab (switch active profile) — Profile set
+	HitSettings                   // the sidebar ⚙ Settings entry (open preferences)
+	HitLog                        // the sidebar Network-log entry (open the HTTP log)
+	HitCloseLog                   // the log view's "< Back" button (return to the feed)
+	HitBurger                     // the topbar burger button (collapse/expand the sidebar)
+	HitSidebarDivider             // the draggable divider at the sidebar's right edge
+	HitFixAuth                    // an in-feed "needs sign-in" banner row — Value = source kind
+	HitToggleGroup                // a Usenet group card's header/chevron — Value = release base
+	HitReconstruct                // a Usenet group card's "Reconstruct" affordance — Value = release base
+	HitPreviewGroup               // a Usenet group card's body (preview it in the pane) — Value = release base
+	HitOpenPreview                // the preview pane's "Open" button (full reading view) — Item set
+	HitPreviewDivider             // the preview pane's left-edge resize grip (start a drag)
+	HitPreviewTextSmaller         // the preview toolbar's "A−" pill (shrink the reader text)
+	HitPreviewTextLarger          // the preview toolbar's "A+" pill (grow the reader text)
+	HitToggleDownload             // a complete post's download checkbox — Value = release base
+	HitClearDownloads             // the download panel's "Clear" button
 
 	// Newsgroup browser (Mode == ModeBrowse):
 	HitBrowse           // the sidebar "＋ Browse newsgroups" entry (open the browser)
@@ -267,6 +269,14 @@ type Scene struct {
 	previewR          toolkit.Rect // the whole pane
 	previewOpenR      toolkit.Rect // "Open" (full detail) button
 	previewImgR       toolkit.Rect // image area (for hit-testing / geometry)
+	sTextSmallerR     toolkit.Rect // "A−" reader-text zoom-out pill
+	sTextLargerR      toolkit.Rect // "A+" reader-text zoom-in pill
+
+	// previewTextScale multiplies the reader/preview text size (a text post's
+	// title, body and meta, and the header of any previewed post). It is seeded
+	// from settings.PreviewTextScale and adjusted by the A−/A+ preview-toolbar
+	// pills; ptPx applies it so measure and draw stay consistent.
+	previewTextScale float64
 
 	// Web-page preview: for a non-Usenet item that links out (HackerNews /
 	// Reddit / RSS …), the target article page is rendered (via go-webengine) and
@@ -465,8 +475,9 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	}
 	s := &Scene{W: w, H: h, theme: theme, Active: AllFilter, Scale: 1,
 		themeName: settings.ThemeSystem, signInBrowser: settings.DefaultSignInBrowser,
-		newKind:   source.Reddit,
-		zoomInKey: '=', zoomOutKey: '-',
+		previewTextScale: settings.DefaultPreviewTextScale,
+		newKind:          source.Reddit,
+		zoomInKey:        '=', zoomOutKey: '-',
 		searchEntry: toolkit.NewSearchEntry(""),
 		browseEntry: toolkit.NewSearchEntry("")}
 	// The topbar SearchEntry paints its left prefix with a real Iconoir
@@ -613,6 +624,32 @@ func (s *Scene) ZoomKeyDir(r rune) int {
 // clamped and mirrors into the view-model.
 func (s *Scene) ZoomBrowserIn()  { s.browserVM.ZoomIn.Execute() }
 func (s *Scene) ZoomBrowserOut() { s.browserVM.ZoomOut.Execute() }
+
+// SetPreviewTextScale sets the reader/preview text zoom (a text post's title,
+// body and meta, and the header of any previewed post), clamped to the supported
+// range, and requests a redraw. The A−/A+ preview-toolbar pills drive it.
+func (s *Scene) SetPreviewTextScale(f float64) {
+	s.previewTextScale = settings.ClampPreviewTextScale(f)
+	s.touch()
+}
+
+// PreviewTextScale returns the current reader/preview text zoom multiplier.
+func (s *Scene) PreviewTextScale() float64 { return s.previewTextScale }
+
+// TextZoomButtons returns the A−/A+ preview-toolbar pill rects and whether they
+// are shown (an item is previewed and the pane is visible). Front-ends/tests
+// call it after a Draw/HitTest.
+func (s *Scene) TextZoomButtons() (smaller, larger toolkit.Rect, shown bool) {
+	return s.sTextSmallerR, s.sTextLargerR, s.sTextSmallerR.W > 0
+}
+
+// ptPx scales a base preview font size (logical px) by the user's preview-text
+// zoom, then to device pixels. Measure and draw both route the preview title /
+// body / meta sizes through it, so wrapping and row heights stay consistent as
+// the A−/A+ pills change the scale.
+func (s *Scene) ptPx(base int) int {
+	return rpxOf(s, int(float64(base)*s.previewTextScale+0.5))
+}
 
 // SetTheme swaps the palette.
 func (s *Scene) SetTheme(t *toolkit.Theme) {
@@ -820,6 +857,7 @@ func (s *Scene) Settings() *settings.Settings {
 		ZoomInKey:         s.BrowserZoomInKey(),
 		ZoomOutKey:        s.BrowserZoomOutKey(),
 		Bookmarks:         s.BookmarkedURLs(),
+		PreviewTextScale:  s.previewTextScale,
 	}
 }
 

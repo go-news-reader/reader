@@ -401,6 +401,21 @@ func (a *App) persistSettings() {
 	_ = a.store.Save(a.set)
 }
 
+// PreviewTextStep is how much one A−/A+ preview-toolbar tap changes the
+// reader/preview text zoom.
+const PreviewTextStep = 0.1
+
+// AdjustPreviewTextScale nudges the reader/preview text zoom by delta (the A−/A+
+// preview-toolbar pills pass ±PreviewTextStep). The scene clamps it to the
+// supported range; the change persists straight away (a pure-display preference,
+// so no theme re-resolve or feed re-aggregation), and the new size is reported on
+// the status line.
+func (a *App) AdjustPreviewTextScale(delta float64) {
+	a.scene.SetPreviewTextScale(a.scene.PreviewTextScale() + delta)
+	a.persistSettings()
+	a.vm.SetStatus(fmt.Sprintf("Reader text size %d%%", int(a.scene.PreviewTextScale()*100+0.5)))
+}
+
 // ApplyAccounts snapshots the scene's edited accounts into the settings,
 // persists them, rebuilds the provider registry with the new credentials
 // (Reddit switches to session-cookie authentication) while keeping the same HTTP

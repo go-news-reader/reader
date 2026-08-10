@@ -214,6 +214,10 @@ func (h *Handler) runHit(hit ui.Hit) {
 		s.BeginSidebarResize()
 	case ui.HitPreviewDivider:
 		s.BeginPreviewResize()
+	case ui.HitPreviewTextSmaller:
+		h.a.AdjustPreviewTextScale(-app.PreviewTextStep) // shrink the reader/preview text + persist
+	case ui.HitPreviewTextLarger:
+		h.a.AdjustPreviewTextScale(app.PreviewTextStep) // grow the reader/preview text + persist
 	case ui.HitFixAuth:
 		// A click on an in-feed "needs sign-in" banner opens the Accounts editor
 		// pre-selected on the provider that needs fixing.

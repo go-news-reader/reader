@@ -81,6 +81,40 @@ type Settings struct {
 	// browser sign-in flow (today: Reddit) — one of default|firefox|chrome|
 	// safari|edge. Blank means the default (Firefox); Normalize backfills it.
 	SignInBrowser string `json:"signInBrowser,omitempty"`
+
+	// PreviewTextScale multiplies the reader/preview text size (a text/self
+	// post's title, body and meta, and the header of any previewed post). The
+	// A−/A+ controls in the preview toolbar adjust it. DefaultPreviewTextScale
+	// (1.25) is the fresh default because the base size reads too small.
+	// Normalize clamps it to [MinPreviewTextScale, MaxPreviewTextScale], treating
+	// 0 (a settings file predating the field) as unset and backfilling the
+	// default.
+	PreviewTextScale float64 `json:"previewTextScale,omitempty"`
+}
+
+// Preview-text scale defaults and bounds. The base preview font read too small,
+// so a fresh install starts at DefaultPreviewTextScale (25% larger); the A−/A+
+// controls move it within [MinPreviewTextScale, MaxPreviewTextScale].
+const (
+	DefaultPreviewTextScale = 1.25
+	MinPreviewTextScale     = 0.8
+	MaxPreviewTextScale     = 2.5
+)
+
+// ClampPreviewTextScale confines f to the supported preview-text scale range,
+// backfilling a non-positive value (0 from a settings file predating the field)
+// to DefaultPreviewTextScale so callers always get a usable multiplier.
+func ClampPreviewTextScale(f float64) float64 {
+	switch {
+	case f <= 0:
+		return DefaultPreviewTextScale
+	case f < MinPreviewTextScale:
+		return MinPreviewTextScale
+	case f > MaxPreviewTextScale:
+		return MaxPreviewTextScale
+	default:
+		return f
+	}
 }
 
 // Default zoom-shortcut base keys (a real-browser feel: Ctrl/Cmd + "="/"-").
@@ -229,6 +263,7 @@ func Default() *Settings {
 		ZoomInKey:        DefaultZoomInKey,
 		ZoomOutKey:       DefaultZoomOutKey,
 		SignInBrowser:    DefaultSignInBrowser,
+		PreviewTextScale: DefaultPreviewTextScale,
 	}
 }
 
@@ -278,6 +313,7 @@ func (s *Settings) Normalize() {
 	if s.ZoomOutKey == "" {
 		s.ZoomOutKey = DefaultZoomOutKey
 	}
+	s.PreviewTextScale = ClampPreviewTextScale(s.PreviewTextScale)
 	if !ValidSignInBrowser(s.SignInBrowser) {
 		// A blank field (a settings file predating it) or an unrecognised value
 		// falls back to the default sign-in browser (Firefox).

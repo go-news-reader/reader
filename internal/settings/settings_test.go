@@ -417,3 +417,56 @@ func TestDefaultPathError(t *testing.T) {
 		t.Skip("UserConfigDir still resolved on this platform")
 	}
 }
+
+func TestPreviewTextScaleClampAndDefault(t *testing.T) {
+	// Default seeds the larger-than-base reader text scale.
+	if d := Default(); d.PreviewTextScale != DefaultPreviewTextScale {
+		t.Fatalf("default preview text scale = %v, want %v", d.PreviewTextScale, DefaultPreviewTextScale)
+	}
+	cases := []struct{ in, want float64 }{
+		{0, DefaultPreviewTextScale},  // unset (old file) → default
+		{-3, DefaultPreviewTextScale}, // negative → default
+		{0.5, MinPreviewTextScale},    // below floor → clamp up
+		{MinPreviewTextScale, MinPreviewTextScale},
+		{1.3, 1.3}, // in range → kept
+		{MaxPreviewTextScale, MaxPreviewTextScale},
+		{9, MaxPreviewTextScale}, // above ceiling → clamp down
+	}
+	for _, c := range cases {
+		if got := ClampPreviewTextScale(c.in); got != c.want {
+			t.Errorf("ClampPreviewTextScale(%v) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+func TestPreviewTextScaleNormalizeAndRoundTrip(t *testing.T) {
+	// Normalize clamps an out-of-range value from a hand-edited file.
+	s := Default()
+	s.PreviewTextScale = 99
+	s.Normalize()
+	if s.PreviewTextScale != MaxPreviewTextScale {
+		t.Fatalf("Normalize did not clamp: %v", s.PreviewTextScale)
+	}
+	// A settings file predating the field (0) backfills the default on load.
+	s.PreviewTextScale = 0
+	s.Normalize()
+	if s.PreviewTextScale != DefaultPreviewTextScale {
+		t.Fatalf("Normalize did not backfill default: %v", s.PreviewTextScale)
+	}
+
+	// Full JSON round-trip through the store preserves an in-range value.
+	dir := t.TempDir()
+	st := NewStore(filepath.Join(dir, "settings.json"))
+	want := Default()
+	want.PreviewTextScale = 1.75
+	if err := st.Save(want); err != nil {
+		t.Fatal(err)
+	}
+	out, err := st.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.PreviewTextScale != 1.75 {
+		t.Fatalf("round-trip preview text scale = %v, want 1.75", out.PreviewTextScale)
+	}
+}
