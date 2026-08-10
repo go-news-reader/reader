@@ -826,6 +826,11 @@ func (s *Scene) SetSubs(subs []Subscription) { s.Subs = subs; s.subsRev++; s.tou
 // SetActive selects the sidebar filter (a subscription index, or AllFilter).
 func (s *Scene) SetActive(i int) { s.Active = i; s.touch() }
 
+// ActiveFilter returns the selected sidebar filter — a subscription index, or
+// [AllFilter] when no single subscription is selected. Pull-to-refresh reads it
+// so it can re-fetch only the subscription currently in view.
+func (s *Scene) ActiveFilter() int { return s.Active }
+
 // touchProfiles marks the profile list dirty so the sidebar sprite re-renders.
 func (s *Scene) touchProfiles() { s.profRev++; s.touch() }
 

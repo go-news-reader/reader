@@ -605,3 +605,18 @@ func TestTheme(t *testing.T) {
 		t.Fatal("withOnAccent preserve + set")
 	}
 }
+
+func TestActiveFilterReadsSelection(t *testing.T) {
+	s := New(400, 300, ThemeFor(OSLinux, false))
+	if s.ActiveFilter() != AllFilter {
+		t.Fatalf("fresh scene ActiveFilter = %d, want AllFilter", s.ActiveFilter())
+	}
+	s.SetActive(2)
+	if s.ActiveFilter() != 2 {
+		t.Fatalf("ActiveFilter = %d, want 2", s.ActiveFilter())
+	}
+	s.SetActive(AllFilter)
+	if s.ActiveFilter() != AllFilter {
+		t.Fatalf("ActiveFilter = %d, want AllFilter", s.ActiveFilter())
+	}
+}

@@ -957,11 +957,64 @@ func (a *App) LoadMore(ctx context.Context) []error {
 // without re-showing a post already on screen.
 func itemKey(it source.Item) string { return string(it.Source) + "\x00" + it.ID }
 
-// PullRefresh re-aggregates the feed from scratch — the pull-to-refresh seam the
-// scene's OnPullRefresh trigger drives. It runs the same streaming path as a
-// manual refresh, which resets pagination.
+// PullRefresh is the pull-to-refresh seam the scene's OnPullRefresh trigger
+// drives. When the feed is filtered to a single subscription (the sidebar has
+// one selected), it re-fetches ONLY that subscription — the one the user is
+// looking at — instead of re-aggregating every source. With no single
+// subscription selected ("All"), it falls back to a full streaming refresh.
 func (a *App) PullRefresh(ctx context.Context) []error {
-	return a.RefreshStreaming(ctx)
+	idx := a.scene.ActiveFilter()
+	if idx < 0 || idx >= len(a.subs) {
+		return a.RefreshStreaming(ctx) // "All" filter → refresh every source
+	}
+	return a.refreshOneSub(ctx, a.subs[idx])
+}
+
+// refreshOneSub re-fetches a single subscription and splices its fresh page into
+// the shown feed: it replaces exactly that subscription's items (matched by
+// source+channel), leaving every other source untouched, then re-sorts and
+// republishes. It also resets that subscription's pagination cursor so a
+// following infinite-scroll pages from the top. A fetch error leaves the feed as
+// it was and surfaces on the status line / auth prompts.
+func (a *App) refreshOneSub(ctx context.Context, sub source.Subscription) []error {
+	a.vmDo(func() {
+		a.vm.SetPending([]source.Subscription{sub})
+		a.vm.SetLoad(true, 0, 1)
+	})
+	res, err := a.reg.Feed(ctx, sub.Source, source.Query{Channel: sub.Channel, Sort: sub.Sort, Limit: sub.Limit})
+	if err != nil {
+		errs := []error{&source.SubscriptionError{Sub: sub, Err: err}}
+		a.vmDo(func() {
+			a.vm.ClearPending(sub.Source, sub.Channel)
+			a.vm.SetAuthPrompts(authPrompts(errs))
+			a.vm.SetStatus(firstNonAuthError(errs))
+			a.vm.SetLoad(false, 1, 1)
+		})
+		return errs
+	}
+	// A fresh page restarts this subscription's pagination.
+	a.moreMu.Lock()
+	if a.cursors == nil {
+		a.cursors = map[string]string{}
+	}
+	a.cursors[source.SubKey(sub)] = res.Cursor
+	a.moreMu.Unlock()
+
+	a.vmDo(func() {
+		cur := a.vm.Items.Slice()
+		merged := make([]source.Item, 0, len(cur)+len(res.Items))
+		for _, it := range cur {
+			if !sub.Matches(it) { // keep every other subscription's items as-is
+				merged = append(merged, it)
+			}
+		}
+		merged = append(merged, res.Items...)
+		source.SortItems(merged)
+		a.vm.SetItems(merged)
+		a.vm.ClearPending(sub.Source, sub.Channel)
+		a.vm.SetLoad(false, 1, 1)
+	})
+	return nil
 }
 
 // compactErrs drops the nil entries from an index-keyed error slice, preserving

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -106,6 +107,24 @@ type StreamUpdate struct {
 func SubKey(s Subscription) string {
 	return string(s.Source) + "\x00" + s.Channel
 }
+
+// Matches reports whether it belongs to this subscription: same source, and —
+// for a channel-scoped subscription — the same channel (case-insensitive). A
+// blank channel matches every item of the source. It is the item↔subscription
+// predicate a single-subscription refresh uses to replace only that
+// subscription's items in the merged feed.
+func (s Subscription) Matches(it Item) bool {
+	if it.Source != s.Source {
+		return false
+	}
+	return s.Channel == "" || strings.EqualFold(it.Channel, s.Channel)
+}
+
+// SortItems orders items newest-first (by [Item.Created] descending; ties broken
+// by ID for a stable order), in place — the same order [AggregateStream]
+// produces, exported so a caller that merges a single subscription's fresh page
+// into the feed can re-establish it.
+func SortItems(items []Item) { sortItems(items) }
 
 // sortItems orders items newest-first (by [Item.Created] descending; ties broken
 // by ID for a stable order), in place.

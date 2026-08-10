@@ -487,3 +487,35 @@ func TestAggregateMoreErrorsInOrder(t *testing.T) {
 		t.Fatalf("failed subs should report empty next cursors: %v", next)
 	}
 }
+
+func TestSubscriptionMatches(t *testing.T) {
+	s := Subscription{Source: Reddit, Channel: "r/golang"}
+	if !s.Matches(Item{Source: Reddit, Channel: "r/golang"}) {
+		t.Error("same source+channel should match")
+	}
+	if !s.Matches(Item{Source: Reddit, Channel: "R/GoLang"}) {
+		t.Error("channel match must be case-insensitive")
+	}
+	if s.Matches(Item{Source: Reddit, Channel: "r/rust"}) {
+		t.Error("different channel must not match")
+	}
+	if s.Matches(Item{Source: HackerNews, Channel: "r/golang"}) {
+		t.Error("different source must not match")
+	}
+	all := Subscription{Source: Reddit} // blank channel = every item of the source
+	if !all.Matches(Item{Source: Reddit, Channel: "anything"}) {
+		t.Error("blank channel should match any item of the source")
+	}
+	if all.Matches(Item{Source: HackerNews}) {
+		t.Error("blank channel is still source-scoped")
+	}
+}
+
+func TestSortItemsExported(t *testing.T) {
+	items := []Item{{ID: "a", Created: 1}, {ID: "c", Created: 3}, {ID: "b", Created: 3}}
+	SortItems(items)
+	// Newest first (Created desc); ties broken by ID ascending: b,c (Created 3) then a (1).
+	if items[0].ID != "b" || items[1].ID != "c" || items[2].ID != "a" {
+		t.Fatalf("SortItems order = %s%s%s, want b c a", items[0].ID, items[1].ID, items[2].ID)
+	}
+}
