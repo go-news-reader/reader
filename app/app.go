@@ -96,6 +96,14 @@ type App struct {
 	// synchronous variant.
 	previewFetch func(id string, parts []usenet.ReconstructPart)
 
+	// commentFetch triggers the asynchronous fetch of a Reddit post's comment
+	// thread into the preview pane, keyed by the item. A field so tests can
+	// substitute a synchronous variant. commentCache memoises the flattened
+	// comments per item ID (UI-thread only, like the scene) so re-selecting a post
+	// does not refetch; it is bounded (commentCacheMax) and simply reset when full.
+	commentFetch func(it source.Item)
+	commentCache map[string][]source.Comment
+
 	// mediaFetch triggers the asynchronous download+decode of the shown feed's
 	// remote thumbnails (every source but Usenet, whose images arrive over NNTP).
 	// A field so tests can substitute a synchronous, network-free variant.
@@ -274,6 +282,10 @@ func New(cfg Config) *App {
 	a.loadGroups = func(force bool) { go a.doLoadGroups(context.Background(), force) }
 	a.previewFetch = func(id string, parts []usenet.ReconstructPart) {
 		go a.loadPreviewImage(context.Background(), id, parts)
+	}
+	a.commentCache = map[string][]source.Comment{}
+	a.commentFetch = func(it source.Item) {
+		go a.loadComments(context.Background(), it)
 	}
 	a.mediaClient = feeds.MediaClient(cfg.Recorder)
 	a.mediaFetch = func(reqs []ui.MediaRequest) {

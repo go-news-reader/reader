@@ -272,6 +272,15 @@ type Scene struct {
 	sTextSmallerR     toolkit.Rect // "A−" reader-text zoom-out pill
 	sTextLargerR      toolkit.Rect // "A+" reader-text zoom-in pill
 
+	// previewComments holds the flattened comment thread per item ID (delivered by
+	// the app for a Reddit post), and commentsLoading marks the items whose fetch
+	// is in flight so the pane shows a loading line. Both are keyed by Item.ID and
+	// touched only on the UI/render thread (SetComments / SetCommentsLoading run
+	// there, like SetThumb). The text-post preview appends the thread to its
+	// scrolling column; an item with no entry simply shows no comments section.
+	previewComments map[string][]source.Comment
+	commentsLoading map[string]bool
+
 	// previewTextScale multiplies the reader/preview text size (a text post's
 	// title, body and meta, and the header of any previewed post). It is seeded
 	// from settings.PreviewTextScale and adjusted by the A−/A+ preview-toolbar
@@ -871,6 +880,55 @@ func (s *Scene) SetThumb(id string, img *image.RGBA) {
 	s.invalidateCards()
 	s.touch()
 }
+
+// SetComments attaches the flattened comment thread for an item id (the app
+// delivers it after an async fetch) and clears that id's loading marker, so the
+// preview pane paints the thread in place of the "loading comments" line. A nil
+// slice is stored as an explicit "fetched, none" so the pane shows "0 comments"
+// rather than spinning.
+func (s *Scene) SetComments(id string, comments []source.Comment) {
+	if s.previewComments == nil {
+		s.previewComments = map[string][]source.Comment{}
+	}
+	s.previewComments[id] = comments
+	if s.commentsLoading != nil {
+		delete(s.commentsLoading, id)
+	}
+	s.touch()
+}
+
+// SetCommentsLoading marks (v=true) or clears that a comment fetch is in flight
+// for item id, so the pane shows a loading line beneath the post until
+// SetComments lands.
+func (s *Scene) SetCommentsLoading(id string, v bool) {
+	if s.commentsLoading == nil {
+		s.commentsLoading = map[string]bool{}
+	}
+	if v {
+		s.commentsLoading[id] = true
+	} else {
+		delete(s.commentsLoading, id)
+	}
+	s.touch()
+}
+
+// commentsFor returns the fetched comment thread for id and whether a fetch has
+// completed for it (an entry exists, even if empty).
+func (s *Scene) commentsFor(id string) ([]source.Comment, bool) {
+	c, ok := s.previewComments[id]
+	return c, ok
+}
+
+// commentsPending reports whether a comment fetch is in flight for id.
+func (s *Scene) commentsPending(id string) bool { return s.commentsLoading[id] }
+
+// PreviewComments returns the fetched comment thread for item id and whether a
+// fetch has completed (an entry exists, possibly empty). Front-ends/tests use it
+// to observe what the app delivered.
+func (s *Scene) PreviewComments(id string) ([]source.Comment, bool) { return s.commentsFor(id) }
+
+// CommentsLoading reports whether a comment fetch is in flight for item id.
+func (s *Scene) CommentsLoading(id string) bool { return s.commentsPending(id) }
 
 // Resize updates the surface size, clamped to the minimum.
 func (s *Scene) Resize(w, h int) { s.W, s.H = w, h; s.clampSize(); s.invalidateCards(); s.touch() }

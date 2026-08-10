@@ -116,6 +116,19 @@ type GroupStats struct {
 	Images   int
 }
 
+// Comment is one reply on an [Item] (e.g. a Reddit post's comment tree),
+// flattened from the platform's nested thread into display order. Depth is the
+// indentation level — 0 for a top-level reply, 1 for a reply to that, and so on
+// — so a front-end can render the thread without reconstructing the tree.
+// Providers cap the count and depth so a huge thread cannot explode memory.
+type Comment struct {
+	Author  string // comment author (may be empty for deleted authors)
+	Body    string // comment text (plain or lightly-marked-up)
+	Score   int    // net upvotes
+	Created int64  // creation time, unix seconds UTC (0 if unknown)
+	Depth   int    // nesting level, 0 = top-level reply
+}
+
 // Query selects what a provider should fetch.
 type Query struct {
 	// Channel scopes the fetch: a subreddit, feed URL, newsgroup name, account

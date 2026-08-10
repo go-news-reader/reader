@@ -32,6 +32,7 @@ func (a *App) SelectPreview(it source.Item) { a.selectPreview(it, false) }
 func (a *App) selectPreview(it source.Item, debounceWeb bool) {
 	a.scene.SelectPreview(it)
 	a.webArmed = false // a new selection cancels any pending debounced open
+	a.maybeFetchComments(it)
 	if a.wantsPreviewImage(it) {
 		a.scene.SetPreviewLoading(true)
 		a.previewFetch(it.ID, singleArticleParts(it))

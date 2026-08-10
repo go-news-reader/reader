@@ -24,6 +24,7 @@ import (
 type fetcher interface {
 	Subreddit(ctx context.Context, name string, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 	Frontpage(ctx context.Context, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error)
+	Comments(ctx context.Context, subreddit, id string, opts goreddit.ListingOptions) (*goreddit.PostWithComments, error)
 }
 
 // Provider fetches Reddit posts as normalized source items.
@@ -99,6 +100,59 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		items = append(items, mapPost(post))
 	}
 	return source.Result{Items: items, Cursor: page.After}, nil
+}
+
+// Comment-thread bounds: a very active post can carry tens of thousands of
+// comments nested dozens deep, which would explode the pane's memory and layout
+// time. Comments flattens at most maxComments nodes and stops descending past
+// maxCommentDepth levels, so the preview stays bounded however large the thread.
+const (
+	maxComments     = 200
+	maxCommentDepth = 8
+)
+
+// Comments fetches a post's comment thread and flattens it into display order
+// with a per-comment Depth (0 = top-level reply). It goes through the same
+// (anonymous or session-cookie) client as the feed, so the user's auth applies.
+// The tree is walked depth-first, preserving the reddit ordering; "load more"
+// frontier markers are already dropped by the client (only "t1" things survive),
+// and deleted/empty-body nodes are skipped here while their replies are kept, so
+// a live subtree under a removed parent is not lost.
+func (p *Provider) Comments(ctx context.Context, postID, subreddit string) ([]source.Comment, error) {
+	pwc, err := p.client.Comments(ctx, subreddit, postID, goreddit.ListingOptions{})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]source.Comment, 0, len(pwc.Comments))
+	flattenComments(pwc.Comments, 0, &out)
+	return out, nil
+}
+
+// flattenComments walks the nested comment tree depth-first, appending each
+// non-empty comment to out with its nesting depth. It stops descending once
+// depth reaches maxCommentDepth and stops appending once out reaches
+// maxComments, so a huge thread stays bounded. A deleted/removed comment (empty
+// body) is dropped from the output but its replies are still visited (at the
+// next depth), so real replies below a removed parent survive.
+func flattenComments(nodes []goreddit.Comment, depth int, out *[]source.Comment) {
+	if depth >= maxCommentDepth || len(*out) >= maxComments {
+		return
+	}
+	for _, c := range nodes {
+		if len(*out) >= maxComments {
+			return
+		}
+		if strings.TrimSpace(c.Body) != "" {
+			*out = append(*out, source.Comment{
+				Author:  c.Author,
+				Body:    c.Body,
+				Score:   c.Score,
+				Created: int64(c.CreatedUTC),
+				Depth:   depth,
+			})
+		}
+		flattenComments(c.Replies, depth+1, out)
+	}
 }
 
 // mapErr translates a Reddit client failure into a typed source.AuthError when

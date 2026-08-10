@@ -16,12 +16,16 @@ import (
 
 // fakeFetcher implements the fetcher seam.
 type fakeFetcher struct {
-	page       *goreddit.Page
-	err        error
-	sawFront   bool
-	sawSub     string
-	sawSort    goreddit.Sort
-	sawOptions goreddit.ListingOptions
+	page        *goreddit.Page
+	err         error
+	sawFront    bool
+	sawSub      string
+	sawSort     goreddit.Sort
+	sawOptions  goreddit.ListingOptions
+	pwc         *goreddit.PostWithComments
+	commentsErr error
+	sawCmtSub   string
+	sawCmtID    string
 }
 
 func (f *fakeFetcher) Subreddit(_ context.Context, name string, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error) {
@@ -32,6 +36,11 @@ func (f *fakeFetcher) Subreddit(_ context.Context, name string, sort goreddit.So
 func (f *fakeFetcher) Frontpage(_ context.Context, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error) {
 	f.sawFront, f.sawSort, f.sawOptions = true, sort, opts
 	return f.page, f.err
+}
+
+func (f *fakeFetcher) Comments(_ context.Context, subreddit, id string, _ goreddit.ListingOptions) (*goreddit.PostWithComments, error) {
+	f.sawCmtSub, f.sawCmtID = subreddit, id
+	return f.pwc, f.commentsErr
 }
 
 func TestKind(t *testing.T) {
@@ -357,5 +366,152 @@ func TestMapExternalLink(t *testing.T) {
 		if m.Kind == source.MediaImage {
 			t.Errorf("external link should map no image media: %+v", it.Media)
 		}
+	}
+}
+
+// cmt is a terse constructor for a comment subtree in the flatten tests. The
+// go-reddit Comment type has exported fields (including the Replies slice), so a
+// nested tree can be built with composite literals directly.
+func cmt(author, body string, score int, replies ...goreddit.Comment) goreddit.Comment {
+	return goreddit.Comment{Author: author, Body: body, Score: score, CreatedUTC: 1710000000, Replies: replies}
+}
+
+// TestCommentsFlattenDepth builds a nested thread and asserts it flattens
+// depth-first in order, carrying each comment's Depth, and that the subreddit +
+// id are passed through to the client (the "t3_" prefix stripped by the client,
+// but the provider forwards the raw id).
+func TestCommentsFlattenDepth(t *testing.T) {
+	f := &fakeFetcher{pwc: &goreddit.PostWithComments{Comments: []goreddit.Comment{
+		cmt("alice", "top one", 10,
+			cmt("bob", "reply to alice", 5,
+				cmt("carol", "deep reply", 2),
+			),
+		),
+		cmt("dave", "top two", 8),
+	}}}
+	p := NewWithClient(f)
+
+	got, err := p.Comments(context.Background(), "t3_abc", "r/golang")
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if f.sawCmtSub != "r/golang" || f.sawCmtID != "t3_abc" {
+		t.Fatalf("client saw sub=%q id=%q", f.sawCmtSub, f.sawCmtID)
+	}
+	want := []source.Comment{
+		{Author: "alice", Body: "top one", Score: 10, Created: 1710000000, Depth: 0},
+		{Author: "bob", Body: "reply to alice", Score: 5, Created: 1710000000, Depth: 1},
+		{Author: "carol", Body: "deep reply", Score: 2, Created: 1710000000, Depth: 2},
+		{Author: "dave", Body: "top two", Score: 8, Created: 1710000000, Depth: 0},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d comments, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("comment %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestCommentsSkipsDeletedKeepsReplies drops an empty-/whitespace-body node from
+// the output but still visits its replies (a live reply under a removed parent
+// survives), and the reply keeps its true depth.
+func TestCommentsSkipsDeletedKeepsReplies(t *testing.T) {
+	f := &fakeFetcher{pwc: &goreddit.PostWithComments{Comments: []goreddit.Comment{
+		cmt("", "   ", 0, // deleted/removed parent: empty body
+			cmt("eve", "still here", 3),
+		),
+	}}}
+	got, err := NewWithClient(f).Comments(context.Background(), "abc", "")
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 surviving reply, got %d: %+v", len(got), got)
+	}
+	if got[0].Author != "eve" || got[0].Depth != 1 {
+		t.Fatalf("surviving reply = %+v, want eve at depth 1", got[0])
+	}
+}
+
+// TestCommentsCountCap caps the flattened output at maxComments however many the
+// thread carries.
+func TestCommentsCountCap(t *testing.T) {
+	var nodes []goreddit.Comment
+	for i := 0; i < maxComments+50; i++ {
+		nodes = append(nodes, cmt("u", "body", 1))
+	}
+	got, err := NewWithClient(&fakeFetcher{pwc: &goreddit.PostWithComments{Comments: nodes}}).
+		Comments(context.Background(), "abc", "golang")
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(got) != maxComments {
+		t.Fatalf("count cap: got %d, want %d", len(got), maxComments)
+	}
+}
+
+// TestCommentsCountCapMidTree stops appending mid-tree: a first subtree that
+// fills the cap leaves no room for a following top-level comment.
+func TestCommentsCountCapMidTree(t *testing.T) {
+	// A top-level comment with maxComments direct replies (1 + 200 candidates):
+	// the parent + the first (maxComments-1) replies fill the cap.
+	var replies []goreddit.Comment
+	for i := 0; i < maxComments; i++ {
+		replies = append(replies, cmt("r", "reply", 1))
+	}
+	nodes := []goreddit.Comment{cmt("p", "parent", 1, replies...), cmt("after", "later top", 1)}
+	got, err := NewWithClient(&fakeFetcher{pwc: &goreddit.PostWithComments{Comments: nodes}}).
+		Comments(context.Background(), "abc", "golang")
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(got) != maxComments {
+		t.Fatalf("count cap mid-tree: got %d, want %d", len(got), maxComments)
+	}
+	for _, c := range got {
+		if c.Author == "after" {
+			t.Fatal("a comment past the count cap was included")
+		}
+	}
+}
+
+// TestCommentsDepthCap stops descending past maxCommentDepth levels: a chain
+// deeper than the cap yields exactly maxCommentDepth comments (depths 0..cap-1).
+func TestCommentsDepthCap(t *testing.T) {
+	// Build a single chain 2*maxCommentDepth deep.
+	leaf := cmt("d", "deepest", 1)
+	node := leaf
+	for i := 0; i < 2*maxCommentDepth; i++ {
+		node = cmt("d", "body", 1, node)
+	}
+	got, err := NewWithClient(&fakeFetcher{pwc: &goreddit.PostWithComments{Comments: []goreddit.Comment{node}}}).
+		Comments(context.Background(), "abc", "golang")
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(got) != maxCommentDepth {
+		t.Fatalf("depth cap: got %d comments, want %d", len(got), maxCommentDepth)
+	}
+	for i, c := range got {
+		if c.Depth != i {
+			t.Fatalf("comment %d depth = %d, want %d", i, c.Depth, i)
+		}
+	}
+}
+
+// TestCommentsError maps a client failure through mapErr (an auth status becomes
+// a typed AuthError; a plain error propagates).
+func TestCommentsError(t *testing.T) {
+	f := &fakeFetcher{commentsErr: &goreddit.APIError{StatusCode: 403, Status: "forbidden"}}
+	_, err := NewWithClient(f).Comments(context.Background(), "abc", "golang")
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Reddit {
+		t.Fatalf("403 not mapped to Reddit AuthError: %v", err)
+	}
+
+	f2 := &fakeFetcher{commentsErr: errors.New("network down")}
+	if _, err := NewWithClient(f2).Comments(context.Background(), "abc", "golang"); err == nil {
+		t.Fatal("want error propagated")
 	}
 }

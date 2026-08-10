@@ -8,8 +8,10 @@ package ui
 // window too narrow to keep a usable feed the pane hides itself (previewWidth 0).
 
 import (
+	"fmt"
 	"image"
 	"strings"
+	"time"
 
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
@@ -418,6 +420,27 @@ type previewBody struct {
 	meta                string
 	imgH                int // height reserved for the image box (0 when none)
 	height              int
+
+	// Comment thread (Reddit text posts): the flattened, indented comments to
+	// paint below the body, a "N comments" heading, and whether the loading line
+	// shows. sectionH is the vertical extent the whole section occupies (already
+	// folded into height); it is 0 when there is no comment section.
+	comments         []previewComment
+	commentsHeading  string
+	commentsLoading  bool
+	commentsHeadFace textFace
+	sectionH         int
+}
+
+// previewComment is one laid-out comment block: its wrapped meta + body lines
+// and the left indentation (in px) its depth earns.
+type previewComment struct {
+	inset     int
+	metaFace  textFace
+	bodyFace  textFace
+	meta      string
+	bodyLines []string
+	height    int
 }
 
 // previewInner is the content column inside the pane (pane minus padding).
@@ -474,9 +497,108 @@ func (s *Scene) previewContent() previewBody {
 		h += d.imgH + gap
 	}
 	h += len(d.bodyLines) * (bodyFace.height + rpxOf(s, 3))
+	// Comment thread (Reddit text posts): laid out below the body, indented by
+	// depth. sectionH is added to the content height so the pane scrolls over it.
+	s.layoutComments(&d)
+	h += d.sectionH
 	h += m.pad
 	d.height = h
 	return d
+}
+
+// Comment-section spacing, in logical px (scaled through rpxOf at use).
+const (
+	commentIndentStep = 14 // left inset added per nesting depth
+	commentGapPt      = 8  // gap before the section and between comment blocks
+	commentTightPt    = 6  // gap under the divider and under the heading
+)
+
+// layoutComments wraps and measures the previewed item's comment thread into
+// d.comments, sets the "N comments" heading and the loading flag, and records
+// the section's total height in d.sectionH (0 when there is no section). Only a
+// Reddit post that is loading or has a delivered thread gets a section; every
+// other item leaves the section empty. Each comment is indented by its depth (a
+// per-level inset, clamped so the wrapped text keeps a usable width) and wrapped
+// at that reduced width, so no line can overflow the pane's right edge.
+func (s *Scene) layoutComments(d *previewBody) {
+	id := s.previewItem.ID
+	thread, fetched := s.commentsFor(id)
+	loading := s.commentsPending(id)
+	if !fetched && !loading {
+		return // no comment section for this item
+	}
+
+	metaFace := getFace(s.ptPx(11), false)
+	bodyFace := getFace(s.ptPx(13), false)
+	d.commentsHeadFace = getFace(s.ptPx(13), true)
+	d.commentsLoading = loading && !fetched
+	if fetched {
+		d.commentsHeading = commentsHeading(len(thread))
+	}
+
+	step := rpxOf(s, commentIndentStep)
+	for _, c := range thread {
+		// Indent by depth, but never past 3/4 of the column so the wrapped text
+		// keeps at least a quarter-width to live in — a very deep thread stops
+		// marching right instead of squeezing to nothing.
+		inset := c.Depth * step
+		if capX := d.innerW * 3 / 4; inset > capX {
+			inset = capX
+		}
+		wrapW := d.innerW - inset
+		pc := previewComment{
+			inset:     inset,
+			metaFace:  metaFace,
+			bodyFace:  bodyFace,
+			meta:      commentMetaLine(c),
+			bodyLines: wrapMeasured(ttFont(false, s.ptPx(13)).Measure, stripHTML(c.Body), wrapW),
+		}
+		pc.height = metaFace.height + rpxOf(s, 2) + len(pc.bodyLines)*(bodyFace.height+rpxOf(s, 2))
+		d.comments = append(d.comments, pc)
+	}
+
+	// Section height: a gap + a divider rule + a tight gap, then the heading (when
+	// shown) + a tight gap, the loading line (when shown), and each comment block
+	// followed by an inter-block gap. This MUST match the widgets drawPreview
+	// appends to the scrolling column, so the pane scrolls over exactly what it
+	// paints.
+	sec := rpxOf(s, commentGapPt) + rpxOf(s, 1) + rpxOf(s, commentTightPt)
+	if d.commentsHeading != "" {
+		sec += d.commentsHeadFace.height + rpxOf(s, commentTightPt)
+	}
+	if d.commentsLoading {
+		sec += metaFace.height
+	}
+	for _, c := range d.comments {
+		sec += c.height + rpxOf(s, commentGapPt)
+	}
+	d.sectionH = sec
+}
+
+// commentsHeading is the section heading for n loaded comments ("No comments",
+// "1 comment", or "N comments").
+func commentsHeading(n int) string {
+	switch n {
+	case 0:
+		return "No comments"
+	case 1:
+		return "1 comment"
+	default:
+		return fmt.Sprintf("%d comments", n)
+	}
+}
+
+// commentMetaLine is a comment's muted "author · N pts · date" line.
+func commentMetaLine(c source.Comment) string {
+	author := c.Author
+	if author == "" {
+		author = "[deleted]"
+	}
+	parts := []string{author, fmt.Sprintf("%d pts", c.Score)}
+	if c.Created > 0 {
+		parts = append(parts, time.Unix(c.Created, 0).UTC().Format("2 Jan 2006 15:04"))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // layoutPreview computes the pane rect, its Open button, image rect and the
@@ -677,6 +799,9 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	for _, ln := range d.bodyLines {
 		col.AddFixed(mkLabel(ln, bodyFont, th.OnSurface), d.bodyFace.height+rpxOf(s, 3))
 	}
+	// Comment thread (Reddit text posts), appended to the SAME scrolling column so
+	// it participates in the pane scroll and the cross-surface text selection.
+	s.appendComments(col, &d, p, mkLabel)
 	col.SetBounds(toolkit.Rect{X: x, Y: r.Y + m.pad - s.previewScroll.offset, W: d.innerW, H: d.height})
 	// Clip the scrolling content to the pane so overflow (notably a tall
 	// rendered web page, but also scrolled-up header/body) never paints over the
@@ -699,6 +824,83 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 		m.side.draw(img, s.previewOpenR.X+m.pad, s.previewOpenR.Y+(s.previewOpenR.H-m.side.height)/2, "Open", themeOnAccent(th))
 	}
 	s.drawTextZoomButtons(p, img)
+}
+
+// appendComments appends the previewed post's comment thread to the scrolling
+// column col: a divider, a "N comments" heading (or a loading line while the
+// fetch is in flight), then each comment as a muted meta line above its wrapped
+// body, indented by depth with a subtle vertical guide. Every piece is a toolkit
+// widget the VBox positions, so the comments join the pane scroll and the
+// cross-surface text selection (CollectRuns walks the nested boxes). It is a
+// no-op when the item has no comment section. The appended heights sum to
+// d.sectionH, which layoutComments already folded into the content height.
+func (s *Scene) appendComments(col *toolkit.VBox, d *previewBody, p *painter.PixelPainter, mkLabel func(string, toolkit.Font, toolkit.RGBA) *toolkit.Label) {
+	if d.commentsHeading == "" && !d.commentsLoading {
+		return
+	}
+	th := s.theme
+	muteS := mute(th.OnSurface, th.Surface)
+	metaFont := ttFont(false, s.ptPx(11))
+	bodyFont := ttFont(false, s.ptPx(13))
+	headFont := ttFont(true, s.ptPx(13))
+	metaFace := getFace(s.ptPx(11), false)
+	bodyFace := getFace(s.ptPx(13), false)
+
+	col.AddFixed(toolkit.NewLabel(""), rpxOf(s, commentGapPt))
+	col.AddFixed(&commentDivider{s: s, p: p}, rpxOf(s, 1))
+	col.AddFixed(toolkit.NewLabel(""), rpxOf(s, commentTightPt))
+	if d.commentsHeading != "" {
+		col.AddFixed(mkLabel(d.commentsHeading, headFont, th.OnSurface), d.commentsHeadFace.height)
+		col.AddFixed(toolkit.NewLabel(""), rpxOf(s, commentTightPt))
+	}
+	if d.commentsLoading {
+		col.AddFixed(mkLabel("Loading comments…", metaFont, muteS), metaFace.height)
+	}
+	for _, c := range d.comments {
+		inner := toolkit.NewVBox()
+		inner.Spacing = -1
+		inner.AddFixed(mkLabel(c.meta, metaFont, muteS), metaFace.height+rpxOf(s, 2))
+		for _, ln := range c.bodyLines {
+			inner.AddFixed(mkLabel(ln, bodyFont, th.OnSurface), bodyFace.height+rpxOf(s, 2))
+		}
+		if c.inset > 0 {
+			row := toolkit.NewHBox()
+			row.Spacing = 0
+			row.AddFixed(&commentGuide{s: s, p: p}, c.inset)
+			row.AddFlex(inner, 1)
+			col.AddFixed(row, c.height)
+		} else {
+			col.AddFixed(inner, c.height)
+		}
+		col.AddFixed(toolkit.NewLabel(""), rpxOf(s, commentGapPt))
+	}
+}
+
+// commentDivider paints a 1px horizontal rule (Border colour) across its bounds:
+// the subtle separator between the post body and the comment thread.
+type commentDivider struct {
+	toolkit.Base
+	s *Scene
+	p *painter.PixelPainter
+}
+
+func (w *commentDivider) Draw(_ painter.Painter, th *toolkit.Theme) {
+	b := w.Bounds()
+	w.p.FillRect(painter.Rect{X: b.X, Y: b.Y, W: b.W, H: b.H}, th.Border)
+}
+
+// commentGuide paints a subtle vertical thread guide down the right edge of a
+// nested comment's left inset, so replies read as indented under their parent.
+type commentGuide struct {
+	toolkit.Base
+	s *Scene
+	p *painter.PixelPainter
+}
+
+func (w *commentGuide) Draw(_ painter.Painter, th *toolkit.Theme) {
+	b := w.Bounds()
+	gx := b.X + b.W - rpxOf(w.s, 1)
+	w.p.FillRect(painter.Rect{X: gx, Y: b.Y, W: rpxOf(w.s, 1), H: b.H}, mute(th.OnSurface, th.Surface))
 }
 
 // drawTextZoomButtons paints the A−/A+ reader-text zoom pills at the top of the
