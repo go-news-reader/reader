@@ -42,12 +42,20 @@ func (a *App) selectPreview(it source.Item, debounceWeb bool) {
 	// render). Re-selecting the page already shown is a no-op (no re-render).
 	if url := a.scene.WebPreviewURL(it); url != "" && a.scene.Browser().CurrentURL() != url {
 		if debounceWeb {
-			a.webArmURL, a.webArmTitle = url, it.Title
+			a.webArmItem, a.webArmURL = it, url
 			a.webArmAt, a.webArmed = a.frameCount, true
 		} else {
-			a.scene.Browser().Open(url, it.Title)
+			a.openWebPreview(it, url)
 		}
 	}
+}
+
+// openWebPreview opens url in the embedded browser (firing the render) and warms
+// the render cache for the selection's likely-next neighbours. Called once the
+// selection has settled (a direct click, or a debounced open).
+func (a *App) openWebPreview(it source.Item, url string) {
+	a.scene.Browser().Open(url, it.Title)
+	a.prefetchNeighbors(it)
 }
 
 // tickWebDebounce advances the frame clock and opens an armed web page once the
@@ -57,7 +65,7 @@ func (a *App) tickWebDebounce() {
 	a.frameCount++
 	if a.webArmed && a.frameCount-a.webArmAt >= a.webDebounceFrames {
 		a.webArmed = false
-		a.scene.Browser().Open(a.webArmURL, a.webArmTitle)
+		a.openWebPreview(a.webArmItem, a.webArmURL)
 	}
 }
 

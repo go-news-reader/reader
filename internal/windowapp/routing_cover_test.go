@@ -45,6 +45,22 @@ func TestRouteClearDownloads(t *testing.T) {
 	}
 }
 
+// TestRouteClearRenderCache covers the HitClearRenderCache route: the Settings
+// view's "Clear render cache" button invokes ClearRenderCache (which reports on
+// the status line and leaves the cache empty).
+func TestRouteClearRenderCache(t *testing.T) {
+	a := profApp(t)
+	h := New(a)
+	a.VM().OpenSettings.Execute()
+	click(t, h, ui.HitClearRenderCache)
+	if pages, _ := a.RenderCacheStats(); pages != 0 {
+		t.Fatalf("cache should be empty after clear: pages=%d", pages)
+	}
+	if got := a.Scene().Status; got != "Render cache cleared" {
+		t.Fatalf("status = %q, want the clear confirmation", got)
+	}
+}
+
 // TestRouteTypeRune covers the Key default: a printable rune is inserted into the
 // focused search field.
 func TestRouteTypeRune(t *testing.T) {

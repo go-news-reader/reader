@@ -51,6 +51,11 @@ type LogEntry struct {
 // current exchanges (newest-first). Nil leaves the view empty.
 func (s *Scene) SetLogSource(fn func() []LogEntry) { s.logSource = fn; s.touch() }
 
+// SetRenderCacheStats installs the callback the Settings view queries for the
+// web-preview render cache's current size (pages, bytes). Nil shows an empty
+// cache in the caption.
+func (s *Scene) SetRenderCacheStats(fn func() (pages, bytes int)) { s.renderCacheStats = fn }
+
 // logEntries returns the current log entries (nil when no source is wired).
 func (s *Scene) logEntries() []LogEntry {
 	if s.logSource == nil {

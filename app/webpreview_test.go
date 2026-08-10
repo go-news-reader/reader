@@ -190,32 +190,45 @@ func TestWebNavigateAndBack(t *testing.T) {
 	syncFetch(a)
 	b := a.Scene().Browser()
 
-	// Initial preview opens the tab at the item's URL and renders it.
+	// Initial preview opens the tab at the item's URL and renders it (miss #1).
 	a.SelectPreview(webItem("h1", "https://site/"))
 	if b.CurrentURL() != "https://site/" || b.CanBack() {
 		t.Fatalf("after select: url=%q canBack=%v", b.CurrentURL(), b.CanBack())
 	}
-	// Navigate to a link → new page rendered, Back now possible.
+	// Navigate to a link → new page rendered (miss #2), Back now possible.
 	b.Navigate("https://site/next")
 	if fr.lastURL != "https://site/next" || !b.CanBack() {
 		t.Fatalf("navigate: lastURL=%q canBack=%v", fr.lastURL, b.CanBack())
 	}
-	// Back → previous URL re-rendered; Back exhausted at the root, Forward now open.
+	if fr.calls != 2 {
+		t.Fatalf("render calls = %d, want 2 (one per distinct page)", fr.calls)
+	}
+	// Back → the already-rendered root is served from the render cache: the
+	// history updates but the renderer is NOT invoked again (the point of the
+	// cache). Back is exhausted at the root, Forward now open.
 	b.Back()
-	if fr.lastURL != "https://site/" || b.CanBack() || !b.CanForward() {
-		t.Fatalf("back: lastURL=%q canBack=%v canFwd=%v", fr.lastURL, b.CanBack(), b.CanForward())
+	if b.CurrentURL() != "https://site/" || b.CanBack() || !b.CanForward() {
+		t.Fatalf("back: url=%q canBack=%v canFwd=%v", b.CurrentURL(), b.CanBack(), b.CanForward())
 	}
-	// Forward → the page we came back from is re-rendered.
+	// Forward → likewise served from the cache.
 	b.Forward()
-	if fr.lastURL != "https://site/next" || b.CanForward() {
-		t.Fatalf("forward: lastURL=%q canFwd=%v", fr.lastURL, b.CanForward())
+	if b.CurrentURL() != "https://site/next" || b.CanForward() {
+		t.Fatalf("forward: url=%q canFwd=%v", b.CurrentURL(), b.CanForward())
 	}
-	// Reload re-renders the current page (a fetch, no history change).
-	cur := b.CurrentURL()
-	before, depth := fr.calls, b.CanBack()
+	if fr.calls != 2 {
+		t.Fatalf("Back/Forward re-rendered (calls=%d), want the cache to serve them", fr.calls)
+	}
+	// Reload of a cached page is also served from the cache (no history change).
+	depth := b.CanBack()
 	b.Reload()
-	if fr.calls != before+1 || fr.lastURL != cur || b.CanBack() != depth {
-		t.Fatalf("reload: calls=%d lastURL=%q history-changed=%v", fr.calls, fr.lastURL, b.CanBack() != depth)
+	if fr.calls != 2 || b.CanBack() != depth {
+		t.Fatalf("reload: calls=%d history-changed=%v, want a cache hit", fr.calls, b.CanBack() != depth)
+	}
+	// Clearing the cache forces the next navigation to re-render.
+	a.ClearRenderCache()
+	b.Reload()
+	if fr.calls != 3 || fr.lastURL != "https://site/next" {
+		t.Fatalf("after clear+reload: calls=%d lastURL=%q, want a fresh render", fr.calls, fr.lastURL)
 	}
 }
 
@@ -264,6 +277,165 @@ func TestWebFetchDebounce(t *testing.T) {
 	a.selectPreview(webItem("d", "https://d/"), false)
 	if calls != before+1 || a.webArmed {
 		t.Fatalf("direct select: calls=%d armed=%v, want immediate open", calls-before, a.webArmed)
+	}
+}
+
+// TestLoadPreviewPageCachesAndReuses: the first render of a (url, width) is a
+// cache miss that renders + stores; a second identical call is served from the
+// cache without re-rendering; a different width misses and re-renders.
+func TestLoadPreviewPageCachesAndReuses(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	a.SetWebFetchHook(func(string, int) {}) // Open must not auto-render
+	fr := &fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 50, 60))}
+	a.SetWebRenderer(fr)
+
+	a.loadPreviewPage(context.Background(), "https://p/", 800) // miss → render #1
+	if fr.calls != 1 {
+		t.Fatalf("first render calls = %d, want 1", fr.calls)
+	}
+	if pages, _ := a.RenderCacheStats(); pages != 1 {
+		t.Fatalf("final frame not cached: pages=%d", pages)
+	}
+	a.loadPreviewPage(context.Background(), "https://p/", 800) // hit → no render
+	if fr.calls != 1 {
+		t.Fatalf("cache hit re-rendered: calls=%d", fr.calls)
+	}
+	a.loadPreviewPage(context.Background(), "https://p/", 900) // different width → miss
+	if fr.calls != 2 {
+		t.Fatalf("different width should miss: calls=%d", fr.calls)
+	}
+	// Clearing forces the next identical call to re-render.
+	a.ClearRenderCache()
+	if pages, _ := a.RenderCacheStats(); pages != 0 {
+		t.Fatalf("clear should empty the cache: pages=%d", pages)
+	}
+	a.loadPreviewPage(context.Background(), "https://p/", 800)
+	if fr.calls != 3 {
+		t.Fatalf("after clear the page should re-render: calls=%d", fr.calls)
+	}
+}
+
+// TestCacheFinalSkipsEmpty covers cacheFinal's guards: a nil frame and a
+// zero-pixel frame are never cached (an error/blank delivery must not poison the
+// cache).
+func TestCacheFinalSkipsEmpty(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	k := renderKey{"https://e/", 800}
+	a.cacheFinal(k, nil, nil, "")                                   // nil image
+	a.cacheFinal(k, image.NewRGBA(image.Rect(0, 0, 0, 0)), nil, "") // zero pixels
+	if pages, _ := a.RenderCacheStats(); pages != 0 {
+		t.Fatalf("empty frames were cached: pages=%d", pages)
+	}
+}
+
+// TestPrefetchWarmsNeighbors: selecting a web item pre-renders its immediate
+// feed neighbours into the cache (synchronous hook for determinism).
+func TestPrefetchWarmsNeighbors(t *testing.T) {
+	a := New(Config{Registry: newReg(), Width: 900, Height: 700})
+	a.Scene().SetItems([]source.Item{
+		webItem("a", "https://a/"), webItem("b", "https://b/"),
+		webItem("c", "https://c/"), webItem("d", "https://d/"), webItem("e", "https://e/"),
+	})
+	fr := &fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 40, 40))}
+	a.SetWebRenderer(fr)
+	syncFetch(a)
+	a.SetPrefetchHook(func(url string, width int) { a.doPrefetch(context.Background(), url, width) })
+
+	// The browser's render width is only known once its pane has been drawn, so a
+	// first selection then a Frame primes it (the very first navigation renders at
+	// width 0, where prefetch correctly no-ops).
+	a.SelectPreview(webItem("b", "https://b/"))
+	a.Frame()
+
+	// Select the middle item d → open it + warm its neighbours c and e.
+	a.SelectPreview(webItem("d", "https://d/"))
+	w := a.lastRenderWidth
+	if w <= 0 {
+		t.Fatalf("browser render width still unknown: %d", w)
+	}
+	if _, ok := a.rcache.get(renderKey{"https://c/", w}); !ok {
+		t.Fatal("previous neighbour c was not prefetched")
+	}
+	if _, ok := a.rcache.get(renderKey{"https://e/", w}); !ok {
+		t.Fatal("next neighbour e was not prefetched")
+	}
+}
+
+// TestPrefetchSkipsCachedAndInflight: doPrefetch renders nothing for a page that
+// is already cached or already being rendered.
+func TestPrefetchSkipsCachedAndInflight(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	fr := &fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 10, 10))}
+	a.SetWebRenderer(fr)
+
+	// Already cached → skip.
+	a.cacheFinal(renderKey{"https://x/", 800}, image.NewRGBA(image.Rect(0, 0, 10, 10)), nil, "")
+	a.doPrefetch(context.Background(), "https://x/", 800)
+	if fr.calls != 0 {
+		t.Fatalf("prefetch re-rendered a cached page: calls=%d", fr.calls)
+	}
+	// Already in flight → skip.
+	k := renderKey{"https://y/", 800}
+	if !a.rcache.begin(k) {
+		t.Fatal("begin should win")
+	}
+	a.doPrefetch(context.Background(), "https://y/", 800)
+	if fr.calls != 0 {
+		t.Fatalf("prefetch rendered an in-flight page: calls=%d", fr.calls)
+	}
+	a.rcache.done(k)
+	// Now it renders.
+	a.doPrefetch(context.Background(), "https://y/", 800)
+	if fr.calls != 1 {
+		t.Fatalf("prefetch of a free key should render: calls=%d", fr.calls)
+	}
+}
+
+// TestPrefetchNeighborsNoWidth: with no page yet opened (no render width known),
+// prefetch is a no-op.
+func TestPrefetchNeighborsNoWidth(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	fr := &fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 4, 4))}
+	a.SetWebRenderer(fr)
+	a.SetPrefetchHook(func(url string, width int) { a.doPrefetch(context.Background(), url, width) })
+	a.lastRenderWidth = 0
+	a.prefetchNeighbors(webItem("b", "https://b/"))
+	if fr.calls != 0 {
+		t.Fatalf("prefetch with no known width should be a no-op: calls=%d", fr.calls)
+	}
+}
+
+// TestPrefetchAsyncDefaultAndSaturation exercises the default (unhooked)
+// background prefetch: a saturated worker pool skips without spawning, and a
+// free pool renders into the cache on its own goroutine.
+func TestPrefetchAsyncDefaultAndSaturation(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	fr := &fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 12, 12))}
+	a.SetWebRenderer(fr)
+
+	// Saturate the pool: prefetchFetch must skip (the non-blocking default branch).
+	a.prefetchSem <- struct{}{}
+	a.prefetchSem <- struct{}{}
+	a.prefetchFetch("https://z/", 800)
+	if _, ok := a.rcache.get(renderKey{"https://z/", 800}); ok {
+		t.Fatal("a saturated pool should not prefetch")
+	}
+	<-a.prefetchSem
+	<-a.prefetchSem
+
+	// Free pool: the background render populates the cache.
+	a.prefetchFetch("https://z/", 800)
+	deadline := time.After(5 * time.Second)
+	for {
+		if _, ok := a.rcache.get(renderKey{"https://z/", 800}); ok {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("async prefetch never populated the cache")
+		default:
+			time.Sleep(time.Millisecond)
+		}
 	}
 }
 

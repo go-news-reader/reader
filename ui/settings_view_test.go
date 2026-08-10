@@ -347,6 +347,30 @@ func TestSettingsEdgeCases(t *testing.T) {
 	renderPNG(t, narrow, "settings-wrapped")
 }
 
+// TestSettingsRenderCacheControl covers the render-cache row: the caption's
+// non-nil stats branch and the "Clear render cache" button's hit routing.
+func TestSettingsRenderCacheControl(t *testing.T) {
+	s := profScene()
+	s.SetRenderCacheStats(func() (pages, bytes int) { return 3, 200 << 20 })
+	s.OpenSettings()
+	s.layoutSettings()
+
+	found := false
+	for _, b := range s.sButtons {
+		if b.kind != HitClearRenderCache {
+			continue
+		}
+		if s.hitSettings(b.rect.X+2, b.rect.Y+2).Kind == HitClearRenderCache {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("no Clear-render-cache button hit region")
+	}
+	// Draw with a populated cache caption (the non-nil stats branch).
+	renderPNG(t, s, "settings-render-cache")
+}
+
 func TestItoaAndTitleCase(t *testing.T) {
 	if itoa(0) != "0" || itoa(42) != "42" {
 		t.Fatalf("itoa: %q %q", itoa(0), itoa(42))

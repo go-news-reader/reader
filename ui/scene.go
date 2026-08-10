@@ -107,20 +107,21 @@ const (
 	// Settings-view actions (Mode == ModeSettings):
 	HitSelectProfile // Profile = index being edited
 	HitNewProfile
-	HitDeleteProfile // Profile = index
-	HitRenameProfile // focus the rename field for Profile = index
-	HitSelectKind    // Value = source kind for the add-subscription palette
-	HitAddSub        // commit the channel input into the edited profile
-	HitRemoveSub     // Profile = index, Sub = subscription index
-	HitFocusChannel  // focus the add-channel input
-	HitFocusCache    // focus the media-cache path input
-	HitFocusZoomIn   // focus the zoom-in browser-shortcut key input
-	HitFocusZoomOut  // focus the zoom-out browser-shortcut key input
-	HitTheme         // Value = "system"|"light"|"dark"
-	HitSignInBrowser // Value = "default"|"firefox"|"chrome"|"safari"|"edge" (sign-in browser)
-	HitBrowserTabs   // Value = "multi"|"single" (web-preview browser tab mode)
-	HitBrowserChrome // Value = "shown"|"hidden" (web-preview toolbar/urlbar visibility)
-	HitCloseSettings // leave the settings view
+	HitDeleteProfile    // Profile = index
+	HitRenameProfile    // focus the rename field for Profile = index
+	HitSelectKind       // Value = source kind for the add-subscription palette
+	HitAddSub           // commit the channel input into the edited profile
+	HitRemoveSub        // Profile = index, Sub = subscription index
+	HitFocusChannel     // focus the add-channel input
+	HitFocusCache       // focus the media-cache path input
+	HitFocusZoomIn      // focus the zoom-in browser-shortcut key input
+	HitFocusZoomOut     // focus the zoom-out browser-shortcut key input
+	HitTheme            // Value = "system"|"light"|"dark"
+	HitSignInBrowser    // Value = "default"|"firefox"|"chrome"|"safari"|"edge" (sign-in browser)
+	HitBrowserTabs      // Value = "multi"|"single" (web-preview browser tab mode)
+	HitBrowserChrome    // Value = "shown"|"hidden" (web-preview toolbar/urlbar visibility)
+	HitClearRenderCache // empty the web-preview render cache
+	HitCloseSettings    // leave the settings view
 
 	// Accounts-view actions (Mode == ModeAccounts):
 	HitAccounts            // the sidebar 👤 Accounts entry (open the accounts editor)
@@ -325,8 +326,13 @@ type Scene struct {
 	// need not push updates. logSource is nil when no recorder is wired.
 	logSource func() []LogEntry
 	logScroll panelScroll
-	logRowH   int
-	logBackR  toolkit.Rect
+
+	// renderCacheStats reports the web-preview render cache's current size (pages,
+	// bytes) for the Settings caption. Injected by the app (nil under the CLI /
+	// bare-scene paths, where the caption shows an empty cache).
+	renderCacheStats func() (pages, bytes int)
+	logRowH          int
+	logBackR         toolkit.Rect
 
 	// The log row list is the reader's first surface on the toolkit's container/layout
 	// stack: an mvvm.ObservableList drives a toolkit.Container (VBox layout) via

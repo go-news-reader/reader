@@ -353,6 +353,20 @@ func (s *Scene) layoutSettings() {
 	})
 	y += btnH + pad
 
+	// RENDER CACHE: a "Clear render cache" button plus a caption showing the
+	// current size, so a rendered page is not re-rendered when re-selected and the
+	// cache can be dropped on demand.
+	label(pad, y, "RENDER CACHE")
+	y += m.side.height + gap
+	pages, cbytes := 0, 0
+	if s.renderCacheStats != nil {
+		pages, cbytes = s.renderCacheStats()
+	}
+	label(pad, y, itoa(pages)+" pages cached ("+itoa(cbytes>>20)+" MB)")
+	y += m.side.height + gap
+	s.layoutBtnRow(pad, y, []sButton{{label: "Clear render cache", kind: HitClearRenderCache}})
+	y += btnH + pad
+
 	// ZOOM SHORTCUT KEYS: two single-rune fields for the Ctrl/Cmd + key binding
 	// that zooms the web preview in / out.
 	label(pad, y, "ZOOM SHORTCUT KEYS (with Ctrl/Cmd)")

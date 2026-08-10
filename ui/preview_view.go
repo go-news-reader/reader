@@ -315,6 +315,60 @@ func (s *Scene) BrowserFocused() bool { return s.browserFocused }
 // reconstructed images, not web pages, so they never return a URL here.
 func (s *Scene) WebPreviewURL(it source.Item) string { return webPreviewURL(it) }
 
+// PrefetchWebURLs returns up to n distinct web-renderable target URLs for the
+// feed items immediately adjacent to it (previous, then next, then the ones just
+// beyond), for background pre-rendering so selecting a neighbour is instant. It
+// has no side effects — it does not scroll or change the selection, unlike
+// [Scene.NavItem]. Items with no web target (Usenet posts, text-only posts) are
+// skipped; a mismatch (it not in the feed) yields nothing.
+func (s *Scene) PrefetchWebURLs(it source.Item, n int) []string {
+	if n <= 0 {
+		return nil
+	}
+	cards := make([]int, 0, len(s.rows))
+	for i, r := range s.rows {
+		if r.group == nil {
+			cards = append(cards, i)
+		}
+	}
+	cur := -1
+	for ci, ri := range cards {
+		if sameItem(s.rows[ri].item, it) {
+			cur = ci
+			break
+		}
+	}
+	if cur < 0 {
+		return nil
+	}
+	var out []string
+	// Nearest neighbours first (prev, next), then one step further out.
+	for _, off := range []int{-1, 1, -2, 2} {
+		if len(out) >= n {
+			break
+		}
+		j := cur + off
+		if j < 0 || j >= len(cards) {
+			continue
+		}
+		u := webPreviewURL(s.rows[cards[j]].item)
+		if u == "" {
+			continue
+		}
+		dup := false
+		for _, e := range out {
+			if e == u {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
 func webPreviewURL(it source.Item) string {
 	if it.Source == source.Usenet {
 		return ""

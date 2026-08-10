@@ -288,6 +288,8 @@ func (h *Handler) runHit(hit ui.Hit) {
 	case ui.HitBrowserChrome:
 		s.SetBrowserChromeHidden(hit.Value == "hidden") // web-preview toolbar visibility
 		h.a.ApplySceneSettings()
+	case ui.HitClearRenderCache:
+		h.a.ClearRenderCache() // drop every cached web-preview render
 	case ui.HitAccounts:
 		vm.OpenAccounts.Execute()
 	case ui.HitCloseAccounts:

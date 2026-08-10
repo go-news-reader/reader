@@ -110,6 +110,18 @@ type App struct {
 	webFetch  func(target string, width int)
 	webRender webrender.Renderer
 
+	// rcache caches final web-preview renders keyed by (url, width) so a page is
+	// not re-rendered when it is re-selected or navigated back to. lastRenderWidth
+	// records the content width the browser last asked to render at (UI-thread
+	// only), so a prefetch warms the same (url, width) the next navigation will
+	// request. prefetchFetch triggers a background pre-render (a field so tests use
+	// a synchronous variant); prefetchSem bounds it to prefetchWorkers concurrent
+	// background renders, and a saturated pool simply skips rather than blocking.
+	rcache          *renderCache
+	lastRenderWidth int
+	prefetchFetch   func(url string, width int)
+	prefetchSem     chan struct{}
+
 	// Web-preview open debounce for rapid keyboard navigation: arrowing through
 	// the feed selects each item, and opening a browser tab (which renders the
 	// page) per item is wasteful. SelectAdjacent arms the open instead of firing
@@ -119,8 +131,8 @@ type App struct {
 	// the main thread).
 	frameCount        uint64
 	webArmed          bool
+	webArmItem        source.Item
 	webArmURL         string
-	webArmTitle       string
 	webArmAt          uint64
 	webDebounceFrames uint64
 
@@ -268,16 +280,35 @@ func New(cfg Config) *App {
 		go a.loadMediaThumbs(context.Background(), reqs)
 	}
 	a.webRender = webrender.New()
+	a.rcache = newRenderCache(renderCacheMaxBytes)
 	a.webFetch = func(target string, width int) {
 		go a.loadPreviewPage(context.Background(), target, width)
 	}
+	a.prefetchSem = make(chan struct{}, prefetchWorkers)
+	a.prefetchFetch = func(url string, width int) {
+		// Bounded, non-blocking: acquire a worker slot or skip — a prefetch must
+		// never stall the UI or queue unbounded work.
+		select {
+		case a.prefetchSem <- struct{}{}:
+		default:
+			return
+		}
+		go func() {
+			defer func() { <-a.prefetchSem }()
+			a.doPrefetch(context.Background(), url, width)
+		}()
+	}
 	// The embedded browser's navigation seam: a tab open / link click / typed
 	// address / Back / Forward / Reload asks the host to render a page; run it
-	// through the (test-substitutable) webFetch.
+	// through the (test-substitutable) webFetch. Record the width so a prefetch
+	// warms the same content width the next navigation will request.
 	a.scene.Browser().OnNavigate = func(target string, width int) {
+		a.lastRenderWidth = width
 		a.scene.SyncBookmarkStar() // reflect whether the just-navigated page is bookmarked
 		a.webFetch(target, width)
 	}
+	// The Settings view shows the live render-cache size.
+	a.scene.SetRenderCacheStats(a.RenderCacheStats)
 	// The address-bar star toggles the current page's bookmark + persists it.
 	a.scene.Browser().OnBookmarkToggle = func(on bool) {
 		a.scene.SetBookmarked(a.scene.Browser().CurrentURL(), on)
