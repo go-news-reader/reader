@@ -1230,6 +1230,8 @@ func sourceLabel(k source.Kind) string {
 		return "IG"
 	case source.TikTok:
 		return "TikTok"
+	case source.Redgifs:
+		return "RedGIFs"
 	default:
 		return string(k)
 	}
@@ -1258,6 +1260,8 @@ func sourceColor(k source.Kind) toolkit.RGBA {
 		return rgb(0xE1306C)
 	case source.TikTok:
 		return rgb(0x25F4EE)
+	case source.Redgifs:
+		return rgb(0xFF2E63)
 	default:
 		return rgb(0x888888)
 	}

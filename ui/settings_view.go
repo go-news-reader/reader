@@ -60,6 +60,7 @@ type sChip struct {
 var settingsKinds = []source.Kind{
 	source.Reddit, source.HackerNews, source.Syndication,
 	source.Bluesky, source.Lemmy, source.Mastodon, source.Usenet,
+	source.Redgifs,
 }
 
 // signInBrowsers is the sign-in-browser picker (label + persisted value), in

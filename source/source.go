@@ -41,6 +41,7 @@ const (
 	Twitter     Kind = "twitter" // X
 	Instagram   Kind = "instagram"
 	TikTok      Kind = "tiktok"
+	Redgifs     Kind = "redgifs" // adult short-video host
 )
 
 // MediaKind classifies an attachment on an [Item].

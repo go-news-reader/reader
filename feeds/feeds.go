@@ -28,6 +28,7 @@ import (
 	"github.com/go-news-reader/reader/provider/lemmy"
 	"github.com/go-news-reader/reader/provider/mastodon"
 	"github.com/go-news-reader/reader/provider/reddit"
+	"github.com/go-news-reader/reader/provider/redgifs"
 	"github.com/go-news-reader/reader/provider/syndication"
 	"github.com/go-news-reader/reader/provider/tiktok"
 	"github.com/go-news-reader/reader/provider/twitter"
@@ -89,6 +90,7 @@ func Registry(opts Options) *source.Registry {
 	r.Register(newHackerNews(hc))
 	r.Register(newBluesky(hc))
 	r.Register(newSyndication(hc))
+	r.Register(newRedgifs(hc))
 
 	// Best-effort scrapers; credentials optional.
 	r.Register(newInstagram(hc, opts.InstagramSession))
@@ -168,6 +170,13 @@ func newBluesky(hc *http.Client) source.Provider {
 func newSyndication(hc *http.Client) source.Provider {
 	// The syndication provider already takes an *http.Client (nil => default).
 	return syndication.New(hc)
+}
+
+func newRedgifs(hc *http.Client) source.Provider {
+	if hc != nil {
+		return redgifs.NewWithHTTPClient(hc)
+	}
+	return redgifs.New()
 }
 
 func newInstagram(hc *http.Client, session string) source.Provider {

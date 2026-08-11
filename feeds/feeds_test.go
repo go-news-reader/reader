@@ -20,7 +20,7 @@ func TestRegistryAlwaysOn(t *testing.T) {
 	r := Registry(Options{})
 	kinds := r.Kinds()
 	// Anonymous + best-effort providers are always registered.
-	for _, k := range []source.Kind{source.Reddit, source.HackerNews, source.Bluesky, source.Syndication, source.Instagram, source.TikTok, source.Twitter} {
+	for _, k := range []source.Kind{source.Reddit, source.HackerNews, source.Bluesky, source.Syndication, source.Instagram, source.TikTok, source.Twitter, source.Redgifs} {
 		if !has(kinds, k) {
 			t.Errorf("expected %q always registered", k)
 		}
@@ -50,9 +50,9 @@ func TestRegistryConfigGated(t *testing.T) {
 			t.Errorf("expected %q registered with config", k)
 		}
 	}
-	// All ten providers present.
-	if len(kinds) != 10 {
-		t.Fatalf("want 10 providers, got %d: %v", len(kinds), kinds)
+	// All eleven providers present.
+	if len(kinds) != 11 {
+		t.Fatalf("want 11 providers, got %d: %v", len(kinds), kinds)
 	}
 }
 
@@ -80,8 +80,8 @@ func TestRegistryWithRecorder(t *testing.T) {
 		TikTokMSToken:       "m",
 		TikTokSession:       "ts",
 	})
-	if len(r.Kinds()) != 10 {
-		t.Fatalf("want 10 providers with recorder, got %d: %v", len(r.Kinds()), r.Kinds())
+	if len(r.Kinds()) != 11 {
+		t.Fatalf("want 11 providers with recorder, got %d: %v", len(r.Kinds()), r.Kinds())
 	}
 }
 
