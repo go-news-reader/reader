@@ -36,8 +36,8 @@ func TestImgurDirect(t *testing.T) {
 		kind source.MediaKind
 		ok   bool
 	}{
-		{"gifv on page host", "https://imgur.com/abc123.gifv", "https://i.imgur.com/abc123.mp4", vid, true},
-		{"gifv on cdn host", "https://i.imgur.com/abc123.gifv", "https://i.imgur.com/abc123.mp4", vid, true},
+		{"gifv on page host", "https://imgur.com/abc123.gifv", "https://i.imgur.com/abc123.gif", img, true},
+		{"gifv on cdn host", "https://i.imgur.com/abc123.gifv", "https://i.imgur.com/abc123.gif", img, true},
 		{"cdn jpg kept", "https://i.imgur.com/abc123.jpg", "https://i.imgur.com/abc123.jpg", img, true},
 		{"cdn png kept", "https://i.imgur.com/abc123.png", "https://i.imgur.com/abc123.png", img, true},
 		{"cdn mp4 kept", "https://i.imgur.com/abc123.mp4", "https://i.imgur.com/abc123.mp4", vid, true},
@@ -72,10 +72,10 @@ func TestResolveImgur(t *testing.T) {
 	if !resolveImgur(&it, "https://imgur.com/xyz.gifv") {
 		t.Fatal("expected imgur match")
 	}
-	if it.Link != "https://i.imgur.com/xyz.mp4" {
+	if it.Link != "https://i.imgur.com/xyz.gif" {
 		t.Fatalf("Link = %q", it.Link)
 	}
-	if len(it.Media) != 1 || it.Media[0].Kind != source.MediaVideo || it.Media[0].URL != "https://i.imgur.com/xyz.mp4" {
+	if len(it.Media) != 1 || it.Media[0].Kind != source.MediaImage || it.Media[0].URL != "https://i.imgur.com/xyz.gif" {
 		t.Fatalf("media = %+v", it.Media)
 	}
 	// A non-match leaves the item untouched.
@@ -148,8 +148,8 @@ func TestResolveRedgifs(t *testing.T) {
 		if f.sawID != "someid" {
 			t.Errorf("id passed = %q, want lower-cased", f.sawID)
 		}
-		if it.Link != "https://m/hd.mp4" {
-			t.Errorf("Link = %q", it.Link)
+		if it.Link != "https://m/p.jpg" {
+			t.Errorf("Link = %q, want the poster (mp4 is unplayable)", it.Link)
 		}
 		if !hasMedia(it, source.MediaVideo, "https://m/hd.mp4") || !hasMedia(it, source.MediaImage, "https://m/p.jpg") {
 			t.Errorf("media = %+v", it.Media)
@@ -168,8 +168,8 @@ func TestResolveRedgifs(t *testing.T) {
 		if !pr.resolveRedgifs(context.Background(), &it, base) {
 			t.Fatal("expected resolution")
 		}
-		if it.Link != "https://m/sd.mp4" {
-			t.Errorf("Link = %q, want the SD fallback", it.Link)
+		if it.Link != "https://m/t.jpg" {
+			t.Errorf("Link = %q, want the thumbnail poster", it.Link)
 		}
 		if !hasMedia(it, source.MediaImage, "https://m/t.jpg") {
 			t.Errorf("poster should fall back to thumbnail: %+v", it.Media)
@@ -188,12 +188,27 @@ func TestResolveRedgifs(t *testing.T) {
 		}
 	})
 
-	t.Run("no video url", func(t *testing.T) {
+	t.Run("poster only, no video", func(t *testing.T) {
 		f := &fakeRedgifs{gif: &redgifs.Gif{URLs: redgifs.GifURLs{Poster: "https://m/p.jpg"}}}
 		pr := NewWithClient(&fakeFetcher{}).WithRedgifs(f)
 		it := source.Item{}
+		if !pr.resolveRedgifs(context.Background(), &it, base) {
+			t.Fatal("a poster-only gif should still resolve (show the poster)")
+		}
+		if it.Link != "https://m/p.jpg" {
+			t.Errorf("Link = %q, want the poster", it.Link)
+		}
+		if len(it.Media) != 1 || it.Media[0].Kind != source.MediaImage {
+			t.Errorf("media = %+v, want image (poster) only", it.Media)
+		}
+	})
+
+	t.Run("no poster and no video", func(t *testing.T) {
+		f := &fakeRedgifs{gif: &redgifs.Gif{URLs: redgifs.GifURLs{}}}
+		pr := NewWithClient(&fakeFetcher{}).WithRedgifs(f)
+		it := source.Item{}
 		if pr.resolveRedgifs(context.Background(), &it, base) {
-			t.Fatal("a gif with no video URL should not resolve")
+			t.Fatal("nothing to show should not resolve (keep Reddit's static poster)")
 		}
 	})
 
@@ -262,8 +277,8 @@ func TestMapPostRedgifsDispatch(t *testing.T) {
 		"url":"https://redgifs.com/watch/xyz","permalink":"/r/gifs/comments/rg/g/",
 		"preview":{"images":[{"source":{"url":"https://external-preview.redd.it/rg.jpg"}}]}}`)
 	it := feedOne(t, p, f)
-	if it.Link != "https://m/hd.mp4" {
-		t.Fatalf("Link = %q, want the resolved redgifs mp4", it.Link)
+	if it.Link != "https://m/p.jpg" {
+		t.Fatalf("Link = %q, want the resolved redgifs poster (mp4 is unplayable)", it.Link)
 	}
 	if !hasMedia(it, source.MediaVideo, "https://m/hd.mp4") || !hasMedia(it, source.MediaImage, "https://m/p.jpg") {
 		t.Fatalf("media = %+v", it.Media)

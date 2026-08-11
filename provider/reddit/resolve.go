@@ -57,10 +57,13 @@ func imgurDirect(raw string) (string, source.MediaKind, bool) {
 	if !isImgurHost(strings.ToLower(u.Host)) {
 		return "", "", false
 	}
-	// An imgur ".gifv" is a video wrapper on any imgur host; its mp4 lives on the
-	// i.imgur.com CDN.
+	// An imgur ".gifv" is an HTML5 wrapper for the same animation, available on the
+	// i.imgur.com CDN as ".gif" AND ".mp4". Resolve to the ".gif": the reader
+	// animates GIFs in the preview (playAnimatedGIF) but cannot play an mp4, so the
+	// mp4 form would show nothing. (imgur's own .gifv/.mp4 endpoints also return an
+	// HTML wrapper, not raw video, to a non-browser fetch.)
 	if lp := strings.ToLower(u.Path); strings.HasSuffix(lp, ".gifv") {
-		return "https://i.imgur.com" + u.Path[:len(u.Path)-len(".gifv")] + ".mp4", source.MediaVideo, true
+		return "https://i.imgur.com" + u.Path[:len(u.Path)-len(".gifv")] + ".gif", source.MediaImage, true
 	}
 	if strings.EqualFold(u.Host, "i.imgur.com") {
 		lp := strings.ToLower(u.Path)
@@ -148,19 +151,30 @@ func (pr *Provider) resolveRedgifs(ctx context.Context, it *source.Item, p gored
 	if video == "" {
 		video = g.URLs.SD
 	}
-	if video == "" {
-		return false
-	}
-	it.Link = video
-	it.Media = append(it.Media, source.Media{
-		URL:    video,
-		Kind:   source.MediaVideo,
-		Width:  g.Width,
-		Height: g.Height,
-	})
 	poster := g.URLs.Poster
 	if poster == "" {
 		poster = g.URLs.Thumbnail
+	}
+	// RedGIFs serves mp4/webm only (no GIF), and the reader has no video player, so
+	// a bare mp4 Link would render blank. Display the POSTER image instead (the
+	// engine paints it full-width) and keep the mp4 as a secondary media entry for
+	// a future player. With no poster and no video there is nothing to resolve, so
+	// fall back to Reddit's own static preview.
+	if poster == "" && video == "" {
+		return false
+	}
+	if poster != "" {
+		it.Link = poster
+	} else {
+		it.Link = video
+	}
+	if video != "" {
+		it.Media = append(it.Media, source.Media{
+			URL:    video,
+			Kind:   source.MediaVideo,
+			Width:  g.Width,
+			Height: g.Height,
+		})
 	}
 	if poster != "" {
 		it.Media = append(it.Media, source.Media{URL: poster, Kind: source.MediaImage})

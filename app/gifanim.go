@@ -141,6 +141,12 @@ func (a *App) clearActiveGIF() {
 // (so the Network log records it and fingerprinting hosts serve it) and returns
 // the raw body, bounded to maxGIFBytes. It is the default gifFetch seam.
 func (a *App) fetchGIFBytes(ctx context.Context, url string) ([]byte, error) {
+	// Serve a previously-fetched GIF straight from the on-disk media cache: no
+	// network, so re-opening a GIF post is instant (and survives restarts). Only
+	// the download path pays the cost, once.
+	if data, ok := a.mediaCache.Get(url); ok {
+		return data, nil
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -153,7 +159,12 @@ func (a *App) fetchGIFBytes(ctx context.Context, url string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, errBadGIFStatus
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, maxGIFBytes))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxGIFBytes))
+	if err != nil {
+		return nil, err
+	}
+	a.mediaCache.Put(url, data)
+	return data, nil
 }
 
 // errBadGIFStatus is returned by fetchGIFBytes for a non-200 response, so a

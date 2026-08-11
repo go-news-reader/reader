@@ -9,6 +9,7 @@ import (
 	"image/gif"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -261,7 +262,9 @@ func TestFetchGIFBytes(t *testing.T) {
 	ctx := context.Background()
 	body := threeFrameGIF(t)
 
+	var hits int32
 	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&hits, 1)
 		w.Write(body)
 	}))
 	defer ok.Close()
@@ -272,6 +275,15 @@ func TestFetchGIFBytes(t *testing.T) {
 	if err != nil || !bytes.Equal(got, body) {
 		t.Fatalf("fetch ok: err=%v len=%d want=%d", err, len(got), len(body))
 	}
+	// A second fetch of the same URL is served from the on-disk media cache — no
+	// network — so re-opening a GIF post is instant.
+	got2, err := a.fetchGIFBytes(ctx, ok.URL)
+	if err != nil || !bytes.Equal(got2, body) {
+		t.Fatalf("cache hit: err=%v len=%d want=%d", err, len(got2), len(body))
+	}
+	if n := atomic.LoadInt32(&hits); n != 1 {
+		t.Fatalf("second fetch hit the network (%d requests); should be served from cache", n)
+	}
 
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -280,6 +292,19 @@ func TestFetchGIFBytes(t *testing.T) {
 	a.mediaClient = bad.Client()
 	if _, err := a.fetchGIFBytes(ctx, bad.URL); err == nil || err.Error() != "gif fetch: non-200 status" {
 		t.Fatalf("non-200: err=%v, want errBadGIFStatus", err)
+	}
+
+	// A truncated body (declared longer than sent, then the connection drops)
+	// makes io.ReadAll error after the request succeeded.
+	short := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("truncated"))
+	}))
+	defer short.Close()
+	a.mediaClient = short.Client()
+	if _, err := a.fetchGIFBytes(ctx, short.URL+"/short.gif"); err == nil {
+		t.Fatal("a truncated body should error on read")
 	}
 
 	// Transport error: a server that is already closed.
