@@ -28,6 +28,7 @@ import (
 	"github.com/go-news-reader/reader/internal/webrender"
 	"github.com/go-news-reader/reader/provider/usenet"
 	"github.com/go-news-reader/reader/source"
+	"github.com/go-news-reader/reader/sourceplugin"
 	"github.com/go-news-reader/reader/ui"
 )
 
@@ -55,6 +56,14 @@ type App struct {
 	recorder    *httplog.Recorder
 	baseOpts    feeds.Options
 	newRegistry func(feeds.Options) *source.Registry
+
+	// pluginProviders are the feed sources discovered as external plugin binaries
+	// (loaded over gRPC via hashicorp/go-plugin) at startup. They are held so each
+	// registry rebuild (ApplyAccounts) re-registers the same running plugins
+	// instead of respawning their subprocesses. pluginLoader is the discovery seam
+	// (default sourceplugin.Load) so tests inject fakes and never spawn processes.
+	pluginProviders []source.Provider
+	pluginLoader    func(dir string) ([]source.Provider, func() error, error)
 
 	// cookieFinder imports a browser session cookie (Firefox) so the user can sign
 	// into Reddit in their browser and have the reader pick it up. An interface so
@@ -314,6 +323,7 @@ func New(cfg Config) *App {
 		reg: cfg.Registry, store: cfg.Store, set: set,
 		subs: set.ActiveProfile().Subs, scene: scene,
 		recorder: cfg.Recorder, baseOpts: cfg.Options, newRegistry: feeds.Registry,
+		pluginLoader: sourceplugin.Load,
 		cookieFinder: browsercookies.New(),
 		osName:       cfg.OS, dark: cfg.Dark, lastRev: -1,
 		webDebounceFrames: 9, // ~150ms at 60fps: fetch only after arrowing settles
@@ -404,7 +414,40 @@ func New(cfg Config) *App {
 	})
 	a.vm.Profile.Set(set.Active) // seed the active-profile observable
 	bindScene(a)
+
+	// Discover external feed-source plugins and register them; a missing plugins
+	// directory is a no-op, so a fresh install with no plugins is unaffected.
+	a.loadPlugins()
 	return a
+}
+
+// loadPlugins discovers external feed-source plugin binaries in the settings'
+// plugins directory and registers each into the current registry. The
+// discovered providers are retained so a later registry rebuild (ApplyAccounts)
+// re-registers the same running plugins rather than respawning them. A directory
+// that cannot be read leaves the reader running with only its built-in and
+// already-loaded sources. The plugin subprocesses live for the reader's session
+// and are reaped by go-plugin when the reader exits, so no close hook is held.
+func (a *App) loadPlugins() {
+	provs, _, err := a.pluginLoader(a.set.PluginsDirOrDefault())
+	if err != nil {
+		return
+	}
+	a.pluginProviders = provs
+	a.registerPlugins()
+}
+
+// registerPlugins registers every discovered plugin provider into the current
+// registry (a no-op before a registry exists, or when no plugins were found).
+// Plugins register after the built-ins, so a plugin may override a built-in of
+// the same kind.
+func (a *App) registerPlugins() {
+	if a.reg == nil {
+		return
+	}
+	for _, p := range a.pluginProviders {
+		a.reg.Register(p)
+	}
 }
 
 // DeferSceneWrites routes view-model→scene mutations through a render-thread
@@ -676,6 +719,7 @@ func (a *App) rebuildRegistry() {
 	opts := AccountsToOptions(a.baseOpts, a.set.Accounts)
 	opts.Recorder = a.recorder
 	a.reg = a.newRegistry(opts)
+	a.registerPlugins() // re-register the running plugins into the fresh registry
 	a.applyUsenetServer()
 }
 

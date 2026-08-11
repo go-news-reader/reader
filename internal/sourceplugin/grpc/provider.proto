@@ -1,0 +1,71 @@
+// Package sourcepb carries the wire types for the reader's out-of-process
+// feed-source plugins. The SourceProvider service mirrors source.Provider
+// (Kind + Feed) and ItemMsg/MediaMsg mirror source.Item/source.Media, so a
+// plugin binary can serve normalized items to the host over gRPC.
+syntax = "proto3";
+
+package sourceplugin.v1;
+
+option go_package = "github.com/go-news-reader/reader/internal/sourceplugin/grpc;sourcepb";
+
+// MediaMsg mirrors source.Media: one attachment on an item.
+message MediaMsg {
+  string url = 1;
+  string kind = 2; // source.MediaKind
+  int32 width = 3;
+  int32 height = 4;
+  string alt_text = 5;
+}
+
+// ItemMsg mirrors source.Item: one normalized entry. Every serializable field
+// of source.Item is represented so the round trip is lossless.
+message ItemMsg {
+  string id = 1;
+  string source = 2; // source.Kind
+  string channel = 3;
+  string title = 4;
+  string author = 5;
+  string body = 6;
+  string permalink = 7;
+  string link = 8;
+  repeated MediaMsg media = 9;
+  int32 score = 10;
+  int32 comments = 11;
+  int64 created = 12;
+  bool nsfw = 13;
+  bool pinned = 14;
+  repeated string tags = 15;
+  int32 group_count = 16;
+  int32 group_high = 17;
+}
+
+// KindRequest is the (empty) argument of SourceProvider.Kind.
+message KindRequest {}
+
+// KindReply carries the plugin's source.Kind as a string.
+message KindReply {
+  string kind = 1;
+}
+
+// FeedRequest mirrors source.Query.
+message FeedRequest {
+  string channel = 1;
+  string sort = 2;
+  string cursor = 3;
+  int32 limit = 4;
+}
+
+// FeedReply mirrors source.Result plus a transported error string: a non-empty
+// error means the plugin's Feed failed and the host reconstitutes a Go error
+// from it (so a provider error crosses the process boundary cleanly).
+message FeedReply {
+  repeated ItemMsg items = 1;
+  string cursor = 2;
+  string error = 3;
+}
+
+// SourceProvider is the gRPC face of source.Provider.
+service SourceProvider {
+  rpc Kind(KindRequest) returns (KindReply);
+  rpc Feed(FeedRequest) returns (FeedReply);
+}

@@ -41,8 +41,15 @@ jobs:
       # it is still vet-ed above and cross-built in the cross-build job below).
       - name: Test internal/window (seam helpers; boundary excluded from gate)
         run: go test ./internal/window/...
-      - name: Test with coverage (all packages except the window boundary)
-        run: go test -covermode=set -coverprofile=cover.out $(go list ./... | grep -vE '/internal/window($|/)')
+      # internal/sourceplugin/grpc is generated protobuf/gRPC code and
+      # internal/sourceplugin/transport is the hashicorp/go-plugin subprocess glue;
+      # like internal/window these are boundaries that cannot reach 100% line
+      # coverage in-process, so they are excluded from the gate (their logic — the
+      # Item<->proto mapping and the host's dir-scan/adapter — lives in the gated
+      # protoconv and sourceplugin packages, tested to 100%, and the whole path is
+      # exercised end-to-end by building+launching cmd/example-source-plugin).
+      - name: Test with coverage (all packages except the window boundary and the plugin transport)
+        run: go test -covermode=set -coverprofile=cover.out $(go list ./... | grep -vE '/(internal/(window|sourceplugin/grpc|sourceplugin/transport)|cmd/example-source-plugin)($|/)')
       - name: Enforce 100% coverage
         run: |
           pct=$(go tool cover -func=cover.out | awk '/^total:/ {print $3}' | tr -d '%')
@@ -68,7 +75,7 @@ jobs:
         with:
           go-version: "1.26.4"
       - name: Test with the race detector (all packages except the window boundary)
-        run: go test -race -timeout 20m $(go list ./... | grep -vE '/internal/window($|/)')
+        run: go test -race -timeout 20m $(go list ./... | grep -vE '/(internal/(window|sourceplugin/grpc|sourceplugin/transport)|cmd/example-source-plugin)($|/)')
 
   cross-build:
     runs-on: ubuntu-latest

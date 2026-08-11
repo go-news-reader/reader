@@ -96,6 +96,14 @@ type Settings struct {
 	// it through [Settings.InfiniteScrollEnabled], which applies that default.
 	InfiniteScroll *bool `json:"infiniteScroll,omitempty"`
 
+	// PluginsDir is where the reader looks for external feed-source plugin
+	// executables (loaded over gRPC via hashicorp/go-plugin). Empty — the default
+	// for a fresh install or a settings file predating the field — means the
+	// standard per-user location; read the effective directory through
+	// [Settings.PluginsDirOrDefault]. Set it to point the reader at a custom
+	// directory of plugin binaries.
+	PluginsDir string `json:"pluginsDir,omitempty"`
+
 	// PreviewTextScale multiplies the reader/preview text size (a text/self
 	// post's title, body and meta, and the header of any previewed post). The
 	// A−/A+ controls in the preview toolbar adjust it. DefaultPreviewTextScale
@@ -308,6 +316,29 @@ func defaultCachePath() string {
 		return ""
 	}
 	return filepath.Join(dir, appDir)
+}
+
+// pluginsSubdir is the per-user plugins directory name under appDir.
+const pluginsSubdir = "plugins"
+
+// defaultPluginsDir is the per-user feed-source plugins directory, or "" when the
+// OS config dir cannot be resolved (a headless environment with no HOME).
+func defaultPluginsDir() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, appDir, pluginsSubdir)
+}
+
+// PluginsDirOrDefault reports the effective feed-source plugins directory: the
+// configured [Settings.PluginsDir] when set, otherwise the standard per-user
+// location (which may be "" on a headless host with no config dir).
+func (s *Settings) PluginsDirOrDefault() string {
+	if s.PluginsDir != "" {
+		return s.PluginsDir
+	}
+	return defaultPluginsDir()
 }
 
 // Default returns the seed settings: a single "Home" profile that already
