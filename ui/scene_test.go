@@ -550,7 +550,8 @@ func TestMuteAndRpx(t *testing.T) {
 
 func TestSourceLabelAndColor(t *testing.T) {
 	kinds := []source.Kind{source.Reddit, source.HackerNews, source.Syndication, source.Usenet,
-		source.Mastodon, source.Lemmy, source.Bluesky, source.Twitter, source.Instagram, source.TikTok, source.Kind("weird")}
+		source.Mastodon, source.Lemmy, source.Bluesky, source.Twitter, source.Instagram, source.TikTok,
+		source.Redgifs, source.Kind("weird")}
 	for _, k := range kinds {
 		if sourceLabel(k) == "" {
 			t.Fatalf("empty label for %q", k)

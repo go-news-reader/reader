@@ -36,6 +36,13 @@ type client interface {
 	UserProfile(ctx context.Context, username string) (*goig.Profile, error)
 }
 
+// follower lists the accounts the authenticated user follows, paging the private
+// friendships endpoint. The real *goig.Client satisfies it; tests supply a fake.
+type follower interface {
+	CurrentUserID(ctx context.Context) (string, error)
+	Following(ctx context.Context, userID, maxID string) (*goig.FollowingPage, error)
+}
+
 // Provider fetches a public Instagram profile's recent posts as items, and — for
 // the reserved "home"/"following" channels — the authenticated home timeline.
 type Provider struct {
@@ -50,6 +57,12 @@ type Provider struct {
 	csrf      string
 	appID     string
 	homeBase  string
+
+	// Follow-import plumbing. follow lists the authenticated user's follows, and
+	// userID is the viewer's own id lifted from the ds_user_id cookie when the
+	// imported session carried one (else resolved through follow.CurrentUserID).
+	follow follower
+	userID string
 }
 
 // New returns a provider. session is an optional Instagram session for
@@ -76,14 +89,20 @@ func newWith(hc *http.Client, session string) *Provider {
 	if sessionID != "" {
 		opts = append(opts, goig.WithSessionID(sessionID))
 	}
+	if csrf != "" {
+		opts = append(opts, goig.WithCSRFToken(csrf))
+	}
+	gc := goig.New(opts...)
 	return &Provider{
-		client:    goig.New(opts...),
+		client:    gc,
 		hasCred:   sessionID != "",
 		hc:        hc,
 		sessionID: sessionID,
 		csrf:      csrf,
 		appID:     goig.DefaultAppID,
 		homeBase:  goig.DefaultBaseURL,
+		follow:    gc,
+		userID:    cookieValue(session, "ds_user_id"),
 	}
 }
 

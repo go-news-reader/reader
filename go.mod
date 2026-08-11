@@ -4,12 +4,12 @@ go 1.26.4
 
 require (
 	github.com/go-atproto/atproto v0.1.0
-	github.com/go-birdsite/twitter v0.2.0
+	github.com/go-birdsite/twitter v0.3.0
 	github.com/go-browserhttp/browserhttp v0.2.0
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-iconoir/iconoir v0.1.0
 	github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38
-	github.com/go-instagram/instagram v0.1.0
+	github.com/go-instagram/instagram v0.2.0
 	github.com/go-lemmy/lemmy v0.1.0
 	github.com/go-macos/objc v0.1.0
 	github.com/go-mastodon/mastodon v0.2.0
@@ -21,7 +21,7 @@ require (
 	github.com/go-opentype/fonts v0.7.0
 	github.com/go-reddit/reddit v0.9.0
 	github.com/go-syndication/feed v0.1.1
-	github.com/go-tiktok/tiktok v0.1.0
+	github.com/go-tiktok/tiktok v0.2.0
 	github.com/go-webengine/engine v0.3.10
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.9.0

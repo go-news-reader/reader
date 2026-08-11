@@ -38,6 +38,12 @@ type client interface {
 	UserTweets(ctx context.Context, screenName string) (*gotw.Timeline, error)
 }
 
+// follower pages the accounts the authenticated user follows via the private
+// GraphQL Following query. The real *gotw.Client satisfies it; tests supply a fake.
+type follower interface {
+	Following(ctx context.Context, userID, cursor string) (*gotw.FollowingPage, error)
+}
+
 // Provider fetches a public account's tweets as normalized items, and — for the
 // reserved "home"/"following" channels — the authenticated home timeline.
 type Provider struct {
@@ -50,6 +56,12 @@ type Provider struct {
 	authToken string
 	csrf      string
 	homeBase  string
+
+	// Follow-import plumbing. follow pages the Following list, and followUserID is
+	// the viewer's own numeric id lifted from the twid cookie of the imported
+	// session (the Following query keys on it).
+	follow       follower
+	followUserID string
 }
 
 // New returns a provider. Public timelines need no auth token — the reader
@@ -79,12 +91,20 @@ func newWith(hc *http.Client, session string) *Provider {
 	if hc == nil {
 		hc = browserhttp.NewClient(defaultTimeout)
 	}
+	authToken := cookieValue(session, "auth_token")
+	csrf := cookieValue(session, "ct0")
+	gc := gotw.New(
+		gotw.WithHTTPClient(hc),
+		gotw.WithSessionCookies(authToken, csrf),
+	)
 	return &Provider{
-		client:    gotw.New(gotw.WithHTTPClient(hc)),
-		hc:        hc,
-		authToken: cookieValue(session, "auth_token"),
-		csrf:      cookieValue(session, "ct0"),
-		homeBase:  defaultHomeBase,
+		client:       gc,
+		hc:           hc,
+		authToken:    authToken,
+		csrf:         csrf,
+		homeBase:     defaultHomeBase,
+		follow:       gc,
+		followUserID: viewerID(session),
 	}
 }
 

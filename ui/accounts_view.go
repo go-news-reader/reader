@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"sort"
 	"strings"
 
 	"github.com/go-widgets/painter"
@@ -148,6 +149,19 @@ func (s *Scene) SetFollowImportKinds(kinds []source.Kind) {
 // subscriptions" affordance (its registered provider implements
 // source.FollowImporter).
 func (s *Scene) canImportFollows(k source.Kind) bool { return s.followImportKinds[k] }
+
+// FollowImportKinds returns the source kinds currently marked follow-capable, in
+// lexical order — the set [Scene.SetFollowImportKinds] last recorded. It lets a
+// caller (and tests) read back which providers offer the "Import subscriptions"
+// action without going through the accounts-editor hit test.
+func (s *Scene) FollowImportKinds() []source.Kind {
+	ks := make([]source.Kind, 0, len(s.followImportKinds))
+	for k := range s.followImportKinds {
+		ks = append(ks, k)
+	}
+	sort.Slice(ks, func(i, j int) bool { return ks[i] < ks[j] })
+	return ks
+}
 
 // FocusAccountField gives keyboard focus to a credential field.
 func (s *Scene) FocusAccountField(key string) { s.accFocus = key; s.touch() }

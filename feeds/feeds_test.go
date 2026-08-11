@@ -122,3 +122,32 @@ func TestLoggedClient(t *testing.T) {
 		t.Fatal("recorder should yield a client with a logging transport")
 	}
 }
+
+// TestFollowImporterProviders asserts the social providers whose accounts can be
+// connected implement source.FollowImporter, so the app's syncFollowImportKinds
+// offers the "import my subscriptions" action for each. Reddit and Mastodon are
+// the pre-existing importers; Instagram, X/Twitter and TikTok are the ones this
+// change adds. Only kinds a provider actually implements the interface for are
+// listed by syncFollowImportKinds, so this is the wiring the button hangs on.
+func TestFollowImporterProviders(t *testing.T) {
+	r := Registry(Options{MastodonInstance: "https://mastodon.example"})
+	for _, k := range []source.Kind{
+		source.Reddit, source.Mastodon,
+		source.Instagram, source.Twitter, source.TikTok,
+	} {
+		p, ok := r.Get(k)
+		if !ok {
+			t.Fatalf("%s provider not registered", k)
+		}
+		if _, isImp := p.(source.FollowImporter); !isImp {
+			t.Errorf("%s provider does not implement source.FollowImporter", k)
+		}
+	}
+
+	// A provider without the capability (Hacker News) must NOT be an importer, so
+	// the action is offered for exactly the follow-capable sources.
+	hn, _ := r.Get(source.HackerNews)
+	if _, isImp := hn.(source.FollowImporter); isImp {
+		t.Error("hackernews unexpectedly implements source.FollowImporter")
+	}
+}

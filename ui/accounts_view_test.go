@@ -308,7 +308,11 @@ func TestAccountsImportSessionButtonScrolls(t *testing.T) {
 func TestAccountsImportSubsButton(t *testing.T) {
 	s := New(1100, 700, ThemeFor(OSLinux, false))
 	// Reddit and Mastodon can import follows; Usenet cannot.
-	s.SetFollowImportKinds([]source.Kind{source.Reddit, source.Mastodon})
+	s.SetFollowImportKinds([]source.Kind{source.Mastodon, source.Reddit})
+	// The getter reports the recorded set back, in lexical order.
+	if got := s.FollowImportKinds(); len(got) != 2 || got[0] != source.Mastodon || got[1] != source.Reddit {
+		t.Fatalf("FollowImportKinds() = %v, want [mastodon reddit]", got)
+	}
 	s.OpenAccounts() // Reddit selected by default
 	s.layoutAccounts()
 	if s.accImportSubsR.W == 0 {

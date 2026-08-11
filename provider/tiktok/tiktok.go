@@ -40,6 +40,12 @@ type client interface {
 	UserPosts(ctx context.Context, secUid string, count int, cursor string) (*gott.UserFeed, error)
 }
 
+// follower pages the accounts a user follows via TikTok's web user-list endpoint.
+// The real *gott.Client satisfies it; tests supply a fake.
+type follower interface {
+	Following(ctx context.Context, secUid string, count int, maxCursor string) (*gott.FollowingList, error)
+}
+
 // Provider fetches a TikTok user's recent videos as items, and — for the
 // reserved "home"/"following" channels — attempts the authenticated following
 // feed.
@@ -54,6 +60,13 @@ type Provider struct {
 	msToken  string
 	session  string
 	homeBase string
+
+	// Follow-import plumbing. follow pages the web user-list endpoint, and
+	// followSecUID is the viewer's own secUid the following list keys on — which a
+	// pure-Go client cannot obtain without TikTok's signing, so it is empty in
+	// production and MyFollows reports the wall (set only in tests).
+	follow       follower
+	followSecUID string
 }
 
 // New returns a provider. msToken and sessionID are optional credentials for
@@ -78,13 +91,15 @@ func newWith(hc *http.Client, msToken, sessionID string) *Provider {
 	if sessionID != "" {
 		opts = append(opts, gott.WithSessionID(sessionID))
 	}
+	gc := gott.New(opts...)
 	return &Provider{
-		client:   gott.New(opts...),
+		client:   gc,
 		hasCred:  msToken != "" || sessionID != "",
 		hc:       hc,
 		msToken:  msToken,
 		session:  sessionID,
 		homeBase: gott.DefaultBaseURL,
+		follow:   gc,
 	}
 }
 

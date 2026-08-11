@@ -153,3 +153,38 @@ func hasSubIn(subs []source.Subscription, k source.Kind, ch string) bool {
 	}
 	return false
 }
+
+// TestSyncFollowImportKindsIncludesSocial asserts that when providers implement
+// source.FollowImporter — as Instagram, X/Twitter and TikTok now do — App's
+// syncFollowImportKinds (run at construction) records exactly those kinds on the
+// scene, so the accounts editor offers each its "Import subscriptions" button. A
+// plain provider (no MyFollows) is excluded.
+func TestSyncFollowImportKindsIncludesSocial(t *testing.T) {
+	a := New(Config{
+		Registry: newReg(
+			fakeFollowProv{kind: source.Instagram},
+			fakeFollowProv{kind: source.Twitter},
+			fakeFollowProv{kind: source.TikTok},
+			fakeProv{kind: source.HackerNews}, // not a FollowImporter
+		),
+		Width: 400, Height: 300,
+	})
+	got := a.Scene().FollowImportKinds()
+	for _, k := range []source.Kind{source.Instagram, source.TikTok, source.Twitter} {
+		if !hasKind(got, k) {
+			t.Errorf("FollowImportKinds %v missing %s", got, k)
+		}
+	}
+	if hasKind(got, source.HackerNews) {
+		t.Errorf("FollowImportKinds %v must not include the plain hackernews provider", got)
+	}
+}
+
+func hasKind(ks []source.Kind, k source.Kind) bool {
+	for _, x := range ks {
+		if x == k {
+			return true
+		}
+	}
+	return false
+}
