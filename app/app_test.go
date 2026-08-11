@@ -21,15 +21,20 @@ import (
 	"github.com/go-news-reader/reader/ui"
 )
 
-// fakeCookieFinder is a redditCookieImporter stub for the Firefox-import tests.
+// fakeCookieFinder is a cookieImporter stub for the Firefox-import tests. rs/err
+// drive RedditSession; session/err drive the social-provider session importers.
 type fakeCookieFinder struct {
-	rs  browsercookies.RedditSession
-	err error
+	rs      browsercookies.RedditSession
+	session string
+	err     error
 }
 
 func (f fakeCookieFinder) RedditSession() (browsercookies.RedditSession, error) {
 	return f.rs, f.err
 }
+func (f fakeCookieFinder) InstagramSession() (string, error) { return f.session, f.err }
+func (f fakeCookieFinder) TikTokSession() (string, error)    { return f.session, f.err }
+func (f fakeCookieFinder) TwitterSession() (string, error)   { return f.session, f.err }
 
 // hasRGB reports whether an RGBA buffer contains any pixel of the given colour.
 func hasRGB(buf []byte, r, g, b uint8) bool {
@@ -599,6 +604,113 @@ func TestImportRedditSessionFromFirefoxFailure(t *testing.T) {
 	}
 }
 
+func TestImportSessionFromFirefoxSuccess(t *testing.T) {
+	cases := []struct {
+		kind     source.Kind
+		wantOpts func(feeds.Options) string
+	}{
+		{source.Instagram, func(o feeds.Options) string { return o.InstagramSession }},
+		{source.TikTok, func(o feeds.Options) string { return o.TikTokSession }},
+		{source.Twitter, func(o feeds.Options) string { return o.TwitterSession }},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			set := &settings.Settings{
+				Profiles: []settings.Profile{{Name: "Home"}}, Active: 0, Theme: settings.ThemeSystem,
+			}
+			path := filepath.Join(t.TempDir(), "s.json")
+			a := New(Config{
+				Registry: newReg(fakeProv{kind: tc.kind}), Settings: set,
+				Store: settings.NewStore(path), OS: ui.OSMac,
+			})
+			var gotOpts feeds.Options
+			a.SetRegistryBuilder(func(o feeds.Options) *source.Registry { gotOpts = o; return newReg() })
+			a.SetRefreshHook(func() {})
+			a.SetCookieFinder(fakeCookieFinder{session: "SESSION-STR"})
+
+			a.Scene().OpenAccounts()
+			a.Scene().SelectAccount(tc.kind)
+			ok, err := a.ImportSessionFromFirefox()
+			if err != nil || !ok {
+				t.Fatalf("import = %v, %v; want true, nil", ok, err)
+			}
+			if got := tc.wantOpts(gotOpts); got != "SESSION-STR" {
+				t.Fatalf("%s session not applied to rebuilt options: %q", tc.kind, got)
+			}
+			loaded, err := settings.NewStore(path).Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			acct, ok := loaded.Account(tc.kind)
+			if !ok || acct.Fields["session"] != "SESSION-STR" {
+				t.Fatalf("session not persisted: %+v ok=%v", acct, ok)
+			}
+			if !strings.Contains(a.VM().Status.Get(), "Imported") {
+				t.Fatalf("status = %q", a.VM().Status.Get())
+			}
+		})
+	}
+}
+
+func TestImportSessionFromFirefoxUnsupported(t *testing.T) {
+	// Reddit selected: the generic importer does not handle it (Reddit has its own
+	// richer flow), so it reports the typed unsupported error and rebuilds nothing.
+	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit}), OS: ui.OSMac})
+	a.SetRefreshHook(func() {})
+	rebuilt := false
+	a.SetRegistryBuilder(func(feeds.Options) *source.Registry { rebuilt = true; return newReg() })
+	a.SetCookieFinder(fakeCookieFinder{session: "x"})
+	a.Scene().OpenAccounts() // Reddit selected by default
+	ok, err := a.ImportSessionFromFirefox()
+	if ok || !errors.Is(err, errUnsupportedSessionImport) {
+		t.Fatalf("import = %v, %v; want false, errUnsupportedSessionImport", ok, err)
+	}
+	if rebuilt {
+		t.Fatal("an unsupported import must not rebuild the registry")
+	}
+	if !strings.Contains(a.VM().Status.Get(), "no session import") {
+		t.Fatalf("status = %q", a.VM().Status.Get())
+	}
+}
+
+func TestImportSessionFromFirefoxFailure(t *testing.T) {
+	a := New(Config{Registry: newReg(fakeProv{kind: source.Instagram}), OS: ui.OSMac})
+	a.SetRefreshHook(func() {})
+	a.SetRegistryBuilder(func(feeds.Options) *source.Registry { return newReg() })
+	a.Scene().OpenAccounts()
+	a.Scene().SelectAccount(source.Instagram)
+
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"no cookie", browsercookies.ErrNoCookie, "not signed in in Firefox"},
+		{"no firefox", browsercookies.ErrNoFirefox, "Firefox not found"},
+		{"no profile", browsercookies.ErrNoProfile, "no readable Firefox profile"},
+		{"other", errors.New("disk exploded"), "disk exploded"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a.SetCookieFinder(fakeCookieFinder{err: tc.err})
+			ok, err := a.ImportSessionFromFirefox()
+			if ok || err == nil {
+				t.Fatalf("import = %v, %v; want false, err", ok, err)
+			}
+			if got := a.VM().Status.Get(); !strings.Contains(got, tc.want) {
+				t.Fatalf("status = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	// With a non-Firefox sign-in browser, the failure spells out the Firefox-only
+	// limitation.
+	a.Scene().SetSignInBrowser(settings.SignInBrowserChrome)
+	a.SetCookieFinder(fakeCookieFinder{err: browsercookies.ErrNoCookie})
+	if _, _ = a.ImportSessionFromFirefox(); !strings.Contains(a.VM().Status.Get(), "requires Firefox") {
+		t.Fatalf("non-Firefox hint missing: %q", a.VM().Status.Get())
+	}
+}
+
 func TestLaunchRedditSignIn(t *testing.T) {
 	a := New(Config{Registry: newReg(fakeProv{kind: source.Reddit}), OS: ui.OSMac})
 	a.SetRefreshHook(func() {})
@@ -682,6 +794,7 @@ func TestAccountsToOptions(t *testing.T) {
 		{Kind: source.Usenet, Fields: map[string]string{"addr": "news:119", "tls": "true", "username": "usr", "password": "pw", "indexer_url": "https://ix", "indexer_key": "k"}},
 		{Kind: source.Instagram, Fields: map[string]string{"session": "ig"}},
 		{Kind: source.TikTok, Fields: map[string]string{"ms_token": "ms", "session": "ts"}},
+		{Kind: source.Twitter, Fields: map[string]string{"session": "auth_token=at; ct0=c"}},
 	}
 	o := AccountsToOptions(feeds.Options{}, accts)
 	if o.RedditSessionCookie != "reddit_session=xyz" {
@@ -696,6 +809,9 @@ func TestAccountsToOptions(t *testing.T) {
 	}
 	if o.InstagramSession != "ig" || o.TikTokMSToken != "ms" || o.TikTokSession != "ts" {
 		t.Fatalf("scraper mapping wrong: %+v", o)
+	}
+	if o.TwitterSession != "auth_token=at; ct0=c" {
+		t.Fatalf("twitter session mapping wrong: %+v", o)
 	}
 
 	// tls "false" clears; an empty field leaves the base untouched (setIf skip);

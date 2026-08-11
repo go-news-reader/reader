@@ -451,12 +451,15 @@ func TestAccountsRouting(t *testing.T) {
 	}
 }
 
-// fakeImporter is a redditCookieImporter stub for the Firefox-import routing test.
+// fakeImporter is a cookieImporter stub for the Firefox-import routing tests.
 type fakeImporter struct{ v string }
 
 func (f fakeImporter) RedditSession() (browsercookies.RedditSession, error) {
 	return browsercookies.RedditSession{Value: f.v, Host: ".reddit.com"}, nil
 }
+func (f fakeImporter) InstagramSession() (string, error) { return "sessionid=" + f.v, nil }
+func (f fakeImporter) TikTokSession() (string, error)    { return "sessionid=" + f.v, nil }
+func (f fakeImporter) TwitterSession() (string, error)   { return "auth_token=" + f.v, nil }
 
 func TestImportRedditFirefoxRouting(t *testing.T) {
 	a := profApp(t)
@@ -477,6 +480,26 @@ func TestImportRedditFirefoxRouting(t *testing.T) {
 	acct, ok := s.Settings().Account(source.Reddit)
 	if !ok || acct.Fields["session_cookie"] != "FF-COOKIE" {
 		t.Fatalf("Firefox import did not store the cookie: %+v ok=%v", acct, ok)
+	}
+}
+
+func TestImportSessionRouting(t *testing.T) {
+	a := profApp(t)
+	a.SetCookieFinder(fakeImporter{v: "FF"})
+	a.SetRegistryBuilder(func(feeds.Options) *source.Registry { return source.NewRegistry() })
+	h := New(a)
+	s := a.Scene()
+
+	// Selecting Instagram surfaces the generic "Import session from Firefox" button;
+	// clicking it routes to app.ImportSessionFromFirefox, which stores the cookie in
+	// the Instagram account's "session" field.
+	click(t, h, ui.HitAccounts)
+	s.SelectAccount(source.Instagram)
+	click(t, h, ui.HitImportSession)
+
+	acct, ok := s.Settings().Account(source.Instagram)
+	if !ok || acct.Fields["session"] != "sessionid=FF" {
+		t.Fatalf("session import did not store the cookie: %+v ok=%v", acct, ok)
 	}
 }
 

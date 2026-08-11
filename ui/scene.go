@@ -136,6 +136,7 @@ const (
 	HitImportRedditFirefox // the Reddit editor's "Import session from Firefox" button
 	HitImportRedditSubs    // the Reddit editor's "Import subscriptions" button (pull the account's subreddits)
 	HitRedditSignIn        // the Reddit editor's "Sign in to Reddit in browser" button
+	HitImportSession       // the Instagram/TikTok/X editor's "Import session from Firefox" button
 
 	// Reddit search view actions (Mode == ModeSearch):
 	HitSearchReddit        // the sidebar "🔍 Search Reddit" entry (open the search view)
@@ -248,18 +249,19 @@ type Scene struct {
 	// Accounts editor (ModeAccounts) state. accBuf holds the editable credential
 	// values per provider (seeded from settings.Accounts); accSel is the provider
 	// being edited; accFocus is the focused field key ("" = none).
-	accBuf         map[source.Kind]map[string]string
-	accSel         source.Kind
-	accFocus       string
-	accScroll      panelScroll
-	accLabels      []sLabel
-	accProvBtns    []accProvBtn
-	accRows        []accFieldRow
-	accBackR       toolkit.Rect
-	accDoneR       toolkit.Rect
-	accImportR     toolkit.Rect // Reddit-only "Import session from Firefox" button (zero when hidden)
-	accImportSubsR toolkit.Rect // Reddit-only "Import subscriptions" button (zero when hidden)
-	accSignInR     toolkit.Rect // Reddit-only "Sign in to Reddit in browser" button (zero when hidden)
+	accBuf            map[source.Kind]map[string]string
+	accSel            source.Kind
+	accFocus          string
+	accScroll         panelScroll
+	accLabels         []sLabel
+	accProvBtns       []accProvBtn
+	accRows           []accFieldRow
+	accBackR          toolkit.Rect
+	accDoneR          toolkit.Rect
+	accImportR        toolkit.Rect // Reddit-only "Import session from Firefox" button (zero when hidden)
+	accImportSubsR    toolkit.Rect // Reddit-only "Import subscriptions" button (zero when hidden)
+	accSignInR        toolkit.Rect // Reddit-only "Sign in to Reddit in browser" button (zero when hidden)
+	accImportSessionR toolkit.Rect // Instagram/TikTok/X "Import session from Firefox" button (zero when hidden)
 
 	// Optional decoded thumbnails keyed by Item.ID (blitted when present).
 	Thumbs map[string]*image.RGBA

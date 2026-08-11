@@ -346,6 +346,11 @@ func (h *Handler) runHit(hit ui.Hit) {
 		// Launch Reddit's login page in the configured sign-in browser so the user
 		// can authenticate there (then, with Firefox, import the session cookie).
 		_ = h.a.LaunchRedditSignIn()
+	case ui.HitImportSession:
+		// Import the logged-in session cookie of the selected social provider
+		// (Instagram/TikTok/X) from the user's Firefox profile; the app persists it,
+		// rebuilds the registry and re-aggregates, reporting on the status line.
+		_, _ = h.a.ImportSessionFromFirefox()
 	default:
 		// A press over no interactive target (HitNone) that is NOT a selectable
 		// reading surface just blurs the topbar search. When it IS selectable the

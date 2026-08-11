@@ -66,9 +66,9 @@ type App struct {
 	pluginLoader    func(dir string) ([]source.Provider, func() error, error)
 
 	// cookieFinder imports a browser session cookie (Firefox) so the user can sign
-	// into Reddit in their browser and have the reader pick it up. An interface so
-	// tests inject a fake with no real profile on disk.
-	cookieFinder redditCookieImporter
+	// into a provider in their browser and have the reader pick it up. An interface
+	// so tests inject a fake with no real profile on disk.
+	cookieFinder cookieImporter
 
 	// openInBrowser launches url in the named browser (default|firefox|chrome|
 	// safari|edge) for a provider sign-in flow. The window front-end injects it
@@ -549,15 +549,18 @@ func (a *App) ApplyAccounts() {
 	a.refresh()
 }
 
-// redditCookieImporter reads the logged-in reddit_session cookie from a local
-// browser (Firefox). The app depends on this narrow interface so tests can
-// substitute a fake without a real browser profile.
-type redditCookieImporter interface {
+// cookieImporter reads the logged-in session cookies of the supported providers
+// from a local browser (Firefox). The app depends on this narrow interface so
+// tests can substitute a fake without a real browser profile.
+type cookieImporter interface {
 	RedditSession() (browsercookies.RedditSession, error)
+	InstagramSession() (string, error)
+	TikTokSession() (string, error)
+	TwitterSession() (string, error)
 }
 
 // SetCookieFinder overrides the browser-cookie importer (tests inject a fake).
-func (a *App) SetCookieFinder(f redditCookieImporter) { a.cookieFinder = f }
+func (a *App) SetCookieFinder(f cookieImporter) { a.cookieFinder = f }
 
 // SetURLOpener installs the browser opener used by browser sign-in flows: f
 // launches a URL in the named browser (default|firefox|chrome|safari|edge). The
@@ -632,6 +635,54 @@ func (a *App) ImportRedditSessionFromFirefox() (bool, error) {
 	return true, nil
 }
 
+// ImportSessionFromFirefox lifts the logged-in session cookie of the account
+// currently selected in the editor (Instagram, TikTok or X) out of the user's
+// Firefox profile and installs it as that provider's "session" field, then
+// commits through ApplyAccounts so the authenticated home/following timeline
+// takes effect immediately. Reddit uses its own richer flow
+// (ImportRedditSessionFromFirefox); an unsupported selection is a no-op. It
+// reports whether a cookie was imported and surfaces success/failure on the
+// status line.
+func (a *App) ImportSessionFromFirefox() (bool, error) {
+	kind := a.scene.SelectedAccount()
+	value, label, err := a.importSessionFor(kind)
+	if err != nil {
+		msg := label + " import failed: " + sessionImportHint(err)
+		if a.scene.SignInBrowser() != settings.SignInBrowserFirefox {
+			msg += " — cookie import currently requires Firefox"
+		}
+		a.vm.SetStatus(msg)
+		return false, err
+	}
+	a.scene.SetAccountField(kind, "session", value)
+	a.ApplyAccounts() // persist + rebuild registry (provider→authenticated) + re-aggregate
+	a.vm.SetStatus("Imported " + label + " session from Firefox")
+	return true, nil
+}
+
+// errUnsupportedSessionImport is returned by [App.ImportSessionFromFirefox] when
+// the selected provider has no browser-session import (e.g. Reddit, which has its
+// own flow, or a provider without a session cookie).
+var errUnsupportedSessionImport = errors.New("no session import for this provider")
+
+// importSessionFor imports the selected provider's session cookie string from
+// Firefox and returns it with the provider's display label.
+func (a *App) importSessionFor(kind source.Kind) (value, label string, err error) {
+	switch kind {
+	case source.Instagram:
+		value, err = a.cookieFinder.InstagramSession()
+		return value, "Instagram", err
+	case source.TikTok:
+		value, err = a.cookieFinder.TikTokSession()
+		return value, "TikTok", err
+	case source.Twitter:
+		value, err = a.cookieFinder.TwitterSession()
+		return value, "X", err
+	default:
+		return "", string(kind), errUnsupportedSessionImport
+	}
+}
+
 // redditSubImporter is the narrow slice of the Reddit provider that lists the
 // authenticated account's subreddit subscriptions.
 type redditSubImporter interface {
@@ -697,6 +748,21 @@ func (a *App) ImportRedditSubscriptions(ctx context.Context) (int, error) {
 	return added, nil
 }
 
+// sessionImportHint turns a browser-cookie session-import failure into a short,
+// provider-neutral status message (used by the Instagram/TikTok/X import).
+func sessionImportHint(err error) string {
+	switch {
+	case errors.Is(err, browsercookies.ErrNoCookie):
+		return "not signed in in Firefox"
+	case errors.Is(err, browsercookies.ErrNoFirefox):
+		return "Firefox not found"
+	case errors.Is(err, browsercookies.ErrNoProfile):
+		return "no readable Firefox profile"
+	default:
+		return err.Error()
+	}
+}
+
 // importFailureHint turns a browser-cookie import error into a short,
 // user-actionable status message.
 func importFailureHint(err error) string {
@@ -760,6 +826,8 @@ func AccountsToOptions(base feeds.Options, accts []settings.Account) feeds.Optio
 		case source.TikTok:
 			setIf(&out.TikTokMSToken, a.Fields["ms_token"])
 			setIf(&out.TikTokSession, a.Fields["session"])
+		case source.Twitter:
+			setIf(&out.TwitterSession, a.Fields["session"])
 		}
 	}
 	return out

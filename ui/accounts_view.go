@@ -28,6 +28,26 @@ const (
 	redditImportSubsLabel = "Import subscriptions"
 )
 
+// importSessionLabel captions the one-click Firefox import shown for the social
+// providers that authenticate with a session cookie (Instagram, TikTok, X).
+const importSessionLabel = "Import session from Firefox"
+
+// hasSessionField reports whether provider k authenticates with a plain "session"
+// cookie field (Instagram, TikTok, X) — the providers that get the generic
+// import-from-Firefox affordance. Reddit is excluded: it uses its own
+// "session_cookie" field and its own richer button row.
+func hasSessionField(k source.Kind) bool {
+	if k == source.Reddit {
+		return false
+	}
+	for _, f := range credsFor(k).Fields {
+		if f.Key == "session" {
+			return true
+		}
+	}
+	return false
+}
+
 // accProvBtn is one provider pill in the selector.
 type accProvBtn struct {
 	rect   toolkit.Rect
@@ -287,6 +307,17 @@ func (s *Scene) layoutAccounts() {
 		y += btnH + gap
 	}
 
+	// Instagram / TikTok / X get a single one-click "Import session from Firefox"
+	// button — the same affordance as Reddit's, lifting the logged-in session
+	// cookie out of the user's Firefox profile so the home/following timeline can
+	// authenticate. Other providers show none (the rect stays zero).
+	s.accImportSessionR = toolkit.Rect{}
+	if hasSessionField(s.accSel) {
+		lw := m.tab.width(importSessionLabel) + rpxOf(s, 24)
+		s.accImportSessionR = toolkit.Rect{X: pad, Y: y, W: lw, H: btnH}
+		y += btnH + gap
+	}
+
 	// Everything above was laid out unscrolled; clamp the offset (the refresh-time
 	// clamp, robust to a resize) and shift the scrollable body up by it. The topbar
 	// Back/Done live in the fixed band and are not shifted — mirrors layoutSettings.
@@ -309,6 +340,9 @@ func (s *Scene) layoutAccounts() {
 		}
 		if s.accSignInR.W > 0 {
 			s.accSignInR.Y += dy
+		}
+		if s.accImportSessionR.W > 0 {
+			s.accImportSessionR.Y += dy
 		}
 	}
 }
@@ -387,6 +421,12 @@ func (s *Scene) drawAccounts(buf []byte) {
 		w.SetBounds(s.accImportSubsR)
 		w.Draw(p, th)
 	}
+	if s.accImportSessionR.W > 0 {
+		w := &toolkit.Button{Label: importSessionLabel}
+		w.Font = pillFont
+		w.SetBounds(s.accImportSessionR)
+		w.Draw(p, th)
+	}
 
 	// Topbar (accent) with Back, title and Done, over any scroll overflow.
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
@@ -416,6 +456,9 @@ func (s *Scene) accountsHitTest(x, y int) Hit {
 	}
 	if s.accImportSubsR.W > 0 && inRect(s.accImportSubsR, x, y) {
 		return Hit{Kind: HitImportRedditSubs}
+	}
+	if s.accImportSessionR.W > 0 && inRect(s.accImportSessionR, x, y) {
+		return Hit{Kind: HitImportSession}
 	}
 	for _, b := range s.accProvBtns {
 		if inRect(b.rect, x, y) {

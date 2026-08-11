@@ -72,6 +72,10 @@ type Options struct {
 	InstagramSession string
 	TikTokMSToken    string
 	TikTokSession    string
+	// TwitterSession is the user's logged-in X cookie string
+	// ("auth_token=…; ct0=…"), which unlocks the authenticated home timeline
+	// (the "home"/"following" channels). Public timelines need no credential.
+	TwitterSession string
 
 	// Recorder, when set, captures every provider's HTTP exchanges so the app's
 	// Network log can display them. Nil disables logging (each provider keeps its
@@ -95,7 +99,7 @@ func Registry(opts Options) *source.Registry {
 	// Best-effort scrapers; credentials optional.
 	r.Register(newInstagram(hc, opts.InstagramSession))
 	r.Register(newTikTok(hc, opts.TikTokMSToken, opts.TikTokSession))
-	r.Register(newTwitter(hc))
+	r.Register(newTwitter(hc, opts.TwitterSession))
 
 	// Require mandatory endpoint config.
 	if opts.MastodonInstance != "" {
@@ -193,7 +197,10 @@ func newTikTok(hc *http.Client, msToken, session string) source.Provider {
 	return tiktok.New(msToken, session)
 }
 
-func newTwitter(hc *http.Client) source.Provider {
+func newTwitter(hc *http.Client, session string) source.Provider {
+	if session != "" {
+		return twitter.NewWithSession(hc, session)
+	}
 	if hc != nil {
 		return twitter.NewWithHTTPClient(hc)
 	}

@@ -291,9 +291,14 @@ func CredentialSchema() []ProviderCreds {
 			{Key: "ms_token", Label: "ms_token", Secret: true},
 			{Key: "session", Label: "Session cookie", Secret: true},
 		}},
-		// X / Twitter has no credential fields: public timelines need no auth, and
-		// the official API (the only source of a bearer token) is paywalled and
-		// unused here — so a "Bearer token" field would be dead, misleading UI.
+		// X / Twitter: public timelines need no auth, but the authenticated home
+		// ("home"/"following") timeline needs the logged-in browser's session
+		// cookie ("auth_token=…; ct0=…") — the same import-from-Firefox path as
+		// Reddit. The official paywalled bearer API is still unused, so there is no
+		// bearer-token field.
+		{Kind: source.Twitter, Label: "X (Twitter)", Fields: []CredField{
+			{Key: "session", Label: "Session cookie (auth_token; ct0)", Secret: true},
+		}},
 	}
 }
 

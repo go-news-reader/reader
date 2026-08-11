@@ -1,11 +1,16 @@
 // Package twitter adapts the standalone github.com/go-birdsite/twitter
-// best-effort client to the aggregator's source.Provider contract. The query
-// channel is a public account screen name (with or without a leading "@").
+// best-effort client to the aggregator's source.Provider contract. A public
+// account screen name (with or without a leading "@") as the query channel
+// fetches that account's tweets; the reserved channels "home"/"following" fetch
+// the logged-in user's home timeline through X's private GraphQL endpoint.
 //
 // This provider is inherently fragile: Twitter/X locks these endpoints and
-// changes their shape without notice. It does NOT need an auth token for public
-// timelines — it needs a browser-fingerprinting HTTP client, which is what the
-// endpoint actually checks.
+// changes their shape without notice. Public timelines do NOT need an auth token
+// — they need a browser-fingerprinting HTTP client, which is what the syndication
+// endpoint checks. The home timeline is different: it needs the logged-in
+// auth_token + ct0 (CSRF) cookies, which the reader imports from the browser, and
+// a GraphQL query id that X rotates. When those are absent or X rejects the read,
+// it is reported as a typed sign-in prompt rather than a crash or a fake feed.
 package twitter
 
 import (
@@ -33,31 +38,54 @@ type client interface {
 	UserTweets(ctx context.Context, screenName string) (*gotw.Timeline, error)
 }
 
-// Provider fetches a public account's tweets as normalized items.
+// Provider fetches a public account's tweets as normalized items, and — for the
+// reserved "home"/"following" channels — the authenticated home timeline.
 type Provider struct {
 	client client
+
+	// Home-timeline plumbing. hc performs the raw GraphQL request, authToken +
+	// csrf (the auth_token + ct0 cookies) authenticate it, and homeBase is the
+	// request origin (overridden in tests to a local server).
+	hc        *http.Client
+	authToken string
+	csrf      string
+	homeBase  string
 }
 
 // New returns a provider. Public timelines need no auth token — the reader
 // reads them through the syndication endpoint (see newWith).
-func New() *Provider { return newWith(nil) }
+func New() *Provider { return newWith(nil, "") }
 
 // NewWithHTTPClient returns a provider whose reads go through hc (e.g. the
 // shared, request-logging client so the Network log captures Twitter/X traffic).
 func NewWithHTTPClient(hc *http.Client) *Provider {
-	return newWith(hc)
+	return newWith(hc, "")
+}
+
+// NewWithSession returns a provider that can additionally read the authenticated
+// home timeline, using session — a full X cookie string ("auth_token=…; ct0=…")
+// from a signed-in browser. Public-timeline reads are unaffected.
+func NewWithSession(hc *http.Client, session string) *Provider {
+	return newWith(hc, session)
 }
 
 // newWith builds the provider. When the caller supplies no client this builds a
 // browser-fingerprint one rather than falling back to net/http's default: the
 // syndication endpoint answers 429 to Go's stock transport whatever the account
 // quota says, because it fingerprints the TLS/HTTP2 handshake. The stock client
-// is not a degraded path here, it is a guaranteed failure.
-func newWith(hc *http.Client) *Provider {
+// is not a degraded path here, it is a guaranteed failure. session, when a full
+// cookie string, unlocks the home timeline (auth_token + ct0 are lifted from it).
+func newWith(hc *http.Client, session string) *Provider {
 	if hc == nil {
 		hc = browserhttp.NewClient(defaultTimeout)
 	}
-	return &Provider{client: gotw.New(gotw.WithHTTPClient(hc))}
+	return &Provider{
+		client:    gotw.New(gotw.WithHTTPClient(hc)),
+		hc:        hc,
+		authToken: cookieValue(session, "auth_token"),
+		csrf:      cookieValue(session, "ct0"),
+		homeBase:  defaultHomeBase,
+	}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
@@ -66,9 +94,14 @@ func NewWithClient(c client) *Provider { return &Provider{client: c} }
 // Kind reports source.Twitter.
 func (p *Provider) Kind() source.Kind { return source.Twitter }
 
-// Feed returns the recent tweets of the account named by Query.Channel. Not
-// paginated here, so Result.Cursor is always empty.
+// Feed returns items for the query. The reserved channels "home" and "following"
+// fetch the authenticated home timeline; any other channel is a public account
+// screen name whose recent tweets are returned (the public path is not
+// paginated, so its Result.Cursor is empty).
 func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, error) {
+	if isHomeChannel(q.Channel) {
+		return p.homeFeed(ctx, q)
+	}
 	name := strings.TrimPrefix(strings.TrimSpace(q.Channel), "@")
 	if name == "" {
 		return source.Result{}, ErrNoChannel

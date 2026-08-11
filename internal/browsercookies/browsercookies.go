@@ -207,50 +207,38 @@ func resolveProfilePath(sections []iniSection) string {
 // [ErrNoProfile] when the cookies database cannot be located, and [ErrNoCookie]
 // when the user is not logged into Reddit.
 func (f *Finder) RedditSession() (RedditSession, error) {
-	dir, err := f.ProfileDir()
+	dbPath, err := f.cookieDBPath()
 	if err != nil {
 		return RedditSession{}, err
-	}
-	dbPath := filepath.Join(dir, "cookies.sqlite")
-	if _, err := os.Stat(dbPath); err != nil {
-		if os.IsNotExist(err) {
-			return RedditSession{}, fmt.Errorf("%w: %s missing", ErrNoProfile, dbPath)
-		}
-		return RedditSession{}, fmt.Errorf("%w: %v", ErrNoProfile, err)
 	}
 	return readRedditSession(dbPath)
 }
 
-// readRedditSession copies the cookie database to a private temp location
-// (dodging Firefox's WAL lock) and queries the copy for the reddit_session
-// cookie. The temp copies are always cleaned up.
-func readRedditSession(dbPath string) (RedditSession, error) {
-	tmpDir, err := mkdirTemp("", "rd-ffcookies-")
+// cookieDBPath resolves the default Firefox profile's cookies.sqlite, returning
+// [ErrNoFirefox]/[ErrNoProfile] when the profile or database cannot be located.
+func (f *Finder) cookieDBPath() (string, error) {
+	dir, err := f.ProfileDir()
 	if err != nil {
-		return RedditSession{}, err
+		return "", err
 	}
-	defer os.RemoveAll(tmpDir)
-
-	// Copy the main database plus any WAL/shm sidecars so the copy is consistent
-	// even while Firefox holds the live file open in WAL mode.
-	tmpDB := filepath.Join(tmpDir, "cookies.sqlite")
-	if err := copyFile(dbPath, tmpDB); err != nil {
-		return RedditSession{}, err
-	}
-	for _, suffix := range []string{"-wal", "-shm"} {
-		src := dbPath + suffix
-		if _, statErr := os.Stat(src); statErr == nil {
-			if err := copyFile(src, tmpDB+suffix); err != nil {
-				return RedditSession{}, err
-			}
+	dbPath := filepath.Join(dir, "cookies.sqlite")
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("%w: %s missing", ErrNoProfile, dbPath)
 		}
+		return "", fmt.Errorf("%w: %v", ErrNoProfile, err)
 	}
+	return dbPath, nil
+}
 
-	db, err := sqlOpen("sqlite", "file:"+tmpDB+"?_pragma=busy_timeout(5000)")
+// readRedditSession opens a private copy of the cookie database and queries it for
+// the reddit_session cookie.
+func readRedditSession(dbPath string) (RedditSession, error) {
+	db, cleanup, err := openCookieDB(dbPath)
 	if err != nil {
 		return RedditSession{}, err
 	}
-	defer db.Close()
+	defer cleanup()
 
 	// Prefer the most specific host (longest name) so a scoped cookie wins over a
 	// stale broader one, and require a non-empty value.
@@ -265,6 +253,151 @@ func readRedditSession(dbPath string) (RedditSession, error) {
 		return RedditSession{}, err
 	}
 	return rs, nil
+}
+
+// openCookieDB copies the cookie database (and any WAL/shm sidecars) to a private
+// temp directory — dodging Firefox's live WAL lock — and opens the copy. The
+// returned cleanup closes the handle and removes the temp files; always call it.
+func openCookieDB(dbPath string) (*sql.DB, func(), error) {
+	tmpDir, err := mkdirTemp("", "rd-ffcookies-")
+	if err != nil {
+		return nil, nil, err
+	}
+	removeTmp := func() { _ = os.RemoveAll(tmpDir) }
+
+	// Copy the main database plus any WAL/shm sidecars so the copy is consistent
+	// even while Firefox holds the live file open in WAL mode.
+	tmpDB := filepath.Join(tmpDir, "cookies.sqlite")
+	if err := copyFile(dbPath, tmpDB); err != nil {
+		removeTmp()
+		return nil, nil, err
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		src := dbPath + suffix
+		if _, statErr := os.Stat(src); statErr == nil {
+			if err := copyFile(src, tmpDB+suffix); err != nil {
+				removeTmp()
+				return nil, nil, err
+			}
+		}
+	}
+
+	db, err := sqlOpen("sqlite", "file:"+tmpDB+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		removeTmp()
+		return nil, nil, err
+	}
+	return db, func() { _ = db.Close(); removeTmp() }, nil
+}
+
+// sessionSpec describes how to import one platform's session: which cookies to
+// collect (in output order), which is mandatory, the host-match LIKE patterns,
+// and the hint shown when the mandatory cookie is missing.
+type sessionSpec struct {
+	hostPatterns []string // SQL LIKE patterns, OR-combined
+	primary      string   // the mandatory cookie name
+	names        []string // cookies to collect, in output order
+	signInHint   string   // guidance when the primary cookie is absent
+}
+
+// InstagramSession imports the logged-in Instagram session (sessionid, and
+// csrftoken when present) as a "sessionid=…; csrftoken=…" cookie string ready for
+// the Instagram provider. sessionid is mandatory; without it the user is not
+// logged in ([ErrNoCookie]).
+func (f *Finder) InstagramSession() (string, error) {
+	return f.importSession(sessionSpec{
+		hostPatterns: []string{"%instagram.com"},
+		primary:      "sessionid",
+		names:        []string{"sessionid", "csrftoken"},
+		signInHint:   "log into Instagram in Firefox first",
+	})
+}
+
+// TikTokSession imports the logged-in TikTok session (sessionid, and msToken when
+// present) as a cookie string ready for the TikTok provider. sessionid is
+// mandatory.
+func (f *Finder) TikTokSession() (string, error) {
+	return f.importSession(sessionSpec{
+		hostPatterns: []string{"%tiktok.com"},
+		primary:      "sessionid",
+		names:        []string{"sessionid", "msToken"},
+		signInHint:   "log into TikTok in Firefox first",
+	})
+}
+
+// TwitterSession imports the logged-in X/Twitter session (auth_token + ct0) as an
+// "auth_token=…; ct0=…" cookie string ready for the Twitter provider's home feed.
+// auth_token is mandatory. Host patterns are anchored to the x.com / twitter.com
+// domains so an unrelated "…x.com" host cannot match.
+func (f *Finder) TwitterSession() (string, error) {
+	return f.importSession(sessionSpec{
+		hostPatterns: []string{"x.com", "%.x.com", "twitter.com", "%.twitter.com"},
+		primary:      "auth_token",
+		names:        []string{"auth_token", "ct0"},
+		signInHint:   "log into X in Firefox first",
+	})
+}
+
+// importSession locates the cookies database and reads the session per spec.
+func (f *Finder) importSession(spec sessionSpec) (string, error) {
+	dbPath, err := f.cookieDBPath()
+	if err != nil {
+		return "", err
+	}
+	return readSession(dbPath, spec)
+}
+
+// readSession opens a private copy of the cookie database and assembles the
+// spec's cookies into a "name=value; …" string. It returns [ErrNoCookie] when the
+// mandatory cookie is absent; optional cookies that are missing are simply
+// omitted.
+func readSession(dbPath string, spec sessionSpec) (string, error) {
+	db, cleanup, err := openCookieDB(dbPath)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+
+	var parts []string
+	havePrimary := false
+	for _, name := range spec.names {
+		v, err := lookupCookie(db, name, spec.hostPatterns)
+		if err != nil {
+			return "", err
+		}
+		if v == "" {
+			continue
+		}
+		parts = append(parts, name+"="+v)
+		if name == spec.primary {
+			havePrimary = true
+		}
+	}
+	if !havePrimary {
+		return "", fmt.Errorf("%w: %s (%s)", ErrNoCookie, spec.primary, spec.signInHint)
+	}
+	return strings.Join(parts, "; "), nil
+}
+
+// lookupCookie returns the most-specific-host value of the named cookie whose host
+// matches any of the LIKE patterns, or "" when it is absent.
+func lookupCookie(db *sql.DB, name string, hostPatterns []string) (string, error) {
+	likes := make([]string, len(hostPatterns))
+	args := []any{name}
+	for i, p := range hostPatterns {
+		likes[i] = "host LIKE ?"
+		args = append(args, p)
+	}
+	q := `SELECT value FROM moz_cookies WHERE name = ? AND value <> '' AND (` +
+		strings.Join(likes, " OR ") + `) ORDER BY LENGTH(host) DESC LIMIT 1`
+	var v string
+	switch err := db.QueryRow(q, args...).Scan(&v); {
+	case err == sql.ErrNoRows:
+		return "", nil
+	case err != nil:
+		return "", err
+	}
+	return v, nil
 }
 
 // copyFile copies src to dst byte-for-byte. A cookie database is small (tens of

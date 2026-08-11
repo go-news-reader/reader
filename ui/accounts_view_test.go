@@ -169,7 +169,7 @@ func TestAccountsSidebarEntry(t *testing.T) {
 func TestAccountsScroll(t *testing.T) {
 	// A short window forces the credential form to exceed the viewport so the
 	// scroll path and its clamp run.
-	s := New(360, 240, ThemeFor(OSLinux, false))
+	s := New(360, 60, ThemeFor(OSLinux, false))
 	s.OpenAccounts()
 	s.SelectAccount(source.Usenet) // Usenet's six-field form comfortably overflows
 	s.Scroll(1 << 20)              // to the bottom
@@ -256,6 +256,55 @@ func TestAccountsImportButton(t *testing.T) {
 	}
 }
 
+func TestAccountsImportSessionButton(t *testing.T) {
+	s := New(900, 700, ThemeFor(OSLinux, false))
+	s.OpenAccounts()
+	// Instagram / TikTok / X each show the generic import-session button.
+	for _, k := range []source.Kind{source.Instagram, source.TikTok, source.Twitter} {
+		s.SelectAccount(k)
+		s.layoutAccounts()
+		if s.accImportSessionR.W == 0 {
+			t.Fatalf("%s should show the import-session button", k)
+		}
+		if !hasSessionField(k) {
+			t.Fatalf("%s should be a session-field provider", k)
+		}
+		// Render so the button's draw path runs.
+		buf := make([]byte, s.W*s.H*4)
+		s.Draw(buf)
+		ix, iy := center(s.accImportSessionR.X, s.accImportSessionR.Y, s.accImportSessionR.W, s.accImportSessionR.H)
+		if h := s.accountsHitTest(ix, iy); h.Kind != HitImportSession {
+			t.Fatalf("%s import-session hit = %+v, want HitImportSession", k, h)
+		}
+	}
+	// Reddit (its own richer button row) and a plain provider (Mastodon) show none.
+	for _, k := range []source.Kind{source.Reddit, source.Mastodon} {
+		s.SelectAccount(k)
+		s.layoutAccounts()
+		if s.accImportSessionR.W != 0 {
+			t.Fatalf("%s must not show the generic import-session button", k)
+		}
+		if hasSessionField(k) {
+			t.Fatalf("%s must not be a session-field provider", k)
+		}
+	}
+}
+
+func TestAccountsImportSessionButtonScrolls(t *testing.T) {
+	// A short window forces Instagram's form (incl. the import button) to overflow,
+	// exercising the scroll-shift of the import-session-button rect.
+	s := New(360, 60, ThemeFor(OSLinux, false))
+	s.OpenAccounts()
+	s.SelectAccount(source.TikTok) // its ms_token + session + import button overflow the short viewport
+	s.Scroll(1 << 20)
+	if s.accScroll.offset <= 0 {
+		t.Fatalf("form did not scroll: %d", s.accScroll.offset)
+	}
+	if s.accImportSessionR.W == 0 {
+		t.Fatal("import-session button should still be laid out while scrolled")
+	}
+}
+
 func TestAccountsImportSubsButton(t *testing.T) {
 	s := New(1100, 700, ThemeFor(OSLinux, false))
 	s.OpenAccounts() // Reddit selected by default
@@ -293,7 +342,7 @@ func TestAccountsImportSubsButton(t *testing.T) {
 func TestAccountsImportButtonScrolls(t *testing.T) {
 	// A short window forces the Reddit form (incl. the import button) to overflow,
 	// exercising the scroll-shift of the import-button rect.
-	s := New(360, 220, ThemeFor(OSLinux, false))
+	s := New(360, 60, ThemeFor(OSLinux, false))
 	s.OpenAccounts() // Reddit
 	s.Scroll(1 << 20)
 	s.layoutAccounts()

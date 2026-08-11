@@ -99,6 +99,20 @@ func TestRegistryRedditSessionCookie(t *testing.T) {
 	}
 }
 
+func TestRegistryTwitterSession(t *testing.T) {
+	// An X session cookie registers the session-aware Twitter provider, both with
+	// and without a shared logged client (exercising newTwitter's session branch).
+	r := Registry(Options{TwitterSession: "auth_token=at; ct0=c"})
+	if !has(r.Kinds(), source.Twitter) {
+		t.Fatal("twitter not registered with a session (no recorder)")
+	}
+	rec := httplog.NewRecorder(8)
+	r2 := Registry(Options{Recorder: rec, TwitterSession: "auth_token=at; ct0=c"})
+	if !has(r2.Kinds(), source.Twitter) {
+		t.Fatal("twitter not registered with a session (with recorder)")
+	}
+}
+
 func TestLoggedClient(t *testing.T) {
 	if loggedClient(nil) != nil {
 		t.Fatal("nil recorder must yield nil shared client")

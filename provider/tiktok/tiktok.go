@@ -1,10 +1,16 @@
 // Package tiktok adapts the standalone github.com/go-tiktok/tiktok best-effort
-// client to the aggregator's source.Provider contract. The query channel is a
-// user's secUid (TikTok's opaque per-account id, obtained once out of band).
+// client to the aggregator's source.Provider contract. A user's secUid (TikTok's
+// opaque per-account id, obtained once out of band) as the query channel fetches
+// that account's videos; the reserved channels "home"/"following" attempt the
+// logged-in user's following feed.
 //
 // This provider is inherently fragile: TikTok's web API usually needs a
 // msToken/sessionid and a signed param, and often returns 403/429 or empty
-// anti-bot bodies — surfaced here as errors or empty results.
+// anti-bot bodies — surfaced here as errors or empty results. The following feed
+// in particular is gated behind TikTok's request-signing (X-Bogus / a viewer
+// secUid), which this pure-Go client cannot forge, so it is implemented as far as
+// cleanly possible and reports a typed sign-in/anti-bot error when the wall fires
+// rather than crashing or fabricating a feed.
 package tiktok
 
 import (
@@ -12,11 +18,16 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/go-browserhttp/browserhttp"
 	gott "github.com/go-tiktok/tiktok"
 
 	"github.com/go-news-reader/reader/source"
 )
+
+// defaultTimeout bounds a read on the client this package builds for itself.
+const defaultTimeout = 30 * time.Second
 
 // ErrNoChannel is returned when Feed is called without a secUid.
 var ErrNoChannel = errors.New("tiktok: Query.Channel must be a user secUid")
@@ -29,10 +40,20 @@ type client interface {
 	UserPosts(ctx context.Context, secUid string, count int, cursor string) (*gott.UserFeed, error)
 }
 
-// Provider fetches a TikTok user's recent videos as items.
+// Provider fetches a TikTok user's recent videos as items, and — for the
+// reserved "home"/"following" channels — attempts the authenticated following
+// feed.
 type Provider struct {
 	client  client
 	hasCred bool // an msToken or sessionid was configured
+
+	// Following-feed plumbing. hc performs the raw following/item_list request,
+	// msToken + session authenticate it, and homeBase is the request origin
+	// (overridden in tests to a local server).
+	hc       *http.Client
+	msToken  string
+	session  string
+	homeBase string
 }
 
 // New returns a provider. msToken and sessionID are optional credentials for
@@ -47,17 +68,24 @@ func NewWithHTTPClient(hc *http.Client, msToken, sessionID string) *Provider {
 
 // newWith builds the provider, wiring hc when non-nil.
 func newWith(hc *http.Client, msToken, sessionID string) *Provider {
-	var opts []gott.Option
-	if hc != nil {
-		opts = append(opts, gott.WithHTTPClient(hc))
+	if hc == nil {
+		hc = browserhttp.NewClient(defaultTimeout)
 	}
+	opts := []gott.Option{gott.WithHTTPClient(hc)}
 	if msToken != "" {
 		opts = append(opts, gott.WithMSToken(msToken))
 	}
 	if sessionID != "" {
 		opts = append(opts, gott.WithSessionID(sessionID))
 	}
-	return &Provider{client: gott.New(opts...), hasCred: msToken != "" || sessionID != ""}
+	return &Provider{
+		client:   gott.New(opts...),
+		hasCred:  msToken != "" || sessionID != "",
+		hc:       hc,
+		msToken:  msToken,
+		session:  sessionID,
+		homeBase: gott.DefaultBaseURL,
+	}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
@@ -66,9 +94,13 @@ func NewWithClient(c client) *Provider { return &Provider{client: c} }
 // Kind reports source.TikTok.
 func (p *Provider) Kind() source.Kind { return source.TikTok }
 
-// Feed returns a page of the user's videos. Query.Channel is the secUid;
-// Query.Cursor pages through results.
+// Feed returns a page of videos. The reserved channels "home" and "following"
+// attempt the authenticated following feed; any other channel is a user's secUid
+// whose videos are returned. Query.Cursor pages through results.
 func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, error) {
+	if isHomeChannel(q.Channel) {
+		return p.followingFeed(ctx, q)
+	}
 	secUID := strings.TrimSpace(q.Channel)
 	if secUID == "" {
 		return source.Result{}, ErrNoChannel
