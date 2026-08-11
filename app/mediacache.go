@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/go-news-reader/reader/internal/settings"
+	"github.com/go-news-reader/reader/internal/webrender"
 	"github.com/go-news-reader/reader/mediacache"
 	"github.com/go-news-reader/reader/mediacacheplugin"
 )
@@ -39,10 +40,24 @@ func (a *App) initMediaCache(set *settings.Settings) {
 	if err != nil {
 		a.mediaCache = newDiskCache(set)
 		a.vmStatus("Cache plugin failed to load; using local disk cache")
+		a.wireImageCache()
 		return
 	}
 	a.mediaCache = cache
 	a.mediaCacheClose = closeFn
+	a.wireImageCache()
+}
+
+// wireImageCache hands the selected media cache to the web renderer so the
+// engine serves page images from it (the on-disk cache, or a shared plugin
+// backend) instead of re-downloading them on every render. It is a no-op for a
+// renderer that lacks the capability (a test/CLI stub), mirroring SetBackdrop.
+func (a *App) wireImageCache() {
+	if ic, ok := a.webRender.(interface {
+		SetImageCache(webrender.ImageCache)
+	}); ok {
+		ic.SetImageCache(a.mediaCache)
+	}
 }
 
 // applyMediaCacheBudget re-applies the settings' media-cache byte budget to the

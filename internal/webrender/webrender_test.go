@@ -166,3 +166,17 @@ func TestSetBackdrop(t *testing.T) {
 		t.Errorf("base pixel = (%d,%d,%d), want the configured backdrop", img.Pix[o], img.Pix[o+1], img.Pix[o+2])
 	}
 }
+
+type stubImageCache struct{}
+
+func (stubImageCache) Get(string) ([]byte, bool) { return nil, false }
+func (stubImageCache) Put(string, []byte)        {}
+
+func TestSetImageCache(t *testing.T) {
+	r := New()
+	c := &stubImageCache{}
+	r.SetImageCache(c)
+	if r.e.ImageCache != c {
+		t.Fatal("SetImageCache did not wire the given cache into the engine")
+	}
+}

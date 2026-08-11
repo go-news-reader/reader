@@ -94,6 +94,20 @@ func (r *Engine) SetBackdrop(c color.RGBA) {
 	r.e.Backdrop = css.Color{R: c.R, G: c.G, B: c.B, A: c.A}
 }
 
+// ImageCache is the byte cache the engine consults before downloading a remote
+// image (see [engine.ImageCache]); redeclared here so the host can wire its own
+// cache without importing the engine package. Keys are absolute image URLs.
+type ImageCache interface {
+	Get(url string) ([]byte, bool)
+	Put(url string, data []byte)
+}
+
+// SetImageCache wires c as the engine's image cache, so repeated renders serve
+// page images from the host's (persistent) cache instead of re-downloading them.
+func (r *Engine) SetImageCache(c ImageCache) {
+	r.e.ImageCache = c
+}
+
 // Render fetches, lays out and paints url at width pixels wide, returning the
 // page image, its clickable link map and the final (post-redirect) URL. A
 // non-positive width uses a sane default.

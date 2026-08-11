@@ -79,6 +79,8 @@ github.com/go-tiktok/tiktok v0.2.0 h1:/kjUSaFWfhetfObT7Db19g7rRZcy8fn95JFsIp0f6w
 github.com/go-tiktok/tiktok v0.2.0/go.mod h1:YfwNRpTyk5QNWauCm4nxhdVvjmEvLd0HpxzLtivHJew=
 github.com/go-webengine/engine v0.3.10 h1:WqNd7pU93O12/ThHQHU/b+/B4pRlN8z2GVBmMKtxoQY=
 github.com/go-webengine/engine v0.3.10/go.mod h1:AsTkHIJS28Lj6jkDnXLgyN2X4oxNGWz5+bnh77jgTyo=
+github.com/go-webengine/engine v0.3.11 h1:Xdlqv2Dmk9DvMIEt8M++fqAaFAXjvmKqjJMDw6FClV4=
+github.com/go-webengine/engine v0.3.11/go.mod h1:AsTkHIJS28Lj6jkDnXLgyN2X4oxNGWz5+bnh77jgTyo=
 github.com/go-widgets/mvvm v0.5.0 h1:o5hh6HAxbApONcbZxmyV9q12pCAPGRd6L24aS3gaCbA=
 github.com/go-widgets/mvvm v0.5.0/go.mod h1:Phdrd434RLxXW1D6dL1PPQH1tABwYLIN2X7jQVC4TbY=
 github.com/go-widgets/painter v0.9.0 h1:/y0qn0+TP3bhdLMi4+/vmUUBnSp3/L2RQBBgwAmJkes=
