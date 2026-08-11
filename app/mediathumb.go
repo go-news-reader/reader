@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"io"
 	"net/http"
@@ -92,36 +93,55 @@ func (a *App) loadMediaThumbs(ctx context.Context, reqs []ui.MediaRequest) {
 	}
 }
 
-// fetchThumb GETs url and returns the image decoded and bounded to thumbMaxDim,
-// or nil if anything about it is not a usable image. It goes through the shared
-// browser-fingerprint client, so media hosts that fingerprint the TLS handshake
-// (pbs.twimg.com among them) serve it, and the Network log records the fetch.
+// fetchThumb returns the image for url, decoded and bounded to thumbMaxDim, or
+// nil if it is not a usable image. It first consults the on-disk media cache: a
+// hit is decoded straight from disk with NO network request (the whole point —
+// a thumbnail already seen is never re-downloaded, across restarts too). On a
+// miss it GETs url through the shared browser-fingerprint client (so media hosts
+// that fingerprint the TLS handshake, pbs.twimg.com among them, serve it and the
+// Network log records the fetch), re-encodes the bounded thumbnail, and stores
+// that small JPEG in the cache for next time.
 func (a *App) fetchThumb(ctx context.Context, url string) *image.RGBA {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil
-	}
-	resp, err := a.mediaClient.Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil
-	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxThumbBytes))
-	if err != nil {
-		return nil
-	}
-	// Thumbnail decodes, bounds and re-encodes in one step (shared with the
-	// Usenet path); a non-image body simply errors here and is skipped.
-	jpg, err := usenet.Thumbnail(raw, thumbMaxDim)
-	if err != nil {
-		return nil
+	jpg, ok := mediaCacheGet(url)
+	if !ok {
+		var derr error
+		jpg, derr = a.downloadThumb(ctx, url)
+		if derr != nil {
+			return nil
+		}
+		mediaCachePut(url, jpg)
 	}
 	img, _, err := decodeImage(bytes.NewReader(jpg))
 	if err != nil {
 		return nil
 	}
 	return toRGBA(img)
+}
+
+// errThumbStatus marks a non-200 media response, so downloadThumb reports a
+// miss without caching anything.
+var errThumbStatus = errors.New("media: non-200 response")
+
+// downloadThumb GETs url and returns the bounded, re-encoded thumbnail JPEG (the
+// form stored in the media cache), or an error if the response is not a usable
+// image. Thumbnail decodes, bounds and re-encodes in one step (shared with the
+// Usenet path); a non-image body simply errors here and is skipped.
+func (a *App) downloadThumb(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := a.mediaClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, errThumbStatus
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxThumbBytes))
+	if err != nil {
+		return nil, err
+	}
+	return usenet.Thumbnail(raw, thumbMaxDim)
 }

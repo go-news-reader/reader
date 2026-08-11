@@ -232,3 +232,49 @@ func (brokenBodyRT) RoundTrip(*http.Request) (*http.Response, error) {
 type errBody struct{}
 
 func (errBody) Read([]byte) (int, error) { return 0, errors.New("read boom") }
+
+// TestFetchThumbCachesAndSkipsRedownload proves the disk cache saves the network
+// round-trip: fetching the same media URL twice hits the server only once, and
+// both calls return a decoded image (the second straight from the cache).
+func TestFetchThumbCachesAndSkipsRedownload(t *testing.T) {
+	srv, hits := imageServer(t)
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+	url := srv.URL + "/photo.png"
+
+	if img := a.fetchThumb(context.Background(), url); img == nil {
+		t.Fatal("first fetch returned no image")
+	}
+	if hits() != 1 {
+		t.Fatalf("after first fetch, server hits = %d, want 1", hits())
+	}
+	// Second fetch: served from the on-disk cache, no new request.
+	if img := a.fetchThumb(context.Background(), url); img == nil {
+		t.Fatal("cached fetch returned no image")
+	}
+	if hits() != 1 {
+		t.Fatalf("second fetch re-downloaded: server hits = %d, want 1 (cache hit)", hits())
+	}
+}
+
+// TestFetchThumbDownloadErrorsNotCached: a non-200 / non-image response yields no
+// image and stores nothing, so a later success can still populate the cache.
+func TestFetchThumbDownloadErrorsNotCached(t *testing.T) {
+	srv, _ := imageServer(t)
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+
+	if img := a.fetchThumb(context.Background(), srv.URL+"/missing"); img != nil {
+		t.Fatal("404 should yield no image")
+	}
+	if _, ok := mediaCacheGet(srv.URL + "/missing"); ok {
+		t.Fatal("a failed fetch must not be cached")
+	}
+	if img := a.fetchThumb(context.Background(), srv.URL+"/notimage"); img != nil {
+		t.Fatal("non-image should yield no image")
+	}
+	// A transport error (bad URL) also yields nil without caching.
+	if img := a.fetchThumb(context.Background(), "http://%zz"); img != nil {
+		t.Fatal("malformed URL should yield no image")
+	}
+}
