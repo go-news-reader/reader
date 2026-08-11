@@ -80,15 +80,28 @@ func Run(cfg Config, h Handler) error {
 	// change, which cannot be done from here without touching the scene off the
 	// render thread — the one thing this application's design forbids.
 	if r, ok := win.(gw.Repainter); ok {
+		// The old back-end presented only on a change; this one cannot ask the
+		// handler off the render thread, so #149 simply blit every tick — one full
+		// re-present at 60 Hz even on an idle, unchanged window. A handler that can
+		// answer NeedsPresent lets the tick stay a clock while the blit is skipped
+		// when nothing is queued or animating. A slow heartbeat still fires so the
+		// one thing NeedsPresent cannot see — a system appearance change, noticed
+		// only inside Frame — surfaces within a few hundred ms, and so any missed
+		// wake self-heals. A handler that cannot answer keeps the old every-tick
+		// behaviour.
+		np, gated := h.(interface{ NeedsPresent() bool })
 		stop := make(chan struct{})
 		defer close(stop)
 		go func() {
 			t := time.NewTicker(time.Second / 60)
 			defer t.Stop()
+			idle := 0
 			for {
 				select {
 				case <-t.C:
-					r.Repaint()
+					if shouldRepaint(gated, np, &idle) {
+						r.Repaint()
+					}
 				case <-stop:
 					return
 				}
@@ -98,6 +111,30 @@ func Run(cfg Config, h Handler) error {
 
 	ap.start()
 	return win.Run(surf)
+}
+
+// heartbeatTicks is how many consecutive idle ticks the gated present loop lets
+// pass before it repaints anyway: at the 60 Hz tick, ~4 times a second. It caps
+// a truly idle window's blit rate far below the tick rate while bounding how long
+// a change NeedsPresent cannot see — an appearance switch — stays off screen.
+const heartbeatTicks = 15
+
+// shouldRepaint decides whether the gated ticker blits on this tick and advances
+// the idle counter. An ungated handler (one that cannot answer NeedsPresent, e.g.
+// a test's) always repaints, preserving the pre-gating behaviour. A gated one
+// repaints when the handler needs it, and otherwise only on every heartbeatTicks
+// -th idle tick; idle counts consecutive skipped ticks and resets on any repaint.
+func shouldRepaint(gated bool, np interface{ NeedsPresent() bool }, idle *int) bool {
+	if !gated || np.NeedsPresent() {
+		*idle = 0
+		return true
+	}
+	*idle++
+	if *idle >= heartbeatTicks {
+		*idle = 0
+		return true
+	}
+	return false
 }
 
 // Bind returns a toolkit.Surface showing h: the frame it presents, the input it

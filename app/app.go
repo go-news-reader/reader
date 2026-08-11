@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-newsgroups/par2"
@@ -214,6 +215,17 @@ type App struct {
 	qmu        sync.Mutex
 	queued     []func()
 	deferScene bool
+
+	// presentWake/presentBusy let a native front-end's present loop skip the blit
+	// while nothing is happening, instead of re-presenting at its tick rate. Both
+	// are read from the loop's own goroutine, so both are atomic. presentWake is
+	// raised whenever a background goroutine enqueues a scene write (under qmu, so
+	// it never races the drain that clears it) and means "a queued mutation is
+	// waiting to be drawn". presentBusy is written by Frame on the render thread
+	// and means "the last frame is animating or a debounce is pending, so keep
+	// ticking". NeedsPresent is their union; see internal/window's gated ticker.
+	presentWake int32
+	presentBusy int32
 
 	// vmu serializes view-model mutations. mvvm.Observable/ObservableList are
 	// intentionally not concurrency-safe, yet several background operations mutate
@@ -485,6 +497,7 @@ func (a *App) post(fn func()) {
 	}
 	a.qmu.Lock()
 	a.queued = append(a.queued, fn)
+	atomic.StoreInt32(&a.presentWake, 1)
 	a.qmu.Unlock()
 }
 
@@ -495,6 +508,10 @@ func (a *App) drainScene() {
 	a.qmu.Lock()
 	q := a.queued
 	a.queued = nil
+	// Cleared under the same lock post raises it under: a write enqueued after
+	// this point lands in the new queue and re-raises the flag, so the wake is
+	// never lost and never spuriously stuck.
+	atomic.StoreInt32(&a.presentWake, 0)
 	a.qmu.Unlock()
 	for _, fn := range q {
 		fn()
@@ -1054,6 +1071,15 @@ func (a *App) Frame() (buf []byte, changed bool) {
 	if s.Animating() {
 		s.AdvanceAnim()
 	}
+	// Tell a gated present loop whether to keep ticking on its own: an animating
+	// scene advances every frame, and an armed web-preview debounce must be given
+	// the frames it counts before it fires. Neither is signalled by a queued
+	// write, so without this the loop would idle out mid-animation.
+	if s.Animating() || a.webArmed {
+		atomic.StoreInt32(&a.presentBusy, 1)
+	} else {
+		atomic.StoreInt32(&a.presentBusy, 0)
+	}
 	size := s.W * s.H * 4
 	if len(a.bufs[0]) != size {
 		a.bufs[0] = make([]byte, size)
@@ -1072,6 +1098,17 @@ func (a *App) Frame() (buf []byte, changed bool) {
 
 // Scene exposes the scene so front-ends can dispatch input to it.
 func (a *App) Scene() *ui.Scene { return a.scene }
+
+// NeedsPresent reports whether the next Frame would do anything worth blitting:
+// a background write is queued, or the last frame was still animating or waiting
+// on a debounce. A native present loop that can ask this before it repaints will
+// stop re-blitting an idle, unchanged window every tick. It is safe from the
+// loop's own goroutine (both flags are atomic). It is deliberately conservative
+// about staying dark — appearance changes are only noticed inside Frame, so a
+// gated loop keeps a slow heartbeat rather than trusting this alone.
+func (a *App) NeedsPresent() bool {
+	return atomic.LoadInt32(&a.presentWake) != 0 || atomic.LoadInt32(&a.presentBusy) != 0
+}
 
 // Refresh aggregates the active profile's subscriptions (concurrently,
 // newest-first) and loads the merged items into the scene. It splits the

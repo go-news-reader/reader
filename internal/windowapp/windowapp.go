@@ -129,6 +129,11 @@ func (h *Handler) Frame() ([]byte, int, int, bool) {
 	return buf, s.W, s.H, changed
 }
 
+// NeedsPresent reports whether the present loop should repaint now: a queued
+// scene write is waiting, or the scene is still animating. A gated loop uses it
+// to skip the blit on an idle, unchanged window; see internal/window's ticker.
+func (h *Handler) NeedsPresent() bool { return h.a.NeedsPresent() }
+
 // Resize maps a logical size to device pixels via the backing scale.
 func (h *Handler) Resize(w, height int, scale float64) {
 	s := h.a.Scene()
