@@ -525,6 +525,13 @@ type Scene struct {
 	// state change (the Wayland commit-seq / Evas dirty model). A present layer
 	// double-buffers and only re-draws/uploads when rev advances.
 	rev int
+
+	// a11yCache memoises the accessibility tree so a host that pulls it on every
+	// paint frame (go-widgets/window's a11y bridge does) does not pay a full
+	// re-layout 60 times a second. It is valid only for a11yRev; any state change
+	// bumps rev, so a stale rev forces a rebuild on the next pull.
+	a11yCache []A11yNode
+	a11yRev   int
 }
 
 // invalidateCards drops the sprite cache after an appearance/content change.

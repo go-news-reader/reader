@@ -12,7 +12,7 @@ import (
 )
 
 // a11yScene is a populated feed: two sources, a few posts, one sign-in banner.
-func a11yScene(t *testing.T) *Scene {
+func a11yScene(t testing.TB) *Scene {
 	t.Helper()
 	s := New(1000, 700, ThemeFor(OSLinux, false))
 	s.SetSubs([]Subscription{
@@ -37,6 +37,46 @@ func find(tree []A11yNode, name string) (A11yNode, bool) {
 		}
 	}
 	return A11yNode{}, false
+}
+
+// BenchmarkA11yTreePullCached measures what the paint loop pays per frame with
+// the cache in place: a pull with no intervening change. BenchmarkA11yTreeRebuild
+// measures the same pull's cost when it has to rebuild — the per-frame cost the
+// go-widgets/window a11y bridge inflicted before this cache. The gap is the fix.
+func BenchmarkA11yTreePullCached(b *testing.B) {
+	s := a11yScene(b)
+	s.A11yTree() // warm the cache
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.A11yTree()
+	}
+}
+
+func BenchmarkA11yTreeRebuild(b *testing.B) {
+	s := a11yScene(b)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.buildA11yTree()
+	}
+}
+
+// TestA11yTreeCachesUntilAChange checks the tree is memoised: a host that pulls
+// it on every paint frame gets the same built slice back until some state change
+// bumps rev, at which point it is rebuilt. This is what keeps the a11y pull off
+// the per-frame layout path that otherwise spins the CPU.
+func TestA11yTreeCachesUntilAChange(t *testing.T) {
+	s := a11yScene(t)
+	first := s.A11yTree()
+	if len(first) == 0 {
+		t.Fatal("empty tree")
+	}
+	if again := s.A11yTree(); &again[0] != &first[0] {
+		t.Error("second pull rebuilt the tree instead of serving the cache")
+	}
+	s.SetStatus("something changed")
+	if fresh := s.A11yTree(); &fresh[0] == &first[0] {
+		t.Error("a state change did not invalidate the cached tree")
+	}
 }
 
 // TestA11yTreeDescribesTheFeed checks the tree says what the screen shows: the

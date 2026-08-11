@@ -33,6 +33,20 @@ type A11yNode struct {
 // the same statement; TestA11yNodesAreReachable asserts exactly that by
 // hit-testing every interactive node's centre.
 func (s *Scene) A11yTree() []A11yNode {
+	// A host's a11y bridge may pull this on every paint frame; each rebuild runs
+	// a full layout pass (text measurement included), so serve a cached tree
+	// while nothing has changed. rev advances on any state change, so a matching
+	// a11yRev proves the cache still describes what is on screen.
+	if s.a11yCache != nil && s.a11yRev == s.rev {
+		return s.a11yCache
+	}
+	tree := s.buildA11yTree()
+	s.a11yCache = tree
+	s.a11yRev = s.rev
+	return tree
+}
+
+func (s *Scene) buildA11yTree() []A11yNode {
 	// Lay out the mode being described, exactly as its own hit test does. The
 	// rects a view exposes are computed by ITS layout pass, so reading them after
 	// only the feed's leaves every other view's controls at the zero rect —
