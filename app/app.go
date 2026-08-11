@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -670,10 +671,32 @@ func (a *App) ImportSessionFromFirefox() (bool, error) {
 		a.vm.SetStatus(msg)
 		return false, err
 	}
-	a.scene.SetAccountField(kind, "session", value)
+	// TikTok's client needs the raw sessionid and msToken as SEPARATE fields (the
+	// msToken is also appended to the signed request as a query param), so split
+	// the "sessionid=…; msToken=…" cookie string into the account's `session` and
+	// `ms_token` fields rather than storing the whole string in one. Other
+	// providers consume the cookie string as-is.
+	if kind == source.TikTok {
+		a.scene.SetAccountField(kind, "session", cookieValue(value, "sessionid"))
+		a.scene.SetAccountField(kind, "ms_token", cookieValue(value, "msToken"))
+	} else {
+		a.scene.SetAccountField(kind, "session", value)
+	}
 	a.ApplyAccounts() // persist + rebuild registry (provider→authenticated) + re-aggregate
 	a.vm.SetStatus("Imported " + label + " session from Firefox")
 	return true, nil
+}
+
+// cookieValue extracts the value of the named cookie from a "k=v; k=v" cookie
+// string (as produced by the browser-cookie importers), or "" if it is absent.
+func cookieValue(cookies, name string) string {
+	for _, part := range strings.Split(cookies, ";") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) == 2 && kv[0] == name {
+			return kv[1]
+		}
+	}
+	return ""
 }
 
 // errUnsupportedSessionImport is returned by [App.ImportSessionFromFirefox] when

@@ -610,7 +610,6 @@ func TestImportSessionFromFirefoxSuccess(t *testing.T) {
 		wantOpts func(feeds.Options) string
 	}{
 		{source.Instagram, func(o feeds.Options) string { return o.InstagramSession }},
-		{source.TikTok, func(o feeds.Options) string { return o.TikTokSession }},
 		{source.Twitter, func(o feeds.Options) string { return o.TwitterSession }},
 	}
 	for _, tc := range cases {
@@ -925,5 +924,56 @@ func TestRefreshAuthOnlyClearsStatus(t *testing.T) {
 	// All failures were auth prompts, so the status line is cleared.
 	if a.Scene().Status != "" {
 		t.Fatalf("status = %q, want empty (all failures were auth prompts)", a.Scene().Status)
+	}
+}
+
+// TestImportTikTokSessionSplitsFields: TikTok's Firefox import splits the
+// "sessionid=…; msToken=…" cookie string into the RAW session + ms_token fields
+// the signer needs (msToken is also a signed query param), not one blob.
+func TestImportTikTokSessionSplitsFields(t *testing.T) {
+	set := &settings.Settings{
+		Profiles: []settings.Profile{{Name: "Home"}}, Active: 0, Theme: settings.ThemeSystem,
+	}
+	path := filepath.Join(t.TempDir(), "s.json")
+	a := New(Config{
+		Registry: newReg(fakeProv{kind: source.TikTok}), Settings: set,
+		Store: settings.NewStore(path), OS: ui.OSMac,
+	})
+	var gotOpts feeds.Options
+	a.SetRegistryBuilder(func(o feeds.Options) *source.Registry { gotOpts = o; return newReg() })
+	a.SetRefreshHook(func() {})
+	a.SetCookieFinder(fakeCookieFinder{session: "sessionid=SID123; msToken=MST456"})
+
+	a.Scene().OpenAccounts()
+	a.Scene().SelectAccount(source.TikTok)
+	if ok, err := a.ImportSessionFromFirefox(); err != nil || !ok {
+		t.Fatalf("import = %v, %v; want true, nil", ok, err)
+	}
+	if gotOpts.TikTokSession != "SID123" || gotOpts.TikTokMSToken != "MST456" {
+		t.Fatalf("options = session %q / msToken %q, want SID123 / MST456", gotOpts.TikTokSession, gotOpts.TikTokMSToken)
+	}
+	loaded, err := settings.NewStore(path).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	acct, ok := loaded.Account(source.TikTok)
+	if !ok || acct.Fields["session"] != "SID123" || acct.Fields["ms_token"] != "MST456" {
+		t.Fatalf("persisted fields = %+v ok=%v, want session=SID123 ms_token=MST456", acct.Fields, ok)
+	}
+}
+
+func TestCookieValue(t *testing.T) {
+	s := "sessionid=SID; msToken=MST; ttwid=W"
+	if v := cookieValue(s, "sessionid"); v != "SID" {
+		t.Errorf("sessionid = %q, want SID", v)
+	}
+	if v := cookieValue(s, "msToken"); v != "MST" {
+		t.Errorf("msToken = %q, want MST", v)
+	}
+	if v := cookieValue(s, "absent"); v != "" {
+		t.Errorf("absent = %q, want empty", v)
+	}
+	if v := cookieValue("noequalsign; x=1", "noequalsign"); v != "" {
+		t.Errorf("malformed pair should yield empty, got %q", v)
 	}
 }
