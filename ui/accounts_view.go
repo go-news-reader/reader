@@ -131,6 +131,24 @@ func (s *Scene) SelectAccount(k source.Kind) {
 // SelectedAccount reports which provider the accounts editor is operating on.
 func (s *Scene) SelectedAccount() source.Kind { return s.accSel }
 
+// SetFollowImportKinds records which source kinds can import the connected
+// account's follows (their provider implements source.FollowImporter), so the
+// accounts editor shows the "Import subscriptions" affordance for exactly those.
+// The app calls it whenever it (re)builds the provider registry.
+func (s *Scene) SetFollowImportKinds(kinds []source.Kind) {
+	m := make(map[source.Kind]bool, len(kinds))
+	for _, k := range kinds {
+		m[k] = true
+	}
+	s.followImportKinds = m
+	s.touch()
+}
+
+// canImportFollows reports whether the selected provider offers the "Import
+// subscriptions" affordance (its registered provider implements
+// source.FollowImporter).
+func (s *Scene) canImportFollows(k source.Kind) bool { return s.followImportKinds[k] }
+
 // FocusAccountField gives keyboard focus to a credential field.
 func (s *Scene) FocusAccountField(key string) { s.accFocus = key; s.touch() }
 
@@ -292,18 +310,26 @@ func (s *Scene) layoutAccounts() {
 	s.accImportR = toolkit.Rect{}
 	s.accImportSubsR = toolkit.Rect{}
 	s.accSignInR = toolkit.Rect{}
+	isw := m.tab.width(redditImportSubsLabel) + rpxOf(s, 24)
 	if s.accSel == source.Reddit {
 		// "Sign in to Reddit in browser" launches the configured browser at Reddit's
 		// login page; "Import session from Firefox" lifts the resulting cookie;
-		// "Import subscriptions" pulls the connected account's followed subreddits.
-		// They sit on one row (sign-in, import-session, import-subs), each hidden for
-		// other providers.
+		// "Import subscriptions" pulls the connected account's follows. They sit on
+		// one row (sign-in, import-session, import-subs); the sign-in/import buttons
+		// are Reddit-specific and the import-subs button appears when Reddit can
+		// import follows.
 		sw := m.tab.width(redditSignInLabel) + rpxOf(s, 24)
 		s.accSignInR = toolkit.Rect{X: pad, Y: y, W: sw, H: btnH}
 		iw := m.tab.width(redditImportLabel) + rpxOf(s, 24)
 		s.accImportR = toolkit.Rect{X: pad + sw + gap, Y: y, W: iw, H: btnH}
-		isw := m.tab.width(redditImportSubsLabel) + rpxOf(s, 24)
-		s.accImportSubsR = toolkit.Rect{X: s.accImportR.X + iw + gap, Y: y, W: isw, H: btnH}
+		if s.canImportFollows(s.accSel) {
+			s.accImportSubsR = toolkit.Rect{X: s.accImportR.X + iw + gap, Y: y, W: isw, H: btnH}
+		}
+		y += btnH + gap
+	} else if s.canImportFollows(s.accSel) {
+		// Any other follow-capable provider (e.g. Mastodon) gets a standalone
+		// "Import subscriptions" button on its own row.
+		s.accImportSubsR = toolkit.Rect{X: pad, Y: y, W: isw, H: btnH}
 		y += btnH + gap
 	}
 
@@ -455,7 +481,7 @@ func (s *Scene) accountsHitTest(x, y int) Hit {
 		return Hit{Kind: HitImportRedditFirefox}
 	}
 	if s.accImportSubsR.W > 0 && inRect(s.accImportSubsR, x, y) {
-		return Hit{Kind: HitImportRedditSubs}
+		return Hit{Kind: HitImportFollows, Value: string(s.accSel)}
 	}
 	if s.accImportSessionR.W > 0 && inRect(s.accImportSessionR, x, y) {
 		return Hit{Kind: HitImportSession}

@@ -28,6 +28,7 @@ type fetcher interface {
 	Frontpage(ctx context.Context, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 	Comments(ctx context.Context, subreddit, id string, opts goreddit.ListingOptions) (*goreddit.PostWithComments, error)
 	MySubreddits(ctx context.Context) ([]goreddit.SubredditInfo, error)
+	Friends(ctx context.Context) ([]goreddit.Friend, error)
 	SearchSubreddits(ctx context.Context, query string, opts goreddit.ListingOptions) (*goreddit.SubredditPage, error)
 	SearchPosts(ctx context.Context, query, subreddit string, sort goreddit.SearchSort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 }
@@ -217,6 +218,34 @@ func (p *Provider) MySubscriptions(ctx context.Context) ([]string, error) {
 			continue
 		}
 		out = append(out, "r/"+s.Name)
+	}
+	return out, nil
+}
+
+// MyFollows returns the connected Reddit account's follows as ready
+// subscriptions: every subreddit it is subscribed to (r/<name>) plus every
+// redditor it follows (u/<name>). It satisfies [source.FollowImporter], so the
+// aggregator's generic "import my subscriptions" action pulls both in one call.
+// A session-cookie (logged-in) client is required; an anonymous client yields a
+// typed auth error.
+func (p *Provider) MyFollows(ctx context.Context) ([]source.Subscription, error) {
+	channels, err := p.MySubscriptions(ctx)
+	if err != nil {
+		return nil, err // already mapped by MySubscriptions
+	}
+	out := make([]source.Subscription, 0, len(channels))
+	for _, ch := range channels {
+		out = append(out, source.Subscription{Source: source.Reddit, Channel: ch})
+	}
+	friends, err := p.client.Friends(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	for _, f := range friends {
+		if f.Name == "" {
+			continue
+		}
+		out = append(out, source.Subscription{Source: source.Reddit, Channel: "u/" + f.Name})
 	}
 	return out, nil
 }

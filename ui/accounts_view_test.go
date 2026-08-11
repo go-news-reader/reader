@@ -307,6 +307,8 @@ func TestAccountsImportSessionButtonScrolls(t *testing.T) {
 
 func TestAccountsImportSubsButton(t *testing.T) {
 	s := New(1100, 700, ThemeFor(OSLinux, false))
+	// Reddit and Mastodon can import follows; Usenet cannot.
+	s.SetFollowImportKinds([]source.Kind{source.Reddit, source.Mastodon})
 	s.OpenAccounts() // Reddit selected by default
 	s.layoutAccounts()
 	if s.accImportSubsR.W == 0 {
@@ -320,22 +322,32 @@ func TestAccountsImportSubsButton(t *testing.T) {
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
 	ix, iy := center(s.accImportSubsR.X, s.accImportSubsR.Y, s.accImportSubsR.W, s.accImportSubsR.H)
-	if h := s.accountsHitTest(ix, iy); h.Kind != HitImportRedditSubs {
-		t.Fatalf("import-subs hit = %+v, want HitImportRedditSubs", h)
+	if h := s.accountsHitTest(ix, iy); h.Kind != HitImportFollows || h.Value != string(source.Reddit) {
+		t.Fatalf("import-subs hit = %+v, want HitImportFollows carrying reddit", h)
 	}
 	// A click just past its right edge must not yield the hit.
-	if h := s.accountsHitTest(s.accImportSubsR.X+s.accImportSubsR.W+5, iy); h.Kind == HitImportRedditSubs {
+	if h := s.accountsHitTest(s.accImportSubsR.X+s.accImportSubsR.W+5, iy); h.Kind == HitImportFollows {
 		t.Fatalf("click outside the button should not hit it: %+v", h)
 	}
 
-	// A non-Reddit provider shows no import-subscriptions button.
+	// A different follow-capable provider (Mastodon) also shows the button — on
+	// its own standalone row — and the hit carries its kind.
 	s.SelectAccount(source.Mastodon)
 	s.layoutAccounts()
-	if s.accImportSubsR.W != 0 {
-		t.Fatal("non-Reddit provider must not show the import-subscriptions button")
+	if s.accImportSubsR.W == 0 {
+		t.Fatal("Mastodon editor should show the import-subscriptions button")
 	}
-	if h := s.accountsHitTest(ix, iy); h.Kind == HitImportRedditSubs {
-		t.Fatalf("non-Reddit provider must not yield HitImportRedditSubs: %+v", h)
+	s.Draw(buf)
+	mx, my := center(s.accImportSubsR.X, s.accImportSubsR.Y, s.accImportSubsR.W, s.accImportSubsR.H)
+	if h := s.accountsHitTest(mx, my); h.Kind != HitImportFollows || h.Value != string(source.Mastodon) {
+		t.Fatalf("Mastodon import-subs hit = %+v, want HitImportFollows carrying mastodon", h)
+	}
+
+	// A provider that cannot import follows shows no button.
+	s.SelectAccount(source.Usenet)
+	s.layoutAccounts()
+	if s.accImportSubsR.W != 0 {
+		t.Fatal("a non-follow-capable provider must not show the import-subscriptions button")
 	}
 }
 
@@ -343,6 +355,7 @@ func TestAccountsImportButtonScrolls(t *testing.T) {
 	// A short window forces the Reddit form (incl. the import button) to overflow,
 	// exercising the scroll-shift of the import-button rect.
 	s := New(360, 60, ThemeFor(OSLinux, false))
+	s.SetFollowImportKinds([]source.Kind{source.Reddit})
 	s.OpenAccounts() // Reddit
 	s.Scroll(1 << 20)
 	s.layoutAccounts()

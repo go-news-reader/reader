@@ -173,3 +173,18 @@ type Provider interface {
 	// Feed returns a page of items for the query.
 	Feed(ctx context.Context, q Query) (Result, error)
 }
+
+// FollowImporter is an optional capability of a [Provider]: it lists the
+// accounts, subreddits, or feeds the authenticated user follows, as ready-made
+// [Subscription]s the aggregator can add to the active profile in one action
+// ("import my subscriptions"). Each returned subscription names its own
+// [Kind] and channel, so a provider may return more than one channel form (e.g.
+// Reddit returns both r/<subreddit> and u/<redditor> follows). A provider with
+// no notion of "who I follow" — or with no connected account — simply does not
+// implement this interface, or returns a typed [AuthError] from [MyFollows]
+// when a connection is required but absent.
+type FollowImporter interface {
+	// MyFollows returns the connected account's follows as subscriptions. The
+	// caller deduplicates them against the active profile before adding.
+	MyFollows(ctx context.Context) ([]Subscription, error)
+}

@@ -135,7 +135,7 @@ const (
 	HitFocusAccountField   // Value = credential field key to focus
 	HitToggleAccountBool   // Value = bool credential field key to flip (Usenet TLS)
 	HitImportRedditFirefox // the Reddit editor's "Import session from Firefox" button
-	HitImportRedditSubs    // the Reddit editor's "Import subscriptions" button (pull the account's subreddits)
+	HitImportFollows       // a follow-capable provider's "Import subscriptions" button (Value = source kind)
 	HitRedditSignIn        // the Reddit editor's "Sign in to Reddit in browser" button
 	HitImportSession       // the Instagram/TikTok/X editor's "Import session from Firefox" button
 
@@ -169,7 +169,7 @@ type Hit struct {
 	Item    source.Item // HitItem
 	Sub     int         // HitSub: index into Subs, or AllFilter; HitRemoveSub: sub index
 	Profile int         // HitProfile / HitSelectProfile / HitDeleteProfile / HitRemoveSub / HitRenameProfile
-	Value   string      // HitTheme / HitSelectKind
+	Value   string      // HitTheme / HitSelectKind / HitImportFollows (source kind)
 }
 
 // Scene is the mutable aggregator UI state.
@@ -263,9 +263,14 @@ type Scene struct {
 	accBackR          toolkit.Rect
 	accDoneR          toolkit.Rect
 	accImportR        toolkit.Rect // Reddit-only "Import session from Firefox" button (zero when hidden)
-	accImportSubsR    toolkit.Rect // Reddit-only "Import subscriptions" button (zero when hidden)
+	accImportSubsR    toolkit.Rect // "Import subscriptions" button (zero when hidden); shown per follow-capable source
 	accSignInR        toolkit.Rect // Reddit-only "Sign in to Reddit in browser" button (zero when hidden)
 	accImportSessionR toolkit.Rect // Instagram/TikTok/X "Import session from Firefox" button (zero when hidden)
+	// followImportKinds is the set of source kinds whose registered provider can
+	// import the connected account's follows (implements source.FollowImporter);
+	// the accounts editor shows the "Import subscriptions" affordance for exactly
+	// these. Nil/empty means none, so no source shows the button.
+	followImportKinds map[source.Kind]bool
 
 	// Optional decoded thumbnails keyed by Item.ID (blitted when present).
 	Thumbs map[string]*image.RGBA

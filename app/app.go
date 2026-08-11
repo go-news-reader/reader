@@ -433,6 +433,7 @@ func New(cfg Config) *App {
 	// Discover external feed-source plugins and register them; a missing plugins
 	// directory is a no-op, so a fresh install with no plugins is unaffected.
 	a.loadPlugins()
+	a.syncFollowImportKinds() // seed the accounts-editor import affordance from the initial registry
 	return a
 }
 
@@ -763,6 +764,80 @@ func (a *App) ImportRedditSubscriptions(ctx context.Context) (int, error) {
 	return added, nil
 }
 
+// errNoFollowImporter is returned by [App.ImportFollows] when the provider for
+// the requested kind is not registered or does not implement
+// [source.FollowImporter] (e.g. no account is connected yet).
+var errNoFollowImporter = errors.New("no follow importer available for this source")
+
+// followKindLabel is the human-readable name of a source kind (from the
+// credential schema), used in the import status messages. It falls back to the
+// raw kind for a source that has no credential schema entry.
+func followKindLabel(kind source.Kind) string {
+	for _, pc := range settings.CredentialSchema() {
+		if pc.Kind == kind {
+			return pc.Label
+		}
+	}
+	return string(kind)
+}
+
+// ImportFollows pulls every account/subreddit/feed the connected provider for
+// kind follows — via its [source.FollowImporter] capability — and adds any
+// not-yet-subscribed ones to the active profile, then persists, re-aggregates,
+// and reports on the status line. Each returned [source.Subscription] carries
+// its own source+channel, so a provider that follows several channel forms
+// (Reddit's r/ subreddits and u/ redditors) imports them all in one action. It
+// requires a connected/authenticated provider; without one it prompts the user
+// to connect an account. The network call runs on the caller's goroutine (the
+// front-end launches it off the render thread) and the scene mutations are
+// applied through a.post so they land on the render thread. The returned count
+// is meaningful only on the inline (CLI/test) path.
+func (a *App) ImportFollows(ctx context.Context, kind source.Kind) (int, error) {
+	prov, ok := a.reg.Get(kind)
+	imp, isImp := prov.(source.FollowImporter)
+	if !ok || !isImp {
+		a.post(func() {
+			a.vm.SetStatus("Connect a " + followKindLabel(kind) + " account first to import subscriptions")
+		})
+		return 0, errNoFollowImporter
+	}
+	subs, err := imp.MyFollows(ctx)
+	if err != nil {
+		a.post(func() { a.vm.SetStatus(followKindLabel(kind) + " import failed: " + err.Error()) })
+		return 0, err
+	}
+	// apply adds the new subscriptions, persists+re-aggregates once, and reports
+	// the count. It must run on the render thread, so it is routed through a.post.
+	var added int
+	apply := func() {
+		if len(subs) == 0 {
+			a.vm.SetStatus("No " + followKindLabel(kind) + " subscriptions found")
+			return
+		}
+		n := 0
+		for _, sub := range subs {
+			if a.scene.SubscribeActive(sub.Source, sub.Channel) {
+				n++
+			}
+		}
+		// ApplySceneSettings persists, re-syncs a.subs, and re-aggregates in one
+		// shot — do not also call a.refresh separately.
+		a.ApplySceneSettings()
+		a.vm.SetStatus(fmt.Sprintf("Imported %d new subscription(s) from %s", n, followKindLabel(kind)))
+		added = n
+	}
+	// In deferred mode apply runs later on the render thread, so `added` would be
+	// written there — do not read it back here (the caller ignores it). On the
+	// inline (CLI/test) path a.post runs apply synchronously, so `added` is set
+	// before we return the real count.
+	if a.deferScene {
+		a.post(apply)
+		return 0, nil
+	}
+	apply()
+	return added, nil
+}
+
 // sessionImportHint turns a browser-cookie session-import failure into a short,
 // provider-neutral status message (used by the Instagram/TikTok/X import).
 func sessionImportHint(err error) string {
@@ -802,6 +877,26 @@ func (a *App) rebuildRegistry() {
 	a.reg = a.newRegistry(opts)
 	a.registerPlugins() // re-register the running plugins into the fresh registry
 	a.applyUsenetServer()
+	a.syncFollowImportKinds()
+}
+
+// syncFollowImportKinds tells the scene which registered providers can import
+// the connected account's follows (implement [source.FollowImporter]), so the
+// accounts editor offers the "Import my subscriptions" affordance for exactly
+// those sources and no others. It is a no-op before a registry exists.
+func (a *App) syncFollowImportKinds() {
+	if a.reg == nil {
+		return
+	}
+	var kinds []source.Kind
+	for _, k := range a.reg.Kinds() {
+		if p, ok := a.reg.Get(k); ok {
+			if _, isImp := p.(source.FollowImporter); isImp {
+				kinds = append(kinds, k)
+			}
+		}
+	}
+	a.scene.SetFollowImportKinds(kinds)
 }
 
 // applyUsenetServer tells the scene which Usenet server is configured (the base

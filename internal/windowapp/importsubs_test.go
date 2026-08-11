@@ -12,9 +12,10 @@ import (
 	"github.com/go-news-reader/reader/ui"
 )
 
-// subImporterProv is a Reddit provider that lists a canned set of subscriptions
-// and signals (once) when its MySubscriptions method is invoked, so the async
-// dispatch can be awaited deterministically.
+// subImporterProv is a Reddit provider that lists a canned set of follows and
+// signals (once) when its MyFollows method is invoked, so the async dispatch can
+// be awaited deterministically. Implementing source.FollowImporter also makes
+// the app expose the accounts-editor "Import subscriptions" button for it.
 type subImporterProv struct {
 	subs   []string
 	called chan struct{}
@@ -24,15 +25,19 @@ func (p *subImporterProv) Kind() source.Kind { return source.Reddit }
 func (p *subImporterProv) Feed(context.Context, source.Query) (source.Result, error) {
 	return source.Result{}, nil
 }
-func (p *subImporterProv) MySubscriptions(context.Context) ([]string, error) {
+func (p *subImporterProv) MyFollows(context.Context) ([]source.Subscription, error) {
 	select {
 	case p.called <- struct{}{}:
 	default:
 	}
-	return p.subs, nil
+	out := make([]source.Subscription, len(p.subs))
+	for i, ch := range p.subs {
+		out[i] = source.Subscription{Source: source.Reddit, Channel: ch}
+	}
+	return out, nil
 }
 
-func TestImportRedditSubsRouting(t *testing.T) {
+func TestImportFollowsRouting(t *testing.T) {
 	prov := &subImporterProv{subs: []string{"r/golang", "r/rust"}, called: make(chan struct{}, 1)}
 	set := &settings.Settings{
 		Profiles: []settings.Profile{{Name: "Home", Subs: []source.Subscription{
@@ -57,13 +62,13 @@ func TestImportRedditSubsRouting(t *testing.T) {
 	if s.SelectedAccount() != source.Reddit {
 		t.Fatalf("accounts editor should default to Reddit, got %v", s.SelectedAccount())
 	}
-	click(t, h, ui.HitImportRedditSubs)
+	click(t, h, ui.HitImportFollows)
 
 	// Wait for the background import to have run its network call.
 	select {
 	case <-prov.called:
 	case <-time.After(2 * time.Second):
-		t.Fatal("ImportRedditSubscriptions was not dispatched")
+		t.Fatal("ImportFollows was not dispatched")
 	}
 
 	// Drain the queued scene mutations (bounded) and assert the new subreddit
@@ -81,7 +86,7 @@ func TestImportRedditSubsRouting(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	// r/golang was already present, so exactly one new sub (r/rust) was added.
-	if got := a.VM().Status.Get(); !strings.Contains(got, "Imported 1 new subreddit") {
+	if got := a.VM().Status.Get(); !strings.Contains(got, "Imported 1 new subscription") {
 		t.Fatalf("status = %q, want 1 import", got)
 	}
 }

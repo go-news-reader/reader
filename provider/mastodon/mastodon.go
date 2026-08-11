@@ -23,11 +23,23 @@ type client interface {
 	PublicTimeline(ctx context.Context, opts gomasto.TimelineOptions) (*gomasto.Timeline, error)
 	HashtagTimeline(ctx context.Context, tag string, opts gomasto.TimelineOptions) (*gomasto.Timeline, error)
 	AccountStatuses(ctx context.Context, acct string, opts gomasto.TimelineOptions) (*gomasto.Timeline, error)
+	HomeTimeline(ctx context.Context, opts gomasto.TimelineOptions) (*gomasto.Timeline, error)
+	VerifyCredentials(ctx context.Context) (*gomasto.Account, error)
+	Following(ctx context.Context, accountID string, opts gomasto.TimelineOptions) (*gomasto.FollowingPage, error)
 }
+
+// homeChannel is the reserved subscription channel that maps to the
+// authenticated user's home timeline (the statuses of the accounts they
+// follow). An empty channel also maps to home when a token is configured;
+// without a token an empty channel is the instance public timeline.
+const homeChannel = "home"
 
 // Provider fetches Mastodon statuses as normalized items.
 type Provider struct {
 	client client
+	// authed reports whether a bearer token was configured, which gates the
+	// home timeline and enables the empty-channel→home default.
+	authed bool
 }
 
 // New returns a provider for the given instance (e.g. "https://mastodon.social").
@@ -49,11 +61,18 @@ func newWith(hc *http.Client, instance, token string) *Provider {
 	if token != "" {
 		opts = append(opts, gomasto.WithToken(token))
 	}
-	return &Provider{client: gomasto.New(instance, opts...)}
+	return &Provider{client: gomasto.New(instance, opts...), authed: token != ""}
 }
 
-// NewWithClient wraps a preconfigured client (or a fake in tests).
+// NewWithClient wraps a preconfigured client (or a fake in tests). The client
+// is treated as unauthenticated (no home-timeline default); use
+// [NewWithClientAuthed] to wrap a token-carrying client.
 func NewWithClient(c client) *Provider { return &Provider{client: c} }
+
+// NewWithClientAuthed wraps a preconfigured client that carries a bearer token,
+// enabling the home timeline and the empty-channel→home default. Tests use it to
+// exercise the authenticated paths without a network.
+func NewWithClientAuthed(c client) *Provider { return &Provider{client: c, authed: true} }
 
 // Kind reports source.Mastodon.
 func (p *Provider) Kind() source.Kind { return source.Mastodon }
@@ -70,6 +89,13 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		tl, err = p.client.HashtagTimeline(ctx, strings.TrimPrefix(ch, "#"), opts)
 	case strings.HasPrefix(ch, "@"):
 		tl, err = p.client.AccountStatuses(ctx, strings.TrimPrefix(ch, "@"), opts)
+	case ch == homeChannel || (ch == "" && p.authed):
+		// The home timeline needs a token; a "home" channel without one is a
+		// typed prompt to connect an account rather than a silent fallback.
+		if !p.authed {
+			return source.Result{}, source.NeedsAuth(source.Mastodon, "sign in to view your Mastodon home timeline")
+		}
+		tl, err = p.client.HomeTimeline(ctx, opts)
 	default:
 		tl, err = p.client.PublicTimeline(ctx, opts)
 	}
@@ -87,6 +113,53 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		items = append(items, mapStatus(q.Channel, s))
 	}
 	return source.Result{Items: items, Cursor: tl.MaxID}, nil
+}
+
+// followMaxPages bounds MyFollows' pagination so a misbehaving instance that
+// always returns a next cursor cannot loop forever; 40 pages of 80 covers 3200
+// follows, beyond any typical account.
+const followMaxPages = 40
+
+// mapErr promotes a 401/403 (folded into the client's error text) to a typed
+// auth prompt, leaving transient failures unchanged.
+func mapErr(err error) error {
+	if source.ErrHasAuthStatus(err) {
+		return source.NeedsAuth(source.Mastodon, "access token required/invalid")
+	}
+	return err
+}
+
+// MyFollows returns every account the connected Mastodon user follows as a
+// ready subscription, so the aggregator's generic "import my subscriptions"
+// action adds them all. It verifies the token to learn the account id, then
+// pages the account's following list, returning each followed account as an
+// "@<acct>" channel — the handle form [Provider.Feed] resolves to that account's
+// own timeline. It satisfies [source.FollowImporter]; a token is required and a
+// 401/403 is surfaced as a typed auth prompt.
+func (p *Provider) MyFollows(ctx context.Context) ([]source.Subscription, error) {
+	me, err := p.client.VerifyCredentials(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	var out []source.Subscription
+	opts := gomasto.TimelineOptions{Limit: 80}
+	for page := 0; page < followMaxPages; page++ {
+		pg, err := p.client.Following(ctx, me.ID, opts)
+		if err != nil {
+			return nil, mapErr(err)
+		}
+		for _, a := range pg.Accounts {
+			if a.Acct == "" {
+				continue
+			}
+			out = append(out, source.Subscription{Source: source.Mastodon, Channel: "@" + a.Acct})
+		}
+		if pg.MaxID == "" {
+			break
+		}
+		opts.MaxID = pg.MaxID
+	}
+	return out, nil
 }
 
 func mapStatus(channel string, s gomasto.Status) source.Item {

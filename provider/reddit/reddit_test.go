@@ -29,6 +29,8 @@ type fakeFetcher struct {
 	sawCmtID    string
 	mySubs      []goreddit.SubredditInfo
 	mySubsErr   error
+	friends     []goreddit.Friend
+	friendsErr  error
 
 	// Search seams.
 	subPage       *goreddit.SubredditPage
@@ -52,6 +54,10 @@ func (f *fakeFetcher) SearchPosts(_ context.Context, query, subreddit string, so
 
 func (f *fakeFetcher) MySubreddits(_ context.Context) ([]goreddit.SubredditInfo, error) {
 	return f.mySubs, f.mySubsErr
+}
+
+func (f *fakeFetcher) Friends(_ context.Context) ([]goreddit.Friend, error) {
+	return f.friends, f.friendsErr
 }
 
 func (f *fakeFetcher) Subreddit(_ context.Context, name string, sort goreddit.Sort, opts goreddit.ListingOptions) (*goreddit.Page, error) {
@@ -289,6 +295,66 @@ func TestMySubscriptionsError(t *testing.T) {
 		t.Fatal("want error propagated")
 	}
 	// mapErr promotes a 403 to a typed auth error.
+	var ae *source.AuthError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want mapErr AuthError, got %T: %v", err, err)
+	}
+}
+
+func TestMyFollows(t *testing.T) {
+	// Both the subreddit subscriptions (r/) and the followed redditors (u/) are
+	// returned as ready subscriptions; blank names on either side are skipped.
+	f := &fakeFetcher{
+		mySubs: []goreddit.SubredditInfo{{Name: "golang"}, {Name: "rust"}},
+		friends: []goreddit.Friend{
+			{Name: "spez"},
+			{Name: ""}, // skipped: empty redditor name
+			{Name: "kn0thing"},
+		},
+	}
+	got, err := NewWithClient(f).MyFollows(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []source.Subscription{
+		{Source: source.Reddit, Channel: "r/golang"},
+		{Source: source.Reddit, Channel: "r/rust"},
+		{Source: source.Reddit, Channel: "u/spez"},
+		{Source: source.Reddit, Channel: "u/kn0thing"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestMyFollowsSubsError(t *testing.T) {
+	// A failure listing subreddits aborts before the friends call.
+	f := &fakeFetcher{mySubsErr: &goreddit.APIError{StatusCode: 403, Status: "forbidden"}}
+	_, err := NewWithClient(f).MyFollows(context.Background())
+	if err == nil {
+		t.Fatal("want error propagated from MySubscriptions")
+	}
+	var ae *source.AuthError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want AuthError, got %T: %v", err, err)
+	}
+}
+
+func TestMyFollowsFriendsError(t *testing.T) {
+	// Subreddits list fine, but the friends call fails; the error is mapped.
+	f := &fakeFetcher{
+		mySubs:     []goreddit.SubredditInfo{{Name: "golang"}},
+		friendsErr: &goreddit.APIError{StatusCode: 401, Status: "unauthorized"},
+	}
+	_, err := NewWithClient(f).MyFollows(context.Background())
+	if err == nil {
+		t.Fatal("want error propagated from Friends")
+	}
 	var ae *source.AuthError
 	if !errors.As(err, &ae) {
 		t.Fatalf("want mapErr AuthError, got %T: %v", err, err)

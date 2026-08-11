@@ -340,11 +340,13 @@ func (h *Handler) runHit(hit ui.Hit) {
 		// into the Reddit account; the app persists it, rebuilds the registry and
 		// re-aggregates, reporting success/failure on the status line.
 		_, _ = h.a.ImportRedditSessionFromFirefox()
-	case ui.HitImportRedditSubs:
-		// Pull the connected account's subreddit subscriptions in the background
-		// (network); the app adds any new ones, persists, re-aggregates, and reports
-		// on the status line.
-		go func() { _, _ = h.a.ImportRedditSubscriptions(context.Background()) }()
+	case ui.HitImportFollows:
+		// Pull the connected account's follows for the selected provider in the
+		// background (network); the app adds any new subscriptions, persists,
+		// re-aggregates, and reports on the status line. The hit carries the source
+		// kind whose "Import subscriptions" button was pressed.
+		kind := source.Kind(hit.Value)
+		go func() { _, _ = h.a.ImportFollows(context.Background(), kind) }()
 	case ui.HitRedditSignIn:
 		// Launch Reddit's login page in the configured sign-in browser so the user
 		// can authenticate there (then, with Firefox, import the session cookie).
