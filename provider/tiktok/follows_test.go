@@ -28,6 +28,51 @@ func (f *fakeFollower) Following(_ context.Context, secUid string, _ int, _ stri
 	return l, nil
 }
 
+type fakeViewer struct {
+	sec  string
+	err  error
+	call int
+}
+
+func (f *fakeViewer) ViewerSecUID(context.Context) (string, error) {
+	f.call++
+	return f.sec, f.err
+}
+
+// TestMyFollowsResolvesViewer covers the production path: no preset secUid, so
+// MyFollows resolves the viewer's secUid, then pages the (signed) user-list.
+func TestMyFollowsResolvesViewer(t *testing.T) {
+	v := &fakeViewer{sec: "RESOLVED"}
+	f := &fakeFollower{lists: []*gott.FollowingList{
+		{Users: []gott.FollowedUser{{SecUID: "SEC_A"}}, HasMore: false},
+	}}
+	p := &Provider{hasCred: true, viewer: v, follow: f}
+	subs, err := p.MyFollows(context.Background())
+	if err != nil {
+		t.Fatalf("MyFollows: %v", err)
+	}
+	if v.call != 1 || f.gotSec != "RESOLVED" {
+		t.Fatalf("viewer.call=%d follow.gotSec=%q", v.call, f.gotSec)
+	}
+	if len(subs) != 1 || subs[0].Channel != "SEC_A" {
+		t.Fatalf("subs = %+v", subs)
+	}
+}
+
+// TestMyFollowsViewerError maps a viewer-resolution failure to the typed wall.
+func TestMyFollowsViewerError(t *testing.T) {
+	v := &fakeViewer{err: errors.New("tiktok: viewer secUid not present")}
+	p := &Provider{hasCred: true, viewer: v, follow: &fakeFollower{}}
+	_, err := p.MyFollows(context.Background())
+	ae, ok := source.AsAuthError(err)
+	if !ok || ae.Kind != source.TikTok {
+		t.Fatalf("err = %v, want TikTok AuthError", err)
+	}
+	if !strings.Contains(ae.Reason, "signing wall") {
+		t.Errorf("reason = %q", ae.Reason)
+	}
+}
+
 func TestMyFollowsNoCred(t *testing.T) {
 	_, err := (&Provider{}).MyFollows(context.Background())
 	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.TikTok {

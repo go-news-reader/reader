@@ -11,7 +11,6 @@ require (
 	github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38
 	github.com/go-instagram/instagram v0.2.0
 	github.com/go-lemmy/lemmy v0.1.0
-	github.com/go-macos/objc v0.1.1
 	github.com/go-mastodon/mastodon v0.2.0
 	github.com/go-newsgroups/newznab v0.1.0
 	github.com/go-newsgroups/nntp v0.2.2
@@ -21,18 +20,14 @@ require (
 	github.com/go-opentype/fonts v0.7.0
 	github.com/go-reddit/reddit v0.9.0
 	github.com/go-syndication/feed v0.1.1
-	github.com/go-tiktok/tiktok v0.2.0
+	github.com/go-tiktok/tiktok v0.3.0
 	github.com/go-webengine/engine v0.3.11
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.9.0
 	github.com/go-widgets/toolkit v0.147.0
-	github.com/go-widgets/tray v0.1.1
 	github.com/go-widgets/window v0.17.0
-	github.com/godbus/dbus/v5 v5.2.2
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
-	github.com/jezek/xgb v1.3.1
-	golang.org/x/sys v0.47.0
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.56.0
@@ -50,6 +45,7 @@ require (
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-freedesktop/dbus v0.1.1 // indirect
+	github.com/go-macos/objc v0.1.1 // indirect
 	github.com/go-opentype/bidi v0.2.1 // indirect
 	github.com/go-opentype/opentype v0.5.0 // indirect
 	github.com/go-opentype/shape v0.4.0 // indirect
@@ -70,6 +66,7 @@ require (
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/image v0.44.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	modernc.org/libc v1.74.4 // indirect

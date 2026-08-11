@@ -9,35 +9,47 @@ import (
 // followMaxPages bounds how many user-list pages MyFollows walks.
 const followMaxPages = 40
 
-// MyFollows attempts to import the connected TikTok user's following list, but
-// TikTok gates the web user-list endpoint behind its request-signing wall
-// (X-Bogus / _signature, derived from the viewer's own secUid) that a pure-Go
-// client cannot forge — the same wall that blocked TikTok's home feed in the
-// authenticated-home work. It therefore gates on a configured session and
-// reports a typed [source.AuthError] describing the wall, rather than crashing
-// or fabricating a follow list. It satisfies [source.FollowImporter].
+// viewerResolver resolves the authenticated viewer's own secUid. The real
+// *gott.Client satisfies it (via ViewerSecUID, which parses the embedded
+// rehydration JSON of an authenticated page); tests supply a fake.
+type viewerResolver interface {
+	ViewerSecUID(ctx context.Context) (string, error)
+}
+
+// MyFollows imports the connected TikTok user's following list. It resolves the
+// viewer's own secUid (from the session-authenticated web app) and then pages
+// the library's signed /api/user/list/ endpoint. It satisfies
+// [source.FollowImporter].
 //
-// The blocker is twofold: the list keys on the viewer's own secUid, which is not
-// carried by any cookie and cannot be derived without the signed endpoints, and
-// the request itself must carry a valid signed parameter. Both are unreachable
-// from pure Go, so in practice this always returns the wall error.
+// Honest scope: the signed request needs a browser-minted msToken (and the
+// fingerprint-derived X-Gnarly token) that a pure-Go client cannot forge, so
+// against live TikTok the user-list refusal is surfaced as a typed
+// [source.AuthError] rather than a fabricated list. When a valid msToken/session
+// is supplied and TikTok returns real users, they are mapped to subscriptions.
 func (p *Provider) MyFollows(ctx context.Context) ([]source.Subscription, error) {
 	if !p.hasCred {
 		return nil, source.NeedsAuth(source.TikTok,
 			"sign in to TikTok and import your ms_token + session cookie to import your following list")
 	}
-	if p.followSecUID == "" {
-		// No viewer secUid: TikTok exposes it only through the signed endpoints
-		// this pure-Go client cannot reach. Report the wall rather than guessing.
-		return nil, source.NeedsAuth(source.TikTok,
-			"TikTok's following list needs your account secUid and a signed request "+
-				"(X-Bogus/_signature), which this pure-Go client cannot forge")
+	sec := p.followSecUID
+	if sec == "" {
+		if p.viewer == nil {
+			// No viewer resolver and no preset secUid: nothing to key the list on.
+			return nil, source.NeedsAuth(source.TikTok,
+				"TikTok's following list needs your account secUid and a signed request, "+
+					"which this pure-Go client cannot forge")
+		}
+		var err error
+		sec, err = p.viewer.ViewerSecUID(ctx)
+		if err != nil {
+			return nil, followWallErr(err)
+		}
 	}
 
 	var out []source.Subscription
 	cursor := "0"
 	for page := 0; page < followMaxPages; page++ {
-		list, err := p.follow.Following(ctx, p.followSecUID, defaultCount, cursor)
+		list, err := p.follow.Following(ctx, sec, defaultCount, cursor)
 		if err != nil {
 			return nil, followWallErr(err)
 		}

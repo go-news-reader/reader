@@ -61,11 +61,12 @@ type Provider struct {
 	session  string
 	homeBase string
 
-	// Follow-import plumbing. follow pages the web user-list endpoint, and
-	// followSecUID is the viewer's own secUid the following list keys on — which a
-	// pure-Go client cannot obtain without TikTok's signing, so it is empty in
-	// production and MyFollows reports the wall (set only in tests).
+	// Follow-import plumbing. follow pages the web user-list endpoint, viewer
+	// resolves the viewer's own secUid the following list keys on (from the
+	// session-authenticated web app), and followSecUID short-circuits that
+	// resolution when preset (used by tests).
 	follow       follower
+	viewer       viewerResolver
 	followSecUID string
 }
 
@@ -100,6 +101,7 @@ func newWith(hc *http.Client, msToken, sessionID string) *Provider {
 		session:  sessionID,
 		homeBase: gott.DefaultBaseURL,
 		follow:   gc,
+		viewer:   gc,
 	}
 }
 

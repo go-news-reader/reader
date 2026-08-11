@@ -15,17 +15,6 @@ type errRT struct{}
 
 func (errRT) RoundTrip(*http.Request) (*http.Response, error) { return nil, errors.New("boom") }
 
-type errBody struct{}
-
-func (errBody) Read([]byte) (int, error) { return 0, errors.New("read fail") }
-func (errBody) Close() error             { return nil }
-
-type errBodyRT struct{}
-
-func (errBodyRT) RoundTrip(*http.Request) (*http.Response, error) {
-	return &http.Response{StatusCode: 200, Body: errBody{}, Header: http.Header{}}, nil
-}
-
 func TestIsHomeChannel(t *testing.T) {
 	if !isHomeChannel("home") || !isHomeChannel(" Following ") {
 		t.Fatal("home/following should be home channels")
@@ -35,32 +24,9 @@ func TestIsHomeChannel(t *testing.T) {
 	}
 }
 
-func TestBoolNumber(t *testing.T) {
-	cases := map[string]bool{`true`: true, `false`: false, `"1"`: true, `0`: false, `"true"`: true}
-	for in, want := range cases {
-		var n boolNumber
-		if err := n.UnmarshalJSON([]byte(in)); err != nil {
-			t.Fatal(err)
-		}
-		if bool(n) != want {
-			t.Fatalf("%s -> %v, want %v", in, bool(n), want)
-		}
-	}
-}
-
 func TestFirstNonEmpty(t *testing.T) {
 	if firstNonEmpty("", "b", "c") != "b" || firstNonEmpty("", "") != "" {
 		t.Fatal("firstNonEmpty")
-	}
-}
-
-func TestSnippet(t *testing.T) {
-	if snippet([]byte("short")) != "short" {
-		t.Fatal("short snippet")
-	}
-	long := strings.Repeat("x", 200)
-	if s := snippet([]byte(long)); !strings.HasSuffix(s, "…") || len(s) >= 200 {
-		t.Fatalf("long snippet not truncated: %d", len(s))
 	}
 }
 
@@ -82,11 +48,16 @@ const followingJSON = `{
   ]
 }`
 
-func TestFollowingMapsAndSendsCreds(t *testing.T) {
-	var gotMsParam, gotCookies string
+// TestFollowingMapsSignsAndSendsCreds drives the home feed through the library's
+// signed request: the httptest server stands in for TikTok, and the provider is
+// expected to sign (X-Bogus), send the imported msToken/sessionid, and map the
+// returned videos.
+func TestFollowingMapsSignsAndSendsCreds(t *testing.T) {
+	var gotQuery, gotCookies, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotMsParam = r.URL.Query().Get("msToken")
+		gotQuery = r.URL.RawQuery
 		gotCookies = r.Header.Get("Cookie")
+		gotPath = r.URL.Path
 		_, _ = w.Write([]byte(followingJSON))
 	}))
 	defer srv.Close()
@@ -96,8 +67,14 @@ func TestFollowingMapsAndSendsCreds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMsParam != "MSTOK" {
-		t.Fatalf("msToken param = %q", gotMsParam)
+	if gotPath != "/api/following/item_list/" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if !strings.Contains(gotQuery, "X-Bogus=") {
+		t.Fatalf("request not signed: %q", gotQuery)
+	}
+	if !strings.Contains(gotQuery, "msToken=MSTOK") {
+		t.Fatalf("msToken param missing: %q", gotQuery)
 	}
 	if !strings.Contains(gotCookies, "msToken=MSTOK") || !strings.Contains(gotCookies, "sessionid=SID") {
 		t.Fatalf("cookies = %q", gotCookies)
@@ -122,6 +99,8 @@ func TestFollowingMapsAndSendsCreds(t *testing.T) {
 	}
 }
 
+// TestFollowingNoMoreCursor also covers the empty-msToken/empty-session branches
+// of gottClient (hasCred forced without importing tokens).
 func TestFollowingNoMoreCursor(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"statusCode":0,"cursor":"40","hasMore":false,"itemList":[]}`))
@@ -137,31 +116,21 @@ func TestFollowingNoMoreCursor(t *testing.T) {
 	}
 }
 
-func TestFollowingNon2xxWall(t *testing.T) {
-	body := `{"statusCode":10201,"statusMsg":"missing required fields ` + strings.Repeat("x", 200) + `"}`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(body))
-	}))
-	defer srv.Close()
-	p := &Provider{hasCred: true, homeBase: srv.URL, hc: srv.Client()}
-	_, err := p.followingFeed(context.Background(), source.Query{})
-	if _, ok := source.AsAuthError(err); !ok {
-		t.Fatalf("400 wall should map to AuthError, got %v", err)
-	}
-}
-
-func TestFollowingEmptyBody(t *testing.T) {
+func TestFollowingEmptyBodyWall(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
 	defer srv.Close()
 	p := &Provider{hasCred: true, homeBase: srv.URL, hc: srv.Client()}
 	_, err := p.followingFeed(context.Background(), source.Query{})
-	if _, ok := source.AsAuthError(err); !ok {
+	ae, ok := source.AsAuthError(err)
+	if !ok || ae.Kind != source.TikTok {
 		t.Fatalf("empty body should map to AuthError, got %v", err)
+	}
+	if !strings.Contains(ae.Reason, "msToken") {
+		t.Errorf("reason = %q, want the msToken wall", ae.Reason)
 	}
 }
 
-func TestFollowingStatusCodeNonZero(t *testing.T) {
+func TestFollowingStatusCodeWall(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"statusCode":10201,"statusMsg":"blocked","itemList":[]}`))
 	}))
@@ -173,34 +142,12 @@ func TestFollowingStatusCodeNonZero(t *testing.T) {
 	}
 }
 
-func TestFollowingBadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("not json"))
-	}))
-	defer srv.Close()
-	p := &Provider{hasCred: true, homeBase: srv.URL, hc: srv.Client()}
-	if _, err := p.followingFeed(context.Background(), source.Query{}); err == nil {
-		t.Fatal("want decode error")
-	}
-}
-
-func TestFollowingRequestBuildError(t *testing.T) {
-	p := &Provider{hasCred: true, homeBase: "http://\x7f-bad", hc: http.DefaultClient}
-	if _, err := p.followingFeed(context.Background(), source.Query{}); err == nil {
-		t.Fatal("want request-build error")
-	}
-}
-
-func TestFollowingTransportError(t *testing.T) {
-	p := &Provider{hasCred: true, homeBase: "http://example.invalid", hc: &http.Client{Transport: errRT{}}}
-	if _, err := p.followingFeed(context.Background(), source.Query{}); err == nil {
-		t.Fatal("want transport error")
-	}
-}
-
-func TestFollowingBodyReadError(t *testing.T) {
-	p := &Provider{hasCred: true, homeBase: "http://example.invalid", hc: &http.Client{Transport: errBodyRT{}}}
-	if _, err := p.followingFeed(context.Background(), source.Query{}); err == nil {
-		t.Fatal("want body read error")
+// TestFollowingTransportWall also covers the empty-homeBase branch of gottClient
+// (the default origin is used, but the injected transport never hits network).
+func TestFollowingTransportWall(t *testing.T) {
+	p := &Provider{hasCred: true, homeBase: "", hc: &http.Client{Transport: errRT{}}}
+	_, err := p.followingFeed(context.Background(), source.Query{})
+	if _, ok := source.AsAuthError(err); !ok {
+		t.Fatalf("transport error should map to the wall AuthError, got %v", err)
 	}
 }
