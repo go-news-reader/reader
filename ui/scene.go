@@ -184,17 +184,19 @@ type Scene struct {
 	feedScroll  panelScroll // the feed card list's scroll position (see panelScroll)
 	Scale       float64     // display scale (zoom × devicePixelRatio); 0 => 1
 
-	// Feed-loading triggers. OnReachBottom fires (when infiniteScroll is on) as the
-	// feed list is wheeled to its bottom, so the app can fetch and append the next
-	// page. OnPullRefresh fires on an insistent upward overscroll while already at
-	// the top, so the app can re-aggregate. Both are nil-safe (only called when
-	// installed). pullAccum accumulates upward overscroll at the top; it crosses
-	// pullRefreshThreshold to fire OnPullRefresh, and resets whenever the feed
-	// scrolls away from the top so only an insistent pull triggers.
+	// Feed-loading triggers. OnReachBottom fires (when infiniteScroll is on) on an
+	// insistent downward overscroll while already at the bottom, so the app can
+	// fetch and append the next page — the mirror of OnPullRefresh, which fires on
+	// an insistent upward overscroll while already at the top so the app can
+	// re-aggregate. Both are nil-safe (only called when installed). pullAccum /
+	// loadMoreAccum accumulate the top / bottom overscroll; each crosses
+	// pullRefreshThreshold to fire once, and resets whenever the feed scrolls away
+	// from that end so only a deliberate pull triggers.
 	OnReachBottom  func()
 	OnPullRefresh  func()
 	infiniteScroll bool
 	pullAccum      int
+	loadMoreAccum  int
 
 	// Live-loading feedback (streaming aggregation). loading is set while a
 	// refresh is in progress; loadDone/loadTotal track how many sources have
@@ -1283,26 +1285,36 @@ func (s *Scene) Scroll(dy int) {
 	// and calls feedScroll.refresh, which clamps against the fresh sizes (so the dy
 	// must be added before, not clamped against stale sizes).
 	atTopBefore := s.feedScroll.offset <= 0
+	atBottomBefore := s.feedScroll.needsBar() && s.feedScroll.offset >= s.feedScroll.max()
 	s.feedScroll.offset += dy
 	s.layout()
-	s.feedTriggers(dy, atTopBefore)
+	s.feedTriggers(dy, atTopBefore, atBottomBefore)
 	s.touch()
 }
 
 // feedTriggers fires the infinite-scroll (OnReachBottom) and pull-to-refresh
 // (OnPullRefresh) seams from a feed wheel event. dy is the raw wheel delta
-// (positive = toward the bottom); atTopBefore is whether the feed sat at the very
-// top before this nudge. It runs after layout() has re-clamped feedScroll against
-// fresh sizes, so the at-bottom/at-top tests read settled geometry.
-func (s *Scene) feedTriggers(dy int, atTopBefore bool) {
-	// Infinite scroll: wheeling down while the (overflowing) feed is pinned to its
-	// bottom asks for the next page. The app's loadingMore guard throttles repeats,
-	// so firing on each at-bottom wheel is fine; a non-overflowing list never fires.
-	if s.infiniteScroll && dy > 0 && len(s.rows) > 0 &&
-		s.feedScroll.needsBar() && s.feedScroll.offset >= s.feedScroll.max() {
-		if s.OnReachBottom != nil {
-			s.OnReachBottom()
+// (positive = toward the bottom); atTopBefore / atBottomBefore report whether the
+// feed sat at the very top / bottom before this nudge. It runs after layout() has
+// re-clamped feedScroll against fresh sizes, so the at-bottom/at-top tests read
+// settled geometry.
+func (s *Scene) feedTriggers(dy int, atTopBefore, atBottomBefore bool) {
+	// Infinite scroll: an insistent DOWNWARD overscroll while already pinned to the
+	// bottom asks for the next page — the mirror of pull-to-refresh at the top. A
+	// single nudge past the end does not fire; only a deliberate pull does. The
+	// app's loadingMore guard throttles repeats; a non-overflowing list never fires
+	// (atBottomBefore already requires needsBar()).
+	switch {
+	case s.infiniteScroll && dy > 0 && atBottomBefore && len(s.rows) > 0:
+		s.loadMoreAccum += dy
+		if s.loadMoreAccum >= pullRefreshThreshold {
+			s.loadMoreAccum = 0
+			if s.OnReachBottom != nil {
+				s.OnReachBottom()
+			}
 		}
+	case s.feedScroll.needsBar() && s.feedScroll.offset < s.feedScroll.max():
+		s.loadMoreAccum = 0
 	}
 	// Pull-to-refresh: an insistent upward overscroll while already at the top
 	// accumulates; crossing the threshold refreshes once and resets. Any scroll

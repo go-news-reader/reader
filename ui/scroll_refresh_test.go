@@ -96,37 +96,64 @@ func itoaTest(i int) string {
 	return string(b)
 }
 
-// TestInfiniteScrollTrigger proves the bottom-of-feed next-page trigger: it fires
-// on an at-bottom wheel-down when infinite scroll is on, stays silent when off, and
-// never fires on a list that does not overflow.
+// TestInfiniteScrollTrigger proves the bottom next-page gesture mirrors pull-to-
+// refresh: arriving at the bottom does not fire; an insistent downward overscroll
+// while already pinned to the bottom accumulates and fires once on crossing the
+// threshold; it stays silent when infinite scroll is off and on a non-overflowing
+// list; and scrolling away from the bottom resets the accumulator.
 func TestInfiniteScrollTrigger(t *testing.T) {
 	s := overflowFeed(t, 60)
 	fired := 0
 	s.OnReachBottom = func() { fired++ }
 	s.SetInfiniteScroll(true)
 
-	// Wheel to the very bottom: the offset pins to max() and the trigger fires.
+	// Wheel to the very bottom. This nudge STARTED off the bottom, so it only
+	// arrives — it must not fire the load-more (mirrors: reaching the top is not a
+	// refresh).
 	s.Scroll(1 << 20)
 	if s.feedScroll.offset != s.feedScroll.max() || s.feedScroll.max() <= 0 {
 		t.Fatalf("not pinned to bottom: offset=%d max=%d", s.feedScroll.offset, s.feedScroll.max())
 	}
-	if fired != 1 {
-		t.Fatalf("OnReachBottom fired %d times on reaching bottom, want 1", fired)
+	if fired != 0 {
+		t.Fatalf("OnReachBottom fired %d times just on arriving at the bottom, want 0", fired)
 	}
-	// A further wheel-down while already at the bottom fires again (the app's
-	// loadingMore guard is what throttles, not the scene).
-	s.Scroll(40)
+
+	// Now insist downward while pinned to the bottom: 20 + 20 = 40 (< 48), no fire.
+	s.Scroll(20)
+	s.Scroll(20)
+	if fired != 0 || s.loadMoreAccum != 40 {
+		t.Fatalf("below threshold: fired=%d accum=%d, want 0 / 40", fired, s.loadMoreAccum)
+	}
+	// Cross 48: fires exactly once and resets the accumulator.
+	s.Scroll(20)
+	if fired != 1 || s.loadMoreAccum != 0 {
+		t.Fatalf("crossing threshold: fired=%d accum=%d, want 1 / 0", fired, s.loadMoreAccum)
+	}
 	if s.feedScroll.offset != s.feedScroll.max() {
 		t.Fatalf("offset drifted off bottom: %d (max %d)", s.feedScroll.offset, s.feedScroll.max())
 	}
-	if fired != 2 {
-		t.Fatalf("OnReachBottom fired %d times, want 2 after a second at-bottom wheel", fired)
+
+	// Scrolling UP (away from the bottom) resets the accumulator so stale progress
+	// does not carry over.
+	s.Scroll(20) // accumulate a little at the bottom again
+	if s.loadMoreAccum != 20 {
+		t.Fatalf("accum = %d, want 20", s.loadMoreAccum)
+	}
+	s.Scroll(-80) // move off the bottom
+	if s.feedScroll.offset >= s.feedScroll.max() {
+		t.Fatalf("scroll-up did not leave the bottom: offset=%d max=%d", s.feedScroll.offset, s.feedScroll.max())
+	}
+	if s.loadMoreAccum != 0 {
+		t.Fatalf("loadMoreAccum = %d after scrolling up, want 0 (reset)", s.loadMoreAccum)
 	}
 
-	// With infinite scroll OFF, an at-bottom wheel-down does not fire.
+	// With infinite scroll OFF, insistent overscroll at the bottom does not fire.
+	s.Scroll(1 << 20) // back to the bottom
 	s.SetInfiniteScroll(false)
 	before := fired
-	s.Scroll(40)
+	s.Scroll(20)
+	s.Scroll(20)
+	s.Scroll(20)
 	if fired != before {
 		t.Fatalf("OnReachBottom fired with infinite scroll off (%d -> %d)", before, fired)
 	}
@@ -141,6 +168,7 @@ func TestInfiniteScrollTrigger(t *testing.T) {
 	got := 0
 	s2.OnReachBottom = func() { got++ }
 	s2.SetInfiniteScroll(true)
+	s2.Scroll(1 << 20)
 	s2.Scroll(1 << 20)
 	if got != 0 {
 		t.Fatalf("OnReachBottom fired %d times on a non-overflowing feed, want 0", got)
