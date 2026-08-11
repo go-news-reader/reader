@@ -23,7 +23,6 @@ import (
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/window"
-	"github.com/go-news-reader/reader/internal/windowapp"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
@@ -254,6 +253,13 @@ func runWindow(cfg config, stdout, stderr io.Writer) int {
 // emitWindow opens a native window that blits the UI directly, refreshing the
 // feed concurrently so the window appears immediately and fills in once loaded.
 // Off macOS (or if the window can't open) it falls back to a printed notice.
+//
+// The actual window backend is chosen at build time by presentWindow: the
+// default build uses the reader's own internal/window (present_reader.go); the
+// `gwwindow` build tag swaps in the shared go-widgets/window backend through the
+// internal/windowgw adapter (present_gw.go). This is the phase-1 control for
+// de-duplicating the reader's native windowing against go-widgets/window without
+// removing the existing code.
 func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 	// Marshal background scene writes onto the render thread: the present loop and
 	// input handlers run on the main thread, while refreshFeed aggregates on a
@@ -262,12 +268,7 @@ func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 	a.DeferSceneWrites()
 	go refreshFeed(a, stderr)
 	runtime.LockOSThread()
-	err := openWindow(window.Config{
-		Title:  "News Reader",
-		Width:  float64(cfg.w),
-		Height: float64(cfg.h),
-	}, windowapp.New(a))
-	if err != nil {
+	if err := presentWindow(a, cfg); err != nil {
 		fmt.Fprintln(stderr, "newsreader:", err)
 		fmt.Fprintln(stdout, "native window unavailable; use -serve or -o to view the feed")
 		return 1

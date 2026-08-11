@@ -11,7 +11,7 @@ require (
 	github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38
 	github.com/go-instagram/instagram v0.2.0
 	github.com/go-lemmy/lemmy v0.1.0
-	github.com/go-macos/objc v0.1.0
+	github.com/go-macos/objc v0.1.1
 	github.com/go-mastodon/mastodon v0.2.0
 	github.com/go-newsgroups/newznab v0.1.0
 	github.com/go-newsgroups/nntp v0.2.2
@@ -25,8 +25,9 @@ require (
 	github.com/go-webengine/engine v0.3.11
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.9.0
-	github.com/go-widgets/toolkit v0.146.0
+	github.com/go-widgets/toolkit v0.147.0
 	github.com/go-widgets/tray v0.1.1
+	github.com/go-widgets/window v0.17.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
@@ -48,6 +49,7 @@ require (
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
+	github.com/go-freedesktop/dbus v0.1.1 // indirect
 	github.com/go-opentype/bidi v0.2.1 // indirect
 	github.com/go-opentype/opentype v0.5.0 // indirect
 	github.com/go-opentype/shape v0.4.0 // indirect
