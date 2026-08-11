@@ -114,3 +114,20 @@ func TestReadSessionOpenError(t *testing.T) {
 		t.Fatal("want open error")
 	}
 }
+
+func TestTwitterSessionIncludesTwid(t *testing.T) {
+	// twid carries the viewer's own account id the follow import needs; when the
+	// profile has it, it rides along in the session string after auth_token/ct0.
+	f := setupProfile(t, [][3]string{
+		{"x.com", "auth_token", "AT"},
+		{"x.com", "ct0", "C0"},
+		{"x.com", "twid", "u%3D1234567890"},
+	})
+	got, err := f.TwitterSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "auth_token=AT; ct0=C0; twid=u%3D1234567890" {
+		t.Fatalf("got %q, want twid included", got)
+	}
+}

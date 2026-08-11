@@ -237,15 +237,17 @@ func (p *Provider) MyFollows(ctx context.Context) ([]source.Subscription, error)
 	for _, ch := range channels {
 		out = append(out, source.Subscription{Source: source.Reddit, Channel: ch})
 	}
-	friends, err := p.client.Friends(ctx)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	for _, f := range friends {
-		if f.Name == "" {
-			continue
+	// Friends (followed u/ users) sit behind an OAuth-only endpoint a cookie
+	// session cannot reach, so a failure here must not sink the whole import: the
+	// subscribed subreddits gathered above are the point. Fold friends in when the
+	// call happens to succeed, and otherwise return the subscriptions alone.
+	if friends, ferr := p.client.Friends(ctx); ferr == nil {
+		for _, f := range friends {
+			if f.Name == "" {
+				continue
+			}
+			out = append(out, source.Subscription{Source: source.Reddit, Channel: "u/" + f.Name})
 		}
-		out = append(out, source.Subscription{Source: source.Reddit, Channel: "u/" + f.Name})
 	}
 	return out, nil
 }

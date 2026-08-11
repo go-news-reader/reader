@@ -346,18 +346,20 @@ func TestMyFollowsSubsError(t *testing.T) {
 }
 
 func TestMyFollowsFriendsError(t *testing.T) {
-	// Subreddits list fine, but the friends call fails; the error is mapped.
+	// Subreddits list fine but the friends call fails (its endpoint needs OAuth a
+	// cookie session lacks). That must not sink the import: the subscribed
+	// subreddits still come back, and no error is raised.
 	f := &fakeFetcher{
 		mySubs:     []goreddit.SubredditInfo{{Name: "golang"}},
 		friendsErr: &goreddit.APIError{StatusCode: 401, Status: "unauthorized"},
 	}
-	_, err := NewWithClient(f).MyFollows(context.Background())
-	if err == nil {
-		t.Fatal("want error propagated from Friends")
+	got, err := NewWithClient(f).MyFollows(context.Background())
+	if err != nil {
+		t.Fatalf("a friends failure must not fail the whole import: %v", err)
 	}
-	var ae *source.AuthError
-	if !errors.As(err, &ae) {
-		t.Fatalf("want mapErr AuthError, got %T: %v", err, err)
+	want := []source.Subscription{{Source: source.Reddit, Channel: "r/golang"}}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("got %+v, want the subscriptions alone %+v", got, want)
 	}
 }
 

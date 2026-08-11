@@ -325,15 +325,17 @@ func (f *Finder) TikTokSession() (string, error) {
 	})
 }
 
-// TwitterSession imports the logged-in X/Twitter session (auth_token + ct0) as an
-// "auth_token=…; ct0=…" cookie string ready for the Twitter provider's home feed.
-// auth_token is mandatory. Host patterns are anchored to the x.com / twitter.com
+// TwitterSession imports the logged-in X/Twitter session (auth_token + ct0, plus
+// twid when present) as an "auth_token=…; ct0=…; twid=…" cookie string ready for
+// the Twitter provider's home feed and follow import. auth_token is mandatory;
+// twid carries the viewer's own account id, which the follow import needs to walk
+// the Following list. Host patterns are anchored to the x.com / twitter.com
 // domains so an unrelated "…x.com" host cannot match.
 func (f *Finder) TwitterSession() (string, error) {
 	return f.importSession(sessionSpec{
 		hostPatterns: []string{"x.com", "%.x.com", "twitter.com", "%.twitter.com"},
 		primary:      "auth_token",
-		names:        []string{"auth_token", "ct0"},
+		names:        []string{"auth_token", "ct0", "twid"},
 		signInHint:   "log into X in Firefox first",
 	})
 }
