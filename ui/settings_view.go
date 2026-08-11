@@ -28,9 +28,10 @@ const (
 	FocusChannel
 	FocusRename
 	FocusCache
-	FocusCacheSize // the media-cache size-limit (MB) field
-	FocusZoomIn    // the "zoom in" browser-shortcut key field
-	FocusZoomOut   // the "zoom out" browser-shortcut key field
+	FocusCacheSize    // the media-cache size-limit (MB) field
+	FocusCacheBackend // the media-cache backend (plugin path) field
+	FocusZoomIn       // the "zoom in" browser-shortcut key field
+	FocusZoomOut      // the "zoom out" browser-shortcut key field
 )
 
 // sButton is one clickable pill in the settings view.
@@ -109,6 +110,7 @@ func (s *Scene) OpenSettings() {
 	s.renameInput = s.selEditName()
 	s.cacheInput = s.cachePath
 	s.cacheSizeInput = strconv.Itoa(s.cacheSizeMB)
+	s.cacheBackendInput = s.cacheBackend
 	s.zoomInInput = s.BrowserZoomInKey()
 	s.zoomOutInput = s.BrowserZoomOutKey()
 	s.touch()
@@ -178,6 +180,9 @@ func (s *Scene) FocusCache()   { s.sf = FocusCache; s.touch() }
 
 // FocusCacheSize gives keyboard focus to the media-cache size-limit (MB) field.
 func (s *Scene) FocusCacheSize() { s.sf = FocusCacheSize; s.touch() }
+
+// FocusCacheBackend gives keyboard focus to the cache-backend (plugin path) field.
+func (s *Scene) FocusCacheBackend() { s.sf = FocusCacheBackend; s.touch() }
 
 // FocusZoomIn / FocusZoomOut give keyboard focus to a zoom-key field.
 func (s *Scene) FocusZoomIn()  { s.sf = FocusZoomIn; s.touch() }
@@ -261,6 +266,15 @@ func (s *Scene) RemoveSub(prof, sub int) {
 
 // CommitCache applies the cache-path buffer.
 func (s *Scene) CommitCache() { s.cachePath = strings.TrimSpace(s.cacheInput); s.touch() }
+
+// CommitCacheBackend applies the cache-backend buffer: blank / "local" keeps the
+// built-in disk cache, a filesystem path selects an external cache plugin. The
+// change takes effect on the next launch (the backend is chosen at startup), like
+// the plugins directory.
+func (s *Scene) CommitCacheBackend() {
+	s.cacheBackend = strings.TrimSpace(s.cacheBackendInput)
+	s.touch()
+}
 
 // CommitCacheSize applies the media-cache size-limit (MB) buffer: on a valid
 // integer it sets the limit, clamped to [MinMediaCacheMB, MaxMediaCacheMB]
@@ -431,6 +445,12 @@ func (s *Scene) layoutSettings() {
 	y += m.side.height + gap
 	s.sCacheSizeR = toolkit.Rect{X: pad, Y: y, W: s.W - 2*pad, H: btnH}
 	y += btnH + pad
+	// Backend selector: blank/"local" = built-in disk cache, a path = a cache
+	// plugin binary (a shared/network cache) launched at startup.
+	label(pad, y, "Cache backend (plugin path)")
+	y += m.side.height + gap
+	s.sCacheBackendR = toolkit.Rect{X: pad, Y: y, W: s.W - 2*pad, H: btnH}
+	y += btnH + pad
 
 	// FEED: infinite scroll on/off — fetch and append the next page of posts when
 	// the feed list is scrolled to the bottom. Placed last so it does not shift the
@@ -466,6 +486,7 @@ func (s *Scene) layoutSettings() {
 		s.sChannelR.Y += dy
 		s.sCacheR.Y += dy
 		s.sCacheSizeR.Y += dy
+		s.sCacheBackendR.Y += dy
 		s.sZoomInR.Y += dy
 		s.sZoomOutR.Y += dy
 	}
@@ -520,6 +541,7 @@ func (s *Scene) drawSettings(buf []byte) {
 		{s.sChannelR, s.channelInput, "channel…", s.sf == FocusChannel},
 		{s.sCacheR, s.cacheInput, "media cache path", s.sf == FocusCache},
 		{s.sCacheSizeR, s.cacheSizeInput, "cache limit (MB)", s.sf == FocusCacheSize},
+		{s.sCacheBackendR, s.cacheBackendInput, "local (or /path/to/cache-plugin)", s.sf == FocusCacheBackend},
 		{s.sZoomInR, s.zoomInInput, "=", s.sf == FocusZoomIn},
 		{s.sZoomOutR, s.zoomOutInput, "-", s.sf == FocusZoomOut},
 	} {
@@ -559,6 +581,9 @@ func (s *Scene) hitSettings(x, y int) Hit {
 	}
 	if inRect(s.sCacheSizeR, x, y) {
 		return Hit{Kind: HitFocusCacheSize}
+	}
+	if inRect(s.sCacheBackendR, x, y) {
+		return Hit{Kind: HitFocusCacheBackend}
 	}
 	if inRect(s.sZoomInR, x, y) {
 		return Hit{Kind: HitFocusZoomIn}

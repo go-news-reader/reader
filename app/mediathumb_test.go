@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-news-reader/reader/mediacache"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
@@ -271,7 +272,7 @@ func TestFetchThumbDownloadErrorsNotCached(t *testing.T) {
 	if img := a.fetchThumb(context.Background(), srv.URL+"/missing"); img != nil {
 		t.Fatal("404 should yield no image")
 	}
-	if _, ok := mediaCacheGet(srv.URL + "/missing"); ok {
+	if _, ok := a.mediaCache.Get(srv.URL + "/missing"); ok {
 		t.Fatal("a failed fetch must not be cached")
 	}
 	if img := a.fetchThumb(context.Background(), srv.URL+"/notimage"); img != nil {
@@ -324,7 +325,7 @@ func TestFetchThumbCachesOriginalMedia(t *testing.T) {
 		if img := a.fetchThumb(context.Background(), tc.url); img == nil {
 			t.Fatalf("%s: first fetch returned no thumbnail", tc.url)
 		}
-		matches, _ := filepath.Glob(filepath.Join(dir, mediaCacheGlobPrefix(tc.url)+".*"))
+		matches, _ := filepath.Glob(filepath.Join(dir, mediacache.GlobPrefix(tc.url)+".*"))
 		if len(matches) != 1 || !strings.HasSuffix(matches[0], tc.ext) {
 			t.Fatalf("%s cached as %v, want a single %s", tc.url, matches, tc.ext)
 		}

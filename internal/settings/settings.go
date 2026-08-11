@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-news-reader/reader/source"
 )
@@ -95,6 +96,13 @@ type Settings struct {
 	// a user who turns it off persists an explicit false that survives reload. Read
 	// it through [Settings.InfiniteScrollEnabled], which applies that default.
 	InfiniteScroll *bool `json:"infiniteScroll,omitempty"`
+
+	// CacheBackend selects the media-cache backend. Empty (the default for a fresh
+	// install or a settings file predating the field) or "local" uses the built-in
+	// on-disk cache; a filesystem path names an external cache-plugin binary the
+	// reader launches and drives over gRPC (a shared/network cache). Read whether a
+	// value names a plugin through [IsCachePlugin].
+	CacheBackend string `json:"cacheBackend,omitempty"`
 
 	// PluginsDir is where the reader looks for external feed-source plugin
 	// executables (loaded over gRPC via hashicorp/go-plugin). Empty — the default
@@ -361,6 +369,18 @@ func Default() *Settings {
 		SignInBrowser:    DefaultSignInBrowser,
 		PreviewTextScale: DefaultPreviewTextScale,
 		MediaCacheMB:     DefaultMediaCacheMB,
+	}
+}
+
+// IsCachePlugin reports whether backend names an external media-cache plugin
+// (rather than the built-in on-disk cache). An empty value or "local" is the
+// built-in cache; any other (a filesystem path to a plugin binary) is a plugin.
+func IsCachePlugin(backend string) bool {
+	switch strings.TrimSpace(backend) {
+	case "", "local":
+		return false
+	default:
+		return true
 	}
 }
 

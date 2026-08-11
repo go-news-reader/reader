@@ -244,6 +244,26 @@ func TestMediaCacheBytes(t *testing.T) {
 	}
 }
 
+func TestIsCachePlugin(t *testing.T) {
+	cases := []struct {
+		backend string
+		want    bool
+	}{
+		{"", false},          // unset: built-in disk cache
+		{"local", false},     // explicit built-in
+		{"  local  ", false}, // trimmed to "local"
+		{"   ", false},       // whitespace-only trims to empty
+		{"/opt/cache", true}, // a filesystem path: a plugin
+		{"./cache-plugin", true},
+		{"cache-plugin", true},
+	}
+	for _, c := range cases {
+		if got := IsCachePlugin(c.backend); got != c.want {
+			t.Errorf("IsCachePlugin(%q) = %v, want %v", c.backend, got, c.want)
+		}
+	}
+}
+
 func TestNormalizeMediaCacheMB(t *testing.T) {
 	// 0 (a settings file predating the field) backfills to the default.
 	s := &Settings{}

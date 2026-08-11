@@ -138,7 +138,8 @@ func TestAccountsScrollResetOnOpen(t *testing.T) {
 }
 
 // C1: in a short window the settings editor overflows; the bottom controls (the
-// media-cache field) must be reachable by scrolling, not stranded off-screen.
+// cache-backend field, the last text field in the editor) must be reachable by
+// scrolling, not stranded off-screen.
 func TestSettingsScrollReachesBottom(t *testing.T) {
 	s := New(420, 240, ThemeFor(OSMac, false))
 	var many []source.Subscription
@@ -151,19 +152,19 @@ func TestSettingsScrollReachesBottom(t *testing.T) {
 	if s.settingsScroll.contentH <= s.H-s.m.topbarH {
 		t.Skip("content fits; window too tall to exercise overflow")
 	}
-	// Before scrolling, the cache field sits below the viewport (unreachable).
-	if s.sCacheR.Y < s.H {
-		t.Fatalf("cache field already on-screen (Y=%d, H=%d); test needs it below", s.sCacheR.Y, s.H)
+	// Before scrolling, the cache-backend field sits below the viewport (unreachable).
+	if s.sCacheBackendR.Y < s.H {
+		t.Fatalf("cache-backend field already on-screen (Y=%d, H=%d); test needs it below", s.sCacheBackendR.Y, s.H)
 	}
 	// Scroll to the bottom (over-scroll is clamped) and it must be reachable.
 	for i := 0; i < 40; i++ {
 		s.Scroll(120)
 	}
-	if s.sCacheR.Y < s.m.topbarH || s.sCacheR.Y+s.sCacheR.H > s.H {
-		t.Fatalf("cache field not in viewport after scroll: Y=%d H=%d winH=%d", s.sCacheR.Y, s.sCacheR.H, s.H)
+	if s.sCacheBackendR.Y < s.m.topbarH || s.sCacheBackendR.Y+s.sCacheBackendR.H > s.H {
+		t.Fatalf("cache-backend field not in viewport after scroll: Y=%d H=%d winH=%d", s.sCacheBackendR.Y, s.sCacheBackendR.H, s.H)
 	}
-	if h := s.HitTest(s.sCacheR.X+4, s.sCacheR.Y+s.sCacheR.H/2); h.Kind != HitFocusCache {
-		t.Fatalf("click on scrolled-in cache field = %v, want HitFocusCache", h.Kind)
+	if h := s.HitTest(s.sCacheBackendR.X+4, s.sCacheBackendR.Y+s.sCacheBackendR.H/2); h.Kind != HitFocusCacheBackend {
+		t.Fatalf("click on scrolled-in cache-backend field = %v, want HitFocusCacheBackend", h.Kind)
 	}
 }
 

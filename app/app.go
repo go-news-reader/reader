@@ -26,6 +26,7 @@ import (
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/viewmodel"
 	"github.com/go-news-reader/reader/internal/webrender"
+	"github.com/go-news-reader/reader/mediacache"
 	"github.com/go-news-reader/reader/provider/usenet"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/sourceplugin"
@@ -120,6 +121,16 @@ type App struct {
 	// mediaClient is the browser-fingerprint http.Client it downloads through.
 	mediaFetch  func(reqs []ui.MediaRequest)
 	mediaClient *http.Client
+
+	// mediaCache is the pluggable media-bytes store fetchThumb consults before a
+	// download and fills after one. It defaults to the built-in on-disk
+	// mediacache.DiskCache; when the CacheBackend setting names a cache-plugin
+	// binary it is a gRPC-backed adapter to a shared/network cache instead. A
+	// mediacache.Cache so the reader code path is identical either way.
+	mediaCache mediacache.Cache
+	// mediaCacheClose stops the cache-plugin subprocess (nil for the built-in
+	// DiskCache, which has nothing to reap).
+	mediaCacheClose func() error
 
 	// webFetch triggers the asynchronous render of a target page (the embedded
 	// browser's OnNavigate seam). A field so tests can substitute a synchronous
@@ -300,7 +311,7 @@ func New(cfg Config) *App {
 	scene.SetSignInBrowser(set.SignInBrowser)
 	scene.SetCachePath(set.CachePath)
 	scene.SetMediaCacheMB(set.MediaCacheMB)
-	mediaCacheBudget = set.MediaCacheBytes()
+	scene.SetCacheBackend(set.CacheBackend)
 	scene.SetProfiles(set.Profiles, set.Active)
 	scene.SetAccounts(set.Accounts)
 	if rec := cfg.Recorder; rec != nil {
@@ -414,6 +425,10 @@ func New(cfg Config) *App {
 	})
 	a.vm.Profile.Set(set.Active) // seed the active-profile observable
 	bindScene(a)
+
+	// Select the media-cache backend (built-in disk or a gRPC cache plugin). Done
+	// after the view-model exists so a plugin load failure can surface a status.
+	a.initMediaCache(set)
 
 	// Discover external feed-source plugins and register them; a missing plugins
 	// directory is a no-op, so a fresh install with no plugins is unaffected.
@@ -867,7 +882,7 @@ func (a *App) DeleteProfile(i int) {
 func (a *App) ApplySceneSettings() {
 	set := a.scene.Settings()
 	a.set = set
-	mediaCacheBudget = set.MediaCacheBytes()
+	a.applyMediaCacheBudget(set)
 	if a.store != nil {
 		_ = a.store.Save(set)
 	}

@@ -249,6 +249,47 @@ func TestRenameAndCache(t *testing.T) {
 	}
 }
 
+// TestCacheBackendField covers the cache-backend (plugin path) settings field:
+// its accessor round-trip, focus + typing, commit (trimmed), and hit-testing.
+func TestCacheBackendField(t *testing.T) {
+	s := profScene()
+
+	// Accessor round-trip.
+	s.SetCacheBackend("local")
+	if s.CacheBackend() != "local" {
+		t.Fatalf("CacheBackend = %q, want local", s.CacheBackend())
+	}
+
+	s.OpenSettings() // seeds cacheBackendInput from cacheBackend
+	if s.cacheBackendInput != "local" {
+		t.Fatalf("seeded backend input = %q, want local", s.cacheBackendInput)
+	}
+
+	// Focus + typing routes through focusedField into the backend buffer.
+	s.FocusCacheBackend()
+	if s.Focus() != FocusCacheBackend {
+		t.Fatalf("focus = %v, want FocusCacheBackend", s.Focus())
+	}
+	s.cacheBackendInput = ""
+	s.TypeRune('/')
+	if s.cacheBackendInput != "/" {
+		t.Fatalf("backend type = %q, want /", s.cacheBackendInput)
+	}
+
+	// Commit trims whitespace and applies to the backend selector.
+	s.cacheBackendInput = " /opt/reader/shared-cache "
+	s.CommitCacheBackend()
+	if s.CacheBackend() != "/opt/reader/shared-cache" {
+		t.Fatalf("backend = %q", s.CacheBackend())
+	}
+
+	// Hit-testing the field's rect focuses it.
+	s.layoutSettings()
+	if h := s.hitSettings(s.sCacheBackendR.X+2, s.sCacheBackendR.Y+2); h.Kind != HitFocusCacheBackend {
+		t.Fatalf("backend hit = %+v, want HitFocusCacheBackend", h)
+	}
+}
+
 func TestAddRemoveSub(t *testing.T) {
 	s := profScene() // active=0, selEdit set to 0 via SetProfiles
 	s.OpenSettings()

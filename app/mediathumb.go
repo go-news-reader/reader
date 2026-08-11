@@ -105,7 +105,7 @@ func (a *App) loadMediaThumbs(ctx context.Context, reqs []ui.MediaRequest) {
 // serve it and the Network log records the fetch), then — only when the bytes
 // are a usable image — caches the ORIGINAL for next time.
 func (a *App) fetchThumb(ctx context.Context, url string) *image.RGBA {
-	raw, cached := mediaCacheGet(url)
+	raw, cached := a.mediaCache.Get(url)
 	if !cached {
 		var derr error
 		raw, derr = a.downloadMedia(ctx, url)
@@ -118,7 +118,7 @@ func (a *App) fetchThumb(ctx context.Context, url string) *image.RGBA {
 		return nil // a non-image (or undecodable) download is never cached
 	}
 	if !cached {
-		mediaCachePut(url, raw)
+		a.mediaCache.Put(url, raw)
 	}
 	return img
 }

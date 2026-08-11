@@ -1,0 +1,37 @@
+// Package mediacachepb carries the wire types for the reader's out-of-process
+// media-cache plugins. The MediaCache service mirrors mediacache.Cache
+// (Get + Put) so a plugin binary can serve a shared/network media cache to the
+// host over gRPC.
+syntax = "proto3";
+
+package mediacacheplugin.v1;
+
+option go_package = "github.com/go-news-reader/reader/internal/mediacacheplugin/grpc;mediacachepb";
+
+// GetRequest asks the cache for the bytes stored under a media URL.
+message GetRequest {
+  string url = 1;
+}
+
+// GetReply carries the cached bytes and whether a usable entry was found, so a
+// miss (found=false) crosses the process boundary cleanly.
+message GetReply {
+  bytes data = 1;
+  bool found = 2;
+}
+
+// PutRequest stores the original bytes for a media URL.
+message PutRequest {
+  string url = 1;
+  bytes data = 2;
+}
+
+// PutReply is the (empty) result of MediaCache.Put; Put is best-effort and
+// reports nothing.
+message PutReply {}
+
+// MediaCache is the gRPC face of mediacache.Cache.
+service MediaCache {
+  rpc Get(GetRequest) returns (GetReply);
+  rpc Put(PutRequest) returns (PutReply);
+}
