@@ -347,12 +347,15 @@ func TestParseKind(t *testing.T) {
 }
 
 func TestParseSubs(t *testing.T) {
-	subs, err := parseSubs([]string{"reddit:golang", "syndication:https://x/feed.xml", "hn:"}, 10)
+	subs, err := parseSubs([]string{"reddit:golang", "syndication:https://x/feed.xml", "hn:", "redgifs:nature"}, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(subs) != 3 || subs[1].Channel != "https://x/feed.xml" || subs[0].Limit != 10 {
+	if len(subs) != 4 || subs[1].Channel != "https://x/feed.xml" || subs[0].Limit != 10 {
 		t.Fatalf("subs = %+v", subs)
+	}
+	if subs[3].Source != source.Redgifs || subs[3].Channel != "nature" {
+		t.Fatalf("redgifs sub = %+v, want redgifs:nature", subs[3])
 	}
 	if _, err := parseSubs([]string{"bad:x"}, 5); err == nil {
 		t.Fatal("want error")

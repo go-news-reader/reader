@@ -358,6 +358,8 @@ func parseKind(s string) (source.Kind, bool) {
 		return source.Instagram, true
 	case "tiktok":
 		return source.TikTok, true
+	case "redgifs":
+		return source.Redgifs, true
 	default:
 		return "", false
 	}
