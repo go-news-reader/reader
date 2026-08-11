@@ -649,6 +649,11 @@ func (s *Scene) InfiniteScroll() bool { return s.infiniteScroll }
 // but a deliberate pull does.
 const pullRefreshThreshold = 48
 
+// navPrefetchLead is how many posts before the end an arrow-DOWN keypress starts
+// the next infinite-scroll page: reaching the post that far from the last one
+// fires OnReachBottom, so content loads ahead of the keyboard.
+const navPrefetchLead = 2
+
 // SetBrowserChromeHidden hides (v=true) or shows the embedded browser's toolbar
 // + tab strip, so a page can render chrome-free in the preview.
 func (s *Scene) SetBrowserChromeHidden(v bool) { s.browser.HideChrome = v; s.touch() }
@@ -1373,6 +1378,13 @@ func (s *Scene) NavItem(dir int) (it source.Item, ok bool) {
 		next = len(cards) - 1
 	}
 	row := s.rows[cards[next]]
+	// Proactive infinite-scroll prefetch: arrowing DOWN to within navPrefetchLead
+	// posts of the end kicks off the next page early (via OnReachBottom), so the
+	// list keeps growing ahead of the keyboard instead of stalling at the last
+	// card. The app's loadingMore / cursor guards make a redundant fire a no-op.
+	if dir > 0 && s.infiniteScroll && s.OnReachBottom != nil && next >= len(cards)-1-navPrefetchLead {
+		s.OnReachBottom()
+	}
 	s.ensureRowVisible(row)
 	return row.item, true
 }

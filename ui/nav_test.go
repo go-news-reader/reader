@@ -110,3 +110,56 @@ func TestNavScrollsIntoView(t *testing.T) {
 		t.Fatalf("navigating to the top should scroll to the first row (%d), got %d", s.rows[0].top, s.feedScroll.offset)
 	}
 }
+
+// TestNavItemPrefetchLoadMore proves the arrow-DOWN infinite-scroll prefetch:
+// reaching within navPrefetchLead (2) posts of the end fires OnReachBottom; a
+// mid-list step, an up-arrow, and infinite-scroll-off never fire; and a nil
+// callback is safe.
+func TestNavItemPrefetchLoadMore(t *testing.T) {
+	s := New(900, 600, ThemeFor(OSLinux, false))
+	items := navItems(10) // cards 0..9; "2 before the end" (len-1-2) = index 7
+	s.SetItems(items)
+	s.layout()
+	fired := 0
+	s.OnReachBottom = func() { fired++ }
+	s.SetInfiniteScroll(true)
+
+	// Mid-list step (to index 5) is far from the end: no prefetch.
+	s.SelectPreview(items[4])
+	s.NavItem(1)
+	if fired != 0 {
+		t.Fatalf("prefetch fired mid-list (index 5), fired=%d", fired)
+	}
+	// Step to index 7 — two posts before the last — fires once.
+	s.SelectPreview(items[6])
+	s.NavItem(1)
+	if fired != 1 {
+		t.Fatalf("prefetch should fire at index 7 (2 before end), fired=%d", fired)
+	}
+	// Stepping onto the last card fires again (the app's guards dedupe).
+	s.SelectPreview(items[8])
+	s.NavItem(1)
+	if fired != 2 {
+		t.Fatalf("prefetch at the last card fired=%d, want 2", fired)
+	}
+	// Arrowing UP never prefetches.
+	before := fired
+	s.SelectPreview(items[9])
+	s.NavItem(-1)
+	if fired != before {
+		t.Fatalf("up-arrow prefetched: %d -> %d", before, fired)
+	}
+	// Infinite scroll OFF: no prefetch even near the end.
+	s.SetInfiniteScroll(false)
+	before = fired
+	s.SelectPreview(items[7])
+	s.NavItem(1)
+	if fired != before {
+		t.Fatalf("prefetch fired with infinite scroll off: %d -> %d", before, fired)
+	}
+	// Nil-safe: no callback installed, near the end, must not panic.
+	s.SetInfiniteScroll(true)
+	s.OnReachBottom = nil
+	s.SelectPreview(items[8])
+	s.NavItem(1)
+}
