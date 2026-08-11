@@ -116,6 +116,7 @@ const (
 	HitRemoveSub        // Profile = index, Sub = subscription index
 	HitFocusChannel     // focus the add-channel input
 	HitFocusCache       // focus the media-cache path input
+	HitFocusCacheSize   // focus the media-cache size-limit (MB) input
 	HitFocusZoomIn      // focus the zoom-in browser-shortcut key input
 	HitFocusZoomOut     // focus the zoom-out browser-shortcut key input
 	HitTheme            // Value = "system"|"light"|"dark"
@@ -213,33 +214,36 @@ type Scene struct {
 	showStrip           bool // whether the top-of-feed progress strip is laid out
 
 	// Profiles are the named sidebar tabs; the active one supplies Subs.
-	Profiles   []settings.Profile
-	activeProf int    // active profile index (drives the sidebar + feed)
-	themeName  string // "system"|"light"|"dark" (persisted)
-	cachePath  string // media cache dir (persisted, repositionable)
+	Profiles    []settings.Profile
+	activeProf  int    // active profile index (drives the sidebar + feed)
+	themeName   string // "system"|"light"|"dark" (persisted)
+	cachePath   string // media cache dir (persisted, repositionable)
+	cacheSizeMB int    // media cache size limit in MB (persisted, configurable)
 
 	// signInBrowser is the browser launched for a provider's browser sign-in flow
 	// (today: Reddit) — default|firefox|chrome|safari|edge (persisted).
 	signInBrowser string
 
 	// Settings editor (ModeSettings) state.
-	selEdit      int          // profile being edited
-	sf           Focus        // which text field has keyboard focus
-	channelInput string       // add-subscription channel buffer
-	renameInput  string       // rename-profile buffer
-	cacheInput   string       // cache-path buffer
-	zoomInInput  string       // zoom-in shortcut key buffer (single rune)
-	zoomOutInput string       // zoom-out shortcut key buffer (single rune)
-	newKind      source.Kind  // selected source for the add-subscription palette
-	sButtons     []sButton    // clickable regions in the settings view
-	sLabels      []sLabel     // section labels in the settings view
-	sChips       []sChip      // subscription chips in the settings view
-	sChannelR    toolkit.Rect // add-channel input rect
-	sCacheR      toolkit.Rect // cache-path input rect
-	sRenameR     toolkit.Rect // rename input rect
-	sZoomInR     toolkit.Rect // zoom-in shortcut key input rect
-	sZoomOutR    toolkit.Rect // zoom-out shortcut key input rect
-	sDoneR       toolkit.Rect // "Done" button rect
+	selEdit        int          // profile being edited
+	sf             Focus        // which text field has keyboard focus
+	channelInput   string       // add-subscription channel buffer
+	renameInput    string       // rename-profile buffer
+	cacheInput     string       // cache-path buffer
+	cacheSizeInput string       // cache-size-limit (MB) buffer
+	zoomInInput    string       // zoom-in shortcut key buffer (single rune)
+	zoomOutInput   string       // zoom-out shortcut key buffer (single rune)
+	newKind        source.Kind  // selected source for the add-subscription palette
+	sButtons       []sButton    // clickable regions in the settings view
+	sLabels        []sLabel     // section labels in the settings view
+	sChips         []sChip      // subscription chips in the settings view
+	sChannelR      toolkit.Rect // add-channel input rect
+	sCacheR        toolkit.Rect // cache-path input rect
+	sCacheSizeR    toolkit.Rect // cache-size-limit (MB) input rect
+	sRenameR       toolkit.Rect // rename input rect
+	sZoomInR       toolkit.Rect // zoom-in shortcut key input rect
+	sZoomOutR      toolkit.Rect // zoom-out shortcut key input rect
+	sDoneR         toolkit.Rect // "Done" button rect
 
 	// Accounts editor (ModeAccounts) state. accBuf holds the editable credential
 	// values per provider (seeded from settings.Accounts); accSel is the provider
@@ -930,6 +934,12 @@ func (s *Scene) CachePath() string { return s.cachePath }
 // SetCachePath records the media cache directory.
 func (s *Scene) SetCachePath(p string) { s.cachePath = p; s.touch() }
 
+// MediaCacheMB returns the media cache size limit, in MB.
+func (s *Scene) MediaCacheMB() int { return s.cacheSizeMB }
+
+// SetMediaCacheMB records the media cache size limit, in MB.
+func (s *Scene) SetMediaCacheMB(mb int) { s.cacheSizeMB = mb; s.touch() }
+
 // Settings snapshots the editor state for persistence.
 func (s *Scene) Settings() *settings.Settings {
 	// Persist the tab mode explicitly (a *bool) so an opt-out to multiple tabs is
@@ -941,6 +951,7 @@ func (s *Scene) Settings() *settings.Settings {
 		Active:            s.activeProf,
 		Theme:             s.themeName,
 		CachePath:         s.cachePath,
+		MediaCacheMB:      s.cacheSizeMB,
 		Accounts:          s.EditedAccounts(),
 		BrowserSingleTab:  &singleTab,
 		InfiniteScroll:    &infinite,
@@ -1161,6 +1172,8 @@ func (s *Scene) focusedField() *string {
 		return &s.renameInput
 	case FocusCache:
 		return &s.cacheInput
+	case FocusCacheSize:
+		return &s.cacheSizeInput
 	case FocusZoomIn:
 		return &s.zoomInInput
 	case FocusZoomOut:

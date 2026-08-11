@@ -290,6 +290,8 @@ func New(cfg Config) *App {
 	scene.SetThemeName(set.Theme)
 	scene.SetSignInBrowser(set.SignInBrowser)
 	scene.SetCachePath(set.CachePath)
+	scene.SetMediaCacheMB(set.MediaCacheMB)
+	mediaCacheBudget = set.MediaCacheBytes()
 	scene.SetProfiles(set.Profiles, set.Active)
 	scene.SetAccounts(set.Accounts)
 	if rec := cfg.Recorder; rec != nil {
@@ -753,6 +755,7 @@ func (a *App) DeleteProfile(i int) {
 func (a *App) ApplySceneSettings() {
 	set := a.scene.Settings()
 	a.set = set
+	mediaCacheBudget = set.MediaCacheBytes()
 	if a.store != nil {
 		_ = a.store.Save(set)
 	}

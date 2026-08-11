@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"strconv"
 	"strings"
 
 	"github.com/go-widgets/painter"
@@ -27,8 +28,9 @@ const (
 	FocusChannel
 	FocusRename
 	FocusCache
-	FocusZoomIn  // the "zoom in" browser-shortcut key field
-	FocusZoomOut // the "zoom out" browser-shortcut key field
+	FocusCacheSize // the media-cache size-limit (MB) field
+	FocusZoomIn    // the "zoom in" browser-shortcut key field
+	FocusZoomOut   // the "zoom out" browser-shortcut key field
 )
 
 // sButton is one clickable pill in the settings view.
@@ -106,6 +108,7 @@ func (s *Scene) OpenSettings() {
 	s.channelInput = ""
 	s.renameInput = s.selEditName()
 	s.cacheInput = s.cachePath
+	s.cacheSizeInput = strconv.Itoa(s.cacheSizeMB)
 	s.zoomInInput = s.BrowserZoomInKey()
 	s.zoomOutInput = s.BrowserZoomOutKey()
 	s.touch()
@@ -172,6 +175,9 @@ func (s *Scene) DeleteProfile(i int) {
 func (s *Scene) FocusRename()  { s.sf = FocusRename; s.touch() }
 func (s *Scene) FocusChannel() { s.sf = FocusChannel; s.touch() }
 func (s *Scene) FocusCache()   { s.sf = FocusCache; s.touch() }
+
+// FocusCacheSize gives keyboard focus to the media-cache size-limit (MB) field.
+func (s *Scene) FocusCacheSize() { s.sf = FocusCacheSize; s.touch() }
 
 // FocusZoomIn / FocusZoomOut give keyboard focus to a zoom-key field.
 func (s *Scene) FocusZoomIn()  { s.sf = FocusZoomIn; s.touch() }
@@ -255,6 +261,19 @@ func (s *Scene) RemoveSub(prof, sub int) {
 
 // CommitCache applies the cache-path buffer.
 func (s *Scene) CommitCache() { s.cachePath = strings.TrimSpace(s.cacheInput); s.touch() }
+
+// CommitCacheSize applies the media-cache size-limit (MB) buffer: on a valid
+// integer it sets the limit, clamped to [MinMediaCacheMB, MaxMediaCacheMB]
+// (0 → DefaultMediaCacheMB); on a parse error the current value is kept. Either
+// way the buffer is re-synced to the resulting value so the field shows the
+// real, clamped limit rather than the raw typed text.
+func (s *Scene) CommitCacheSize() {
+	if mb, err := strconv.Atoi(strings.TrimSpace(s.cacheSizeInput)); err == nil {
+		s.cacheSizeMB = settings.ClampMediaCacheMB(mb)
+	}
+	s.cacheSizeInput = strconv.Itoa(s.cacheSizeMB)
+	s.touch()
+}
 
 // layoutSettings computes every button, chip, label and input rectangle.
 func (s *Scene) layoutSettings() {
@@ -402,10 +421,15 @@ func (s *Scene) layoutSettings() {
 	s.sZoomOutR = toolkit.Rect{X: fx, Y: y, W: kw, H: btnH}
 	y += btnH + pad
 
-	// MEDIA CACHE: editable path.
+	// MEDIA CACHE: editable path plus a size limit (MB) that caps the on-disk
+	// thumbnail cache; the pruner keeps the directory under this budget.
 	label(pad, y, "MEDIA CACHE")
 	y += m.side.height + gap
 	s.sCacheR = toolkit.Rect{X: pad, Y: y, W: s.W - 2*pad, H: btnH}
+	y += btnH + pad
+	label(pad, y, "Cache limit (MB)")
+	y += m.side.height + gap
+	s.sCacheSizeR = toolkit.Rect{X: pad, Y: y, W: s.W - 2*pad, H: btnH}
 	y += btnH + pad
 
 	// FEED: infinite scroll on/off — fetch and append the next page of posts when
@@ -441,6 +465,7 @@ func (s *Scene) layoutSettings() {
 		s.sRenameR.Y += dy
 		s.sChannelR.Y += dy
 		s.sCacheR.Y += dy
+		s.sCacheSizeR.Y += dy
 		s.sZoomInR.Y += dy
 		s.sZoomOutR.Y += dy
 	}
@@ -494,6 +519,7 @@ func (s *Scene) drawSettings(buf []byte) {
 		{s.sRenameR, s.renameInput, "profile name", s.sf == FocusRename},
 		{s.sChannelR, s.channelInput, "channel…", s.sf == FocusChannel},
 		{s.sCacheR, s.cacheInput, "media cache path", s.sf == FocusCache},
+		{s.sCacheSizeR, s.cacheSizeInput, "cache limit (MB)", s.sf == FocusCacheSize},
 		{s.sZoomInR, s.zoomInInput, "=", s.sf == FocusZoomIn},
 		{s.sZoomOutR, s.zoomOutInput, "-", s.sf == FocusZoomOut},
 	} {
@@ -530,6 +556,9 @@ func (s *Scene) hitSettings(x, y int) Hit {
 	}
 	if inRect(s.sCacheR, x, y) {
 		return Hit{Kind: HitFocusCache}
+	}
+	if inRect(s.sCacheSizeR, x, y) {
+		return Hit{Kind: HitFocusCacheSize}
 	}
 	if inRect(s.sZoomInR, x, y) {
 		return Hit{Kind: HitFocusZoomIn}

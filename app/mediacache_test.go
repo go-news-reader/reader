@@ -1,11 +1,25 @@
 package app
 
 import (
+	"bytes"
+	"image"
+	"image/gif"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+// gifBytes returns a real (single-frame) GIF, so http.DetectContentType reports
+// image/gif and the bytes survive a cache round-trip as a browsable .gif.
+func gifBytes(w, h int) []byte {
+	var b bytes.Buffer
+	if err := gif.Encode(&b, image.NewRGBA(image.Rect(0, 0, w, h)), nil); err != nil {
+		panic(err)
+	}
+	return b.Bytes()
+}
 
 // TestMain points the media cache at a throwaway dir for the whole app test
 // package, so tests never read or write the real per-user cache (mirrors the
@@ -38,12 +52,12 @@ func TestMediaCacheRoundTrip(t *testing.T) {
 	}
 }
 
-func TestMediaCacheKeyStable(t *testing.T) {
-	if mediaCacheKey("https://x/a") != mediaCacheKey("https://x/a") {
-		t.Fatal("same URL must map to the same key")
+func TestMediaCacheGlobPrefixStable(t *testing.T) {
+	if mediaCacheGlobPrefix("https://x/a") != mediaCacheGlobPrefix("https://x/a") {
+		t.Fatal("same URL must map to the same stem")
 	}
-	if mediaCacheKey("https://x/a") == mediaCacheKey("https://x/b") {
-		t.Fatal("different URLs must map to different keys")
+	if mediaCacheGlobPrefix("https://x/a") == mediaCacheGlobPrefix("https://x/b") {
+		t.Fatal("different URLs must map to different stems")
 	}
 }
 
@@ -144,7 +158,10 @@ func TestMediaCachePutWriteFailure(t *testing.T) {
 	mediaCacheDir = func() (string, error) { return dir, nil }
 	t.Cleanup(func() { mediaCacheDir = orig })
 	url := "https://x/collide"
-	if err := os.MkdirAll(filepath.Join(dir, mediaCacheKey(url)), 0o755); err != nil {
+	// "data" sniffs as text (not a known media type), so it is stored under .bin;
+	// pre-creating a directory at that exact filename makes WriteFile fail.
+	name := mediaCacheGlobPrefix(url) + mediaExt(url, []byte("data"))
+	if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	mediaCachePut(url, []byte("data")) // WriteFile fails (target is a dir); no panic
@@ -173,5 +190,140 @@ func TestPruneMediaCacheSkipsVanishedEntry(t *testing.T) {
 	pruneMediaCache(dir, 300)
 	if _, err := os.Stat(filepath.Join(dir, "b")); err != nil {
 		t.Fatalf("b should survive: %v", err)
+	}
+}
+
+func TestMediaExtForContentType(t *testing.T) {
+	cases := map[string]string{
+		"image/jpeg": ".jpg",
+		"image/png":  ".png",
+		"image/gif":  ".gif",
+		"image/webp": ".webp",
+		"image/bmp":  ".bmp",
+		"video/mp4":  ".mp4",
+		"video/webm": ".webm",
+	}
+	for ct, want := range cases {
+		if got, ok := mediaExtForContentType(ct); !ok || got != want {
+			t.Errorf("%s => %q,%v, want %q,true", ct, got, ok, want)
+		}
+	}
+	// An unmapped type reports not-known.
+	if got, ok := mediaExtForContentType("text/plain"); ok || got != "" {
+		t.Errorf("text/plain => %q,%v, want \"\",false", got, ok)
+	}
+}
+
+func TestKnownURLMediaExt(t *testing.T) {
+	cases := map[string]string{
+		"https://x/a.jpg":  ".jpg",
+		"https://x/a.jpeg": ".jpg", // normalised
+		"https://x/a.png":  ".png",
+		"https://x/a.gif":  ".gif",
+		"https://x/a.webp": ".webp",
+		"https://x/a.bmp":  ".bmp",
+		"https://x/a.mp4":  ".mp4",
+		"https://x/a.webm": ".webm",
+		"https://x/a.txt":  "", // not a media extension
+		"https://x/a":      "", // no extension
+	}
+	for url, want := range cases {
+		if got := knownURLMediaExt(url); got != want {
+			t.Errorf("knownURLMediaExt(%q) = %q, want %q", url, got, want)
+		}
+	}
+}
+
+func TestMediaExt(t *testing.T) {
+	// Content sniffing wins: real PNG bytes are stored as .png regardless of URL.
+	if got := mediaExt("https://x/whatever.bin", pngBytes(4, 4)); got != ".png" {
+		t.Errorf("png bytes => %q, want .png", got)
+	}
+	// Inconclusive (octet-stream) falls back to the URL's own media extension...
+	octet := []byte{0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00}
+	if got := mediaExt("https://x/clip.mp4", octet); got != ".mp4" {
+		t.Errorf("octet+.mp4 url => %q, want .mp4", got)
+	}
+	// ...or .bin when the URL extension is unknown too.
+	if got := mediaExt("https://x/blob", octet); got != ".bin" {
+		t.Errorf("octet+unknown url => %q, want .bin", got)
+	}
+	// A recognised-but-unmapped type (plain text) is stored as .bin.
+	if got := mediaExt("https://x/note", []byte("hello world")); got != ".bin" {
+		t.Errorf("text => %q, want .bin", got)
+	}
+}
+
+func TestMediaCacheFinderFriendly(t *testing.T) {
+	// A normal image URL keeps a readable, sanitised prefix and the content ext.
+	name := mediaCacheGlobPrefix("https://i.redd.it/abc123.jpg") + mediaExt("https://i.redd.it/abc123.jpg", pngBytes(2, 2))
+	if !strings.HasPrefix(name, "abc123-") {
+		t.Errorf("name %q should start with the readable prefix abc123-", name)
+	}
+	if !strings.HasSuffix(name, ".png") { // ext follows the DATA, not the URL
+		t.Errorf("name %q should end in .png (content-typed)", name)
+	}
+	// A URL with an empty/space basename falls back to the "media" label.
+	if got := mediaCacheLabel("https://x/  "); got != "media" {
+		t.Errorf("empty basename label = %q, want media", got)
+	}
+	if got := mediaCacheLabel("http://%zz"); got != "media" { // unparseable URL
+		t.Errorf("bad URL label = %q, want media", got)
+	}
+	// Odd characters are dropped; only [a-z0-9._-] survive.
+	if got := mediaCacheLabel("https://x/A b!c$-1.png"); got != "abc-1" {
+		t.Errorf("sanitised label = %q, want abc-1", got)
+	}
+	// An over-long basename is truncated to 48 characters.
+	long := "https://x/" + strings.Repeat("a", 80) + ".png"
+	if got := mediaCacheLabel(long); len(got) != 48 {
+		t.Errorf("long label len = %d, want 48", len(got))
+	}
+}
+
+func TestMediaCachePreservesRawWithRealExtension(t *testing.T) {
+	dir := t.TempDir()
+	orig := mediaCacheDir
+	mediaCacheDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { mediaCacheDir = orig })
+
+	// A GIF is cached under a browsable .gif with its ORIGINAL bytes intact...
+	url := "https://x/anim.gif"
+	raw := gifBytes(6, 4)
+	mediaCachePut(url, raw)
+	matches, _ := filepath.Glob(filepath.Join(dir, mediaCacheGlobPrefix(url)+".*"))
+	if len(matches) != 1 {
+		t.Fatalf("expected one cached file, got %v", matches)
+	}
+	if !strings.HasSuffix(matches[0], ".gif") {
+		t.Fatalf("cached file %q should end in .gif", matches[0])
+	}
+	// ...and Get (which globs the unknown extension) returns them byte-for-byte.
+	got, ok := mediaCacheGet(url)
+	if !ok || !bytes.Equal(got, raw) {
+		t.Fatalf("round trip = %v, bytes-equal=%v; want the RAW gif preserved", ok, bytes.Equal(got, raw))
+	}
+
+	// A PNG at a different URL lands under .png (extension follows content).
+	purl := "https://x/pic.png"
+	mediaCachePut(purl, pngBytes(3, 3))
+	pmatches, _ := filepath.Glob(filepath.Join(dir, mediaCacheGlobPrefix(purl)+".*"))
+	if len(pmatches) != 1 || !strings.HasSuffix(pmatches[0], ".png") {
+		t.Fatalf("png cached as %v, want a single .png", pmatches)
+	}
+}
+
+func TestMediaCacheGetEmptyFileMisses(t *testing.T) {
+	dir := t.TempDir()
+	orig := mediaCacheDir
+	mediaCacheDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { mediaCacheDir = orig })
+	// A zero-length file matching the glob is treated as a miss.
+	url := "https://x/empty-entry"
+	if err := os.WriteFile(filepath.Join(dir, mediaCacheGlobPrefix(url)+".bin"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := mediaCacheGet(url); ok {
+		t.Fatal("an empty cache entry should miss")
 	}
 }

@@ -93,40 +93,62 @@ func (a *App) loadMediaThumbs(ctx context.Context, reqs []ui.MediaRequest) {
 	}
 }
 
-// fetchThumb returns the image for url, decoded and bounded to thumbMaxDim, or
-// nil if it is not a usable image. It first consults the on-disk media cache: a
-// hit is decoded straight from disk with NO network request (the whole point —
-// a thumbnail already seen is never re-downloaded, across restarts too). On a
-// miss it GETs url through the shared browser-fingerprint client (so media hosts
-// that fingerprint the TLS handshake, pbs.twimg.com among them, serve it and the
-// Network log records the fetch), re-encodes the bounded thumbnail, and stores
-// that small JPEG in the cache for next time.
+// fetchThumb returns the card thumbnail for url, decoded and bounded to
+// thumbMaxDim, or nil if it is not a usable image. It first consults the on-disk
+// media cache: a hit reads the ORIGINAL media bytes straight from disk with NO
+// network request (the whole point — media already seen is never re-downloaded,
+// across restarts too) and derives the small card thumbnail from them, so the
+// cached file the user browses in Finder is the real, correctly-typed media (a
+// .gif animates, a .png keeps its alpha) while the card thumb is recomputed each
+// time. On a miss it GETs url through the shared browser-fingerprint client (so
+// media hosts that fingerprint the TLS handshake, pbs.twimg.com among them,
+// serve it and the Network log records the fetch), then — only when the bytes
+// are a usable image — caches the ORIGINAL for next time.
 func (a *App) fetchThumb(ctx context.Context, url string) *image.RGBA {
-	jpg, ok := mediaCacheGet(url)
-	if !ok {
+	raw, cached := mediaCacheGet(url)
+	if !cached {
 		var derr error
-		jpg, derr = a.downloadThumb(ctx, url)
+		raw, derr = a.downloadMedia(ctx, url)
 		if derr != nil {
 			return nil
 		}
-		mediaCachePut(url, jpg)
 	}
-	img, _, err := decodeImage(bytes.NewReader(jpg))
+	img := thumbFromRaw(raw)
+	if img == nil {
+		return nil // a non-image (or undecodable) download is never cached
+	}
+	if !cached {
+		mediaCachePut(url, raw)
+	}
+	return img
+}
+
+// thumbFromRaw derives the bounded card thumbnail from raw original media bytes:
+// usenet.Thumbnail decodes, bounds and re-encodes in one step (shared with the
+// Usenet path; an animated GIF yields its first frame, which is all a static
+// card needs), then the decodeImage seam re-decodes it to RGBA. nil when the
+// bytes are not a usable image.
+func thumbFromRaw(raw []byte) *image.RGBA {
+	thumb, err := usenet.Thumbnail(raw, thumbMaxDim)
+	if err != nil {
+		return nil
+	}
+	img, _, err := decodeImage(bytes.NewReader(thumb))
 	if err != nil {
 		return nil
 	}
 	return toRGBA(img)
 }
 
-// errThumbStatus marks a non-200 media response, so downloadThumb reports a
+// errThumbStatus marks a non-200 media response, so downloadMedia reports a
 // miss without caching anything.
 var errThumbStatus = errors.New("media: non-200 response")
 
-// downloadThumb GETs url and returns the bounded, re-encoded thumbnail JPEG (the
-// form stored in the media cache), or an error if the response is not a usable
-// image. Thumbnail decodes, bounds and re-encodes in one step (shared with the
-// Usenet path); a non-image body simply errors here and is skipped.
-func (a *App) downloadThumb(ctx context.Context, url string) ([]byte, error) {
+// downloadMedia GETs url and returns the RAW original bytes (bounded to
+// maxThumbBytes), or an error for a transport failure or a non-200 response. The
+// raw bytes — not a re-encode — are what the cache preserves, so Finder shows
+// the real media.
+func (a *App) downloadMedia(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -143,5 +165,5 @@ func (a *App) downloadThumb(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return usenet.Thumbnail(raw, thumbMaxDim)
+	return raw, nil
 }

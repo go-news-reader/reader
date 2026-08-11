@@ -225,6 +225,47 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
+func TestMediaCacheBytes(t *testing.T) {
+	cases := []struct {
+		name string
+		mb   int
+		want int64
+	}{
+		{"default (zero)", 0, int64(DefaultMediaCacheMB) << 20},
+		{"clamp low", MinMediaCacheMB - 5, int64(MinMediaCacheMB) << 20},
+		{"clamp high", MaxMediaCacheMB + 100, int64(MaxMediaCacheMB) << 20},
+		{"in range", 512, 512 << 20},
+	}
+	for _, c := range cases {
+		s := Settings{MediaCacheMB: c.mb}
+		if got := s.MediaCacheBytes(); got != c.want {
+			t.Errorf("%s: MediaCacheBytes(%d) = %d, want %d", c.name, c.mb, got, c.want)
+		}
+	}
+}
+
+func TestNormalizeMediaCacheMB(t *testing.T) {
+	// 0 (a settings file predating the field) backfills to the default.
+	s := &Settings{}
+	s.Normalize()
+	if s.MediaCacheMB != DefaultMediaCacheMB {
+		t.Errorf("zero => %d, want default %d", s.MediaCacheMB, DefaultMediaCacheMB)
+	}
+	// Below the floor clamps up; above the ceiling clamps down; an in-range value
+	// is preserved.
+	for _, c := range []struct{ in, want int }{
+		{MinMediaCacheMB - 1, MinMediaCacheMB},
+		{MaxMediaCacheMB + 1, MaxMediaCacheMB},
+		{1024, 1024},
+	} {
+		s2 := &Settings{MediaCacheMB: c.in}
+		s2.Normalize()
+		if s2.MediaCacheMB != c.want {
+			t.Errorf("Normalize MediaCacheMB %d => %d, want %d", c.in, s2.MediaCacheMB, c.want)
+		}
+	}
+}
+
 func TestDefaultCachePathError(t *testing.T) {
 	// Clear every var os.UserCacheDir consults so it fails on this platform.
 	for _, k := range []string{"HOME", "XDG_CACHE_HOME", "AppData"} {

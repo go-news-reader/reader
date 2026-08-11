@@ -54,7 +54,12 @@ type Settings struct {
 	Active    int       `json:"active"`              // index into Profiles
 	Theme     string    `json:"theme"`               // system|light|dark
 	CachePath string    `json:"cachePath,omitempty"` // media cache dir (repositionable)
-	Accounts  []Account `json:"accounts,omitempty"`  // per-provider credentials
+	// MediaCacheMB caps the on-disk media (thumbnail) cache, in mebibytes. 0 (a
+	// settings file predating the field) means the default; Normalize clamps a set
+	// value to [MinMediaCacheMB, MaxMediaCacheMB]. Read the effective byte budget
+	// through [Settings.MediaCacheBytes].
+	MediaCacheMB int       `json:"mediaCacheMB,omitempty"`
+	Accounts     []Account `json:"accounts,omitempty"` // per-provider credentials
 	// BrowserSingleTab makes the web-preview browser reuse a single tab instead of
 	// keeping a switchable multi-tab strip. It is a tri-state pointer so an unset
 	// preference (a fresh install, or a settings file predating this field) can be
@@ -124,6 +129,38 @@ func ClampPreviewTextScale(f float64) float64 {
 	default:
 		return f
 	}
+}
+
+// Media-cache size defaults and bounds. The on-disk thumbnail cache is pruned
+// back under this budget; a fresh install uses DefaultMediaCacheMB, and a user
+// edit is clamped to [MinMediaCacheMB, MaxMediaCacheMB].
+const (
+	DefaultMediaCacheMB = 256
+	MinMediaCacheMB     = 16
+	MaxMediaCacheMB     = 8192
+)
+
+// ClampMediaCacheMB confines mb to the supported media-cache range, backfilling
+// a non-positive value (0 from a settings file predating the field) to
+// DefaultMediaCacheMB so callers always get a usable budget.
+func ClampMediaCacheMB(mb int) int {
+	switch {
+	case mb <= 0:
+		return DefaultMediaCacheMB
+	case mb < MinMediaCacheMB:
+		return MinMediaCacheMB
+	case mb > MaxMediaCacheMB:
+		return MaxMediaCacheMB
+	default:
+		return mb
+	}
+}
+
+// MediaCacheBytes reports the effective on-disk media-cache budget in bytes,
+// applying the default and clamping (see ClampMediaCacheMB) before converting
+// mebibytes to bytes.
+func (s Settings) MediaCacheBytes() int64 {
+	return int64(ClampMediaCacheMB(s.MediaCacheMB)) << 20
 }
 
 // Default zoom-shortcut base keys (a real-browser feel: Ctrl/Cmd + "="/"-").
@@ -287,6 +324,7 @@ func Default() *Settings {
 		ZoomOutKey:       DefaultZoomOutKey,
 		SignInBrowser:    DefaultSignInBrowser,
 		PreviewTextScale: DefaultPreviewTextScale,
+		MediaCacheMB:     DefaultMediaCacheMB,
 	}
 }
 
@@ -337,6 +375,7 @@ func (s *Settings) Normalize() {
 		s.ZoomOutKey = DefaultZoomOutKey
 	}
 	s.PreviewTextScale = ClampPreviewTextScale(s.PreviewTextScale)
+	s.MediaCacheMB = ClampMediaCacheMB(s.MediaCacheMB)
 	if !ValidSignInBrowser(s.SignInBrowser) {
 		// A blank field (a settings file predating it) or an unrecognised value
 		// falls back to the default sign-in browser (Firefox).

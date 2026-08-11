@@ -59,9 +59,105 @@ func TestSettingsSnapshotAndScalars(t *testing.T) {
 	if s.ThemeName() != settings.ThemeDark || s.CachePath() != "/tmp/media" {
 		t.Fatalf("scalars = %q %q", s.ThemeName(), s.CachePath())
 	}
+	s.SetMediaCacheMB(512)
+	if s.MediaCacheMB() != 512 {
+		t.Fatalf("MediaCacheMB = %d", s.MediaCacheMB())
+	}
 	set := s.Settings()
 	if set.Theme != settings.ThemeDark || set.CachePath != "/tmp/media" || len(set.Profiles) != 2 || set.Active != 0 {
 		t.Fatalf("settings snapshot = %+v", set)
+	}
+	if set.MediaCacheMB != 512 {
+		t.Fatalf("settings snapshot MediaCacheMB = %d, want 512", set.MediaCacheMB)
+	}
+}
+
+func TestCommitCacheSize(t *testing.T) {
+	s := profScene()
+	s.SetMediaCacheMB(256)
+	s.OpenSettings()
+	// The buffer is seeded from the current value on open.
+	if s.cacheSizeInput != "256" {
+		t.Fatalf("seed buffer = %q, want 256", s.cacheSizeInput)
+	}
+	// A valid in-range value is applied and the buffer re-synced.
+	s.FocusCacheSize()
+	if s.Focus() != FocusCacheSize {
+		t.Fatalf("focus = %d, want FocusCacheSize", s.Focus())
+	}
+	s.cacheSizeInput = " 1024 "
+	s.CommitCacheSize()
+	if s.MediaCacheMB() != 1024 || s.cacheSizeInput != "1024" {
+		t.Fatalf("in-range commit = %d buf=%q", s.MediaCacheMB(), s.cacheSizeInput)
+	}
+	// Below the floor clamps up.
+	s.cacheSizeInput = "1"
+	s.CommitCacheSize()
+	if s.MediaCacheMB() != settings.MinMediaCacheMB {
+		t.Fatalf("low clamp = %d, want %d", s.MediaCacheMB(), settings.MinMediaCacheMB)
+	}
+	// Above the ceiling clamps down.
+	s.cacheSizeInput = "99999"
+	s.CommitCacheSize()
+	if s.MediaCacheMB() != settings.MaxMediaCacheMB {
+		t.Fatalf("high clamp = %d, want %d", s.MediaCacheMB(), settings.MaxMediaCacheMB)
+	}
+	// Zero backfills to the default.
+	s.cacheSizeInput = "0"
+	s.CommitCacheSize()
+	if s.MediaCacheMB() != settings.DefaultMediaCacheMB {
+		t.Fatalf("zero => %d, want default %d", s.MediaCacheMB(), settings.DefaultMediaCacheMB)
+	}
+	// A parse error keeps the current value and resets the buffer to show it.
+	s.cacheSizeInput = "not-a-number"
+	s.CommitCacheSize()
+	if s.MediaCacheMB() != settings.DefaultMediaCacheMB || s.cacheSizeInput != itoa(settings.DefaultMediaCacheMB) {
+		t.Fatalf("bad parse => %d buf=%q", s.MediaCacheMB(), s.cacheSizeInput)
+	}
+}
+
+func TestCacheSizeFieldLayoutAndHit(t *testing.T) {
+	s := profScene()
+	s.OpenSettings()
+	s.layoutSettings()
+	// The field rect is laid out (non-zero) in settings mode.
+	if s.sCacheSizeR.W == 0 || s.sCacheSizeR.H == 0 {
+		t.Fatalf("cache-size rect empty: %+v", s.sCacheSizeR)
+	}
+	// A click inside it focuses the cache-size field.
+	if h := s.hitSettings(s.sCacheSizeR.X+2, s.sCacheSizeR.Y+2); h.Kind != HitFocusCacheSize {
+		t.Fatalf("cache-size hit = %+v, want HitFocusCacheSize", h)
+	}
+	// focusedField routes typing into the cache-size buffer.
+	s.FocusCacheSize()
+	s.cacheSizeInput = ""
+	s.TypeRune('9')
+	if s.cacheSizeInput != "9" {
+		t.Fatalf("cache-size type = %q", s.cacheSizeInput)
+	}
+}
+
+func TestCacheSizeScrollShift(t *testing.T) {
+	s := New(420, 240, ThemeFor(OSMac, false))
+	var many []source.Subscription
+	for i := 0; i < 8; i++ {
+		many = append(many, source.Subscription{Source: source.Reddit, Channel: "chan", Limit: 25})
+	}
+	s.SetProfiles([]settings.Profile{{Name: "P", Subs: many}}, 0)
+	s.OpenSettings()
+	s.layoutSettings()
+	if s.settingsScroll.contentH <= s.H-s.m.topbarH {
+		t.Skip("content fits; window too tall to exercise overflow")
+	}
+	before := s.sCacheSizeR.Y
+	for i := 0; i < 40; i++ {
+		s.Scroll(120)
+	}
+	if s.sCacheSizeR.Y >= before {
+		t.Fatalf("cache-size field did not shift up on scroll: before=%d after=%d", before, s.sCacheSizeR.Y)
+	}
+	if h := s.HitTest(s.sCacheSizeR.X+4, s.sCacheSizeR.Y+s.sCacheSizeR.H/2); h.Kind != HitFocusCacheSize {
+		t.Fatalf("click on scrolled cache-size field = %v, want HitFocusCacheSize", h.Kind)
 	}
 }
 

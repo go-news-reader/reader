@@ -1,12 +1,16 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"image"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -276,5 +280,77 @@ func TestFetchThumbDownloadErrorsNotCached(t *testing.T) {
 	// A transport error (bad URL) also yields nil without caching.
 	if img := a.fetchThumb(context.Background(), "http://%zz"); img != nil {
 		t.Fatal("malformed URL should yield no image")
+	}
+}
+
+// TestFetchThumbCachesOriginalMedia proves the cache preserves the RAW original
+// media under a content-typed, Finder-friendly filename: a served PNG lands as
+// <...>.png and a served GIF as <...>.gif, each byte-for-byte equal to what the
+// server sent, and a second fetch is served from disk with no extra request.
+func TestFetchThumbCachesOriginalMedia(t *testing.T) {
+	png := pngBytes(8, 6)
+	anim := gifBytes(8, 6)
+	var mu sync.Mutex
+	hits := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[r.URL.Path]++
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/anim.gif":
+			w.Header().Set("Content-Type", "image/gif")
+			w.Write(anim)
+		default:
+			w.Header().Set("Content-Type", "image/png")
+			w.Write(png)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+	dir, err := mediaCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		url, ext string
+		raw      []byte
+	}{
+		{srv.URL + "/pic.png", ".png", png},
+		{srv.URL + "/anim.gif", ".gif", anim},
+	} {
+		if img := a.fetchThumb(context.Background(), tc.url); img == nil {
+			t.Fatalf("%s: first fetch returned no thumbnail", tc.url)
+		}
+		matches, _ := filepath.Glob(filepath.Join(dir, mediaCacheGlobPrefix(tc.url)+".*"))
+		if len(matches) != 1 || !strings.HasSuffix(matches[0], tc.ext) {
+			t.Fatalf("%s cached as %v, want a single %s", tc.url, matches, tc.ext)
+		}
+		stored, err := os.ReadFile(matches[0])
+		if err != nil || !bytes.Equal(stored, tc.raw) {
+			t.Fatalf("%s: cached bytes not the raw original (err=%v equal=%v)", tc.url, err, bytes.Equal(stored, tc.raw))
+		}
+	}
+
+	// Second fetch of each URL is served from the cache: no extra request.
+	before := map[string]int{}
+	mu.Lock()
+	for k, v := range hits {
+		before[k] = v
+	}
+	mu.Unlock()
+	for _, u := range []string{srv.URL + "/pic.png", srv.URL + "/anim.gif"} {
+		if img := a.fetchThumb(context.Background(), u); img == nil {
+			t.Fatalf("%s: cached fetch returned no thumbnail", u)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for p, n := range before {
+		if hits[p] != n {
+			t.Fatalf("path %s re-fetched: hits %d, want %d (cache hit)", p, hits[p], n)
+		}
 	}
 }

@@ -274,6 +274,7 @@ func (h *Handler) runHit(hit ui.Hit) {
 	case ui.HitCloseSettings:
 		s.CommitRename()
 		s.CommitCache()
+		s.CommitCacheSize()
 		s.CommitZoomKeys()
 		vm.CloseView.Execute()
 		h.a.ApplySceneSettings()
@@ -297,6 +298,8 @@ func (h *Handler) runHit(hit ui.Hit) {
 		s.FocusChannel()
 	case ui.HitFocusCache:
 		s.FocusCache()
+	case ui.HitFocusCacheSize:
+		s.FocusCacheSize()
 	case ui.HitFocusZoomIn:
 		s.FocusZoomIn()
 	case ui.HitFocusZoomOut:
@@ -469,6 +472,7 @@ func (h *Handler) Key(name string, r rune) {
 		case ui.ModeSettings:
 			s.CommitRename()
 			s.CommitCache()
+			s.CommitCacheSize()
 			s.CommitZoomKeys()
 			vm.CloseView.Execute()
 			h.a.ApplySceneSettings()
@@ -556,6 +560,9 @@ func (h *Handler) commitSettingsField() {
 		h.a.ApplySceneSettings()
 	case ui.FocusCache:
 		s.CommitCache()
+		h.a.ApplySceneSettings()
+	case ui.FocusCacheSize:
+		s.CommitCacheSize()
 		h.a.ApplySceneSettings()
 	case ui.FocusZoomIn, ui.FocusZoomOut:
 		s.CommitZoomKeys()
