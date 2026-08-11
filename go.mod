@@ -8,7 +8,7 @@ require (
 	github.com/go-browserhttp/browserhttp v0.2.0
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-iconoir/iconoir v0.1.0
-	github.com/go-images/images v0.0.0-20260702213524-ea366b42f216
+	github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38
 	github.com/go-instagram/instagram v0.1.0
 	github.com/go-lemmy/lemmy v0.1.0
 	github.com/go-macos/objc v0.1.0
@@ -24,8 +24,8 @@ require (
 	github.com/go-tiktok/tiktok v0.1.0
 	github.com/go-webengine/engine v0.3.10
 	github.com/go-widgets/mvvm v0.5.0
-	github.com/go-widgets/painter v0.2.0
-	github.com/go-widgets/toolkit v0.134.0
+	github.com/go-widgets/painter v0.9.0
+	github.com/go-widgets/toolkit v0.146.0
 	github.com/go-widgets/tray v0.1.1
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/hashicorp/go-hclog v1.6.3
