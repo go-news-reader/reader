@@ -33,8 +33,6 @@ github.com/go-datetime/dates v0.1.0 h1:Uj8TaTZ09DXdq75EGQ/teFdrXpfVAC3ZDHAPQvPTn
 github.com/go-datetime/dates v0.1.0/go.mod h1:KeZ1wUeMScJD6HOvj3hINwbsB+GCSFjJLWcJhrBlwIo=
 github.com/go-erasure/reedsolomon v0.3.0 h1:A+qrLr3OdHOftL+EyoqrdUu1sFiCb23PDWxgvc9foxU=
 github.com/go-erasure/reedsolomon v0.3.0/go.mod h1:Tqwi8qBE7RYyG/sOOKCZpGCn7+gIGHlJ7A2CsjWQVZQ=
-github.com/go-freedesktop/dbus v0.1.1 h1:oznjbPKWkRga7lVhgkdQnt9aYfcy7gMYWlGX1HXd6q4=
-github.com/go-freedesktop/dbus v0.1.1/go.mod h1:POfbq95HLV4+H2pbs4GQKk8hLC+wbwgIxmrXbhBxgLw=
 github.com/go-hackernews/hackernews v0.1.0 h1:4d9f4KmqfEnd8WTRyx2ee5jnA4JJz7QHZqA7q3nuGCY=
 github.com/go-hackernews/hackernews v0.1.0/go.mod h1:qqjIppBfii2cO163KCgdBX1RjlcEfp4MROYs4SZjay0=
 github.com/go-iconoir/iconoir v0.1.0 h1:Xw9XAVZmAUxGexpsNGCB6SeoUaUDh5FQQerMEbv7qgU=
@@ -85,12 +83,14 @@ github.com/go-widgets/mvvm v0.5.0 h1:o5hh6HAxbApONcbZxmyV9q12pCAPGRd6L24aS3gaCbA
 github.com/go-widgets/mvvm v0.5.0/go.mod h1:Phdrd434RLxXW1D6dL1PPQH1tABwYLIN2X7jQVC4TbY=
 github.com/go-widgets/painter v0.9.0 h1:/y0qn0+TP3bhdLMi4+/vmUUBnSp3/L2RQBBgwAmJkes=
 github.com/go-widgets/painter v0.9.0/go.mod h1:ccmlkH2UmcXQh6rt9Fu2eDt2RI0B5V0POaGmUKeW0EQ=
-github.com/go-widgets/toolkit v0.147.0 h1:2Au1JC1tChv+dVdkT0PRKSgwUz9n11uKUiZD5At8IdQ=
-github.com/go-widgets/toolkit v0.147.0/go.mod h1:UZ8tGcFgtmcIZuZPmX1fPncrni7IOG+E0AaeMi0MXcI=
-github.com/go-widgets/window v0.17.0 h1:otcy8VhcA3F2kqMBBYNbIcAzWY4kKYIH8hUQqNCE/8M=
-github.com/go-widgets/window v0.17.0/go.mod h1:0D1IKcx1hH/BeEjwGDsuUfAxQEv2x+A9v3e/gHRDQxk=
+github.com/go-widgets/toolkit v0.149.0 h1:QHTUpvF0NfkgyQsvJ2fgoIPOOGRV+atI+70KmeeWS+o=
+github.com/go-widgets/toolkit v0.149.0/go.mod h1:UZ8tGcFgtmcIZuZPmX1fPncrni7IOG+E0AaeMi0MXcI=
+github.com/go-widgets/window v0.20.0 h1:KFbyR8vtcyMl86Lq6Y+NakUeCjBs5IeMAB+2g4Aw1mc=
+github.com/go-widgets/window v0.20.0/go.mod h1:Hr/JUdmyU1BKDUwyUPTvpXmr0BuzONHFcPwlgPL+7kQ=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
 github.com/goccy/go-yaml v1.19.2/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7LkFRi1kA=
+github.com/godbus/dbus/v5 v5.2.2 h1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=
+github.com/godbus/dbus/v5 v5.2.2/go.mod h1:3AAv2+hPq5rdnr5txxxRwiGjPXamgoIHgz9FPBfOp3c=
 github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
 github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=

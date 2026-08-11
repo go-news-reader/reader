@@ -24,8 +24,8 @@ require (
 	github.com/go-webengine/engine v0.3.11
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.9.0
-	github.com/go-widgets/toolkit v0.147.0
-	github.com/go-widgets/window v0.17.0
+	github.com/go-widgets/toolkit v0.149.0
+	github.com/go-widgets/window v0.20.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.83.0
@@ -44,12 +44,12 @@ require (
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
-	github.com/go-freedesktop/dbus v0.1.1 // indirect
 	github.com/go-macos/objc v0.1.1 // indirect
 	github.com/go-opentype/bidi v0.2.1 // indirect
 	github.com/go-opentype/opentype v0.5.0 // indirect
 	github.com/go-opentype/shape v0.4.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
