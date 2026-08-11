@@ -193,6 +193,13 @@ func route(h Handler, ev toolkit.Event) {
 	case toolkit.EventMouseUp:
 		h.MouseUp(ev.X, ev.Y)
 	case toolkit.EventScroll:
+		// A wheel event carries the pointer position it happened at. Apply it
+		// first so the handler routes the scroll to whatever pane is UNDER the
+		// cursor (the preview, its embedded browser) rather than to whichever pane
+		// the last move happened to leave the pointer over — hover moves may not
+		// flow between wheel notches, so the wheel's own coordinates are the only
+		// reliable "where is the cursor" signal at this instant.
+		h.MouseMove(ev.X, ev.Y)
 		h.Scroll(ev.Delta * wheelPixelsPerNotch)
 	case toolkit.EventKeyDown:
 		if ev.Ctrl || ev.Meta {

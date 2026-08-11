@@ -95,9 +95,22 @@ func TestKeyNameTranslatesTheArrows(t *testing.T) {
 // A wheel notch is a ROW in the toolkit and DEVICE PIXELS here.
 func TestScrollConvertsRowsToPixels(t *testing.T) {
 	r := &recorder{}
-	route(r, toolkit.Event{Kind: toolkit.EventScroll, Delta: 3})
-	route(r, toolkit.Event{Kind: toolkit.EventScroll, Delta: -1})
-	want := []string{"scroll:120,0", "scroll:-40,0"}
+	route(r, toolkit.Event{Kind: toolkit.EventScroll, X: 200, Y: 50, Delta: 3})
+	route(r, toolkit.Event{Kind: toolkit.EventScroll, X: 200, Y: 50, Delta: -1})
+	// Each wheel notch first applies its pointer position (so the scroll routes to
+	// the pane under the cursor), then scrolls.
+	want := []string{"move:200,50", "scroll:120,0", "move:200,50", "scroll:-40,0"}
+	assertCalls(t, r, want)
+}
+
+// TestWheelAppliesItsPointerPosition guards the fix for scrolling the wrong pane:
+// the wheel's own coordinates must reach the handler as a pointer move BEFORE the
+// scroll, so routing sees the cursor over the preview even when no hover move
+// arrived between notches.
+func TestWheelAppliesItsPointerPosition(t *testing.T) {
+	r := &recorder{}
+	route(r, toolkit.Event{Kind: toolkit.EventScroll, X: 640, Y: 300, Delta: 1})
+	want := []string{"move:640,300", "scroll:40,0"}
 	assertCalls(t, r, want)
 }
 
