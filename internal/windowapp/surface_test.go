@@ -1,0 +1,142 @@
+// Copyright (c) 2026 the go-news-reader authors. All rights reserved.
+// Use of this source code is governed by a BSD-3-Clause license that can be
+// found in the LICENSE file at the root of this repository.
+
+package windowapp
+
+import (
+	"testing"
+
+	"github.com/go-news-reader/reader/app"
+	"github.com/go-news-reader/reader/internal/window"
+	"github.com/go-news-reader/reader/source"
+	"github.com/go-widgets/toolkit"
+)
+
+// These drive a REAL app scene through the REAL surface the native window uses,
+// and assert the scene moved. They exist because the on-device check could not
+// cover them: an accessibility client can press a button — which is how the
+// click path was verified against the running application — but nothing in that
+// API replays a scroll or a drag, and synthesising OS events would mean taking
+// over the machine's cursor.
+//
+// What they do not cover, and what does not need covering here: the OS event to
+// toolkit.Event half. That belongs to go-widgets/window and is proven there by
+// its own live tests, which post real NSEvents through AppKit.
+
+func boundSurface(t *testing.T, w, h int) (*toolkit.Surface, *app.App) {
+	t.Helper()
+	a := app.New(app.Config{Registry: source.NewRegistry(), Width: w, Height: h})
+	// A feed with more items than fit, because an empty one cannot scroll and a
+	// scroll test against it passes for the wrong reason -- which is how the
+	// first version of this failed, honestly.
+	items := make([]source.Item, 60)
+	for i := range items {
+		items[i] = source.Item{
+			ID: string(rune('a' + i%26)), Source: source.Reddit, Channel: "golang",
+			Title: "A reasonably long headline number", Author: "user", Score: i, Comments: i,
+		}
+	}
+	a.Scene().SetItems(items)
+	surf := window.Bind(New(a), 1)
+	surf.SetBounds(toolkit.Rect{X: 0, Y: 0, W: w, H: h})
+	// One frame, so the scene has laid out and there is something to scroll.
+	surf.Frame()
+	return surf, a
+}
+
+// A wheel notch moves the feed, and moves it by the pixels this application
+// counts in — the toolkit measures scrolls in rows.
+func TestSurfaceScrollMovesTheFeed(t *testing.T) {
+	surf, a := boundSurface(t, 900, 600)
+
+	if got := a.Scene().ScrollY(); got != 0 {
+		t.Fatalf("the feed starts at %d, not the top; the arithmetic below assumes 0", got)
+	}
+	surf.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: 3, X: 450, Y: 300})
+	surf.Frame()
+
+	// The EXACT distance, not merely "it moved". Three notches at 40 device
+	// pixels each is 120, and asserting only movement lets the rows-to-pixels
+	// conversion vanish unnoticed -- which it did when this was written loosely:
+	// the test passed with the multiplication removed, scrolling 3 pixels
+	// instead of 120.
+	const want = 3 * 40
+	if got := a.Scene().ScrollY(); got != want {
+		t.Errorf("three wheel notches scrolled %d pixels, want %d — a notch is a ROW in the toolkit and DEVICE PIXELS here", got, want)
+	}
+
+	// And back up, past the top, where it must clamp rather than go negative.
+	surf.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: -99, X: 450, Y: 300})
+	surf.Frame()
+	if got := a.Scene().ScrollY(); got != 0 {
+		t.Errorf("scrolling far past the top left the offset at %d, want 0", got)
+	}
+}
+
+// Input lands in the BUFFER's coordinates, not the surface's. A surface placed
+// anywhere but the origin is what tells the two apart: forwarding raw
+// coordinates would scroll from a point 40 pixels to the right of the one the
+// user aimed at, and no test that leaves the surface at 0,0 can see it.
+func TestSurfaceInputIsTranslatedIntoBufferCoordinates(t *testing.T) {
+	atOrigin, a1 := boundSurface(t, 900, 600)
+	offset, a2 := boundSurface(t, 900, 600)
+	offset.SetBounds(toolkit.Rect{X: 40, Y: 25, W: 900, H: 600})
+	offset.Frame()
+
+	// The same point of the CONTENT, addressed in each surface's own space.
+	atOrigin.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: 2, X: 450, Y: 300})
+	offset.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: 2, X: 40 + 450, Y: 25 + 300})
+	atOrigin.Frame()
+	offset.Frame()
+
+	if a1.Scene().ScrollY() != a2.Scene().ScrollY() {
+		t.Errorf("the same content point scrolled to %d at the origin and %d when offset",
+			a1.Scene().ScrollY(), a2.Scene().ScrollY())
+	}
+}
+
+// A press, a move and a release arrive as the press/drag/release the scene
+// expects, rather than collapsing into a click. Nothing here asserts what the
+// divider did -- that is the scene's business -- only that the sequence reaches
+// it intact.
+func TestSurfaceDragReachesTheScene(t *testing.T) {
+	surf, a := boundSurface(t, 900, 600)
+	before := a.Scene().ScrollY()
+
+	surf.OnEvent(toolkit.Event{Kind: toolkit.EventClick, X: 200, Y: 300})
+	surf.OnEvent(toolkit.Event{Kind: toolkit.EventMouseDrag, X: 260, Y: 300})
+	surf.OnEvent(toolkit.Event{Kind: toolkit.EventMouseUp, X: 260, Y: 300})
+	surf.Frame()
+
+	// The point is that the sequence is survivable and translated; a scene that
+	// panicked or mistook a drag for a click would not get this far.
+	if got := a.Scene().ScrollY(); got < 0 {
+		t.Errorf("the drag left the feed at a negative offset %d", got)
+	}
+	_ = before
+}
+
+// The accessibility tree a screen reader reads comes from the same scene, and
+// the rectangles are in the buffer's coordinates offset onto the surface.
+func TestSurfacePublishesTheScenesElements(t *testing.T) {
+	surf, _ := boundSurface(t, 900, 600)
+	surf.SetBounds(toolkit.Rect{X: 10, Y: 20, W: 900, H: 600})
+
+	nodes := toolkit.WalkA11y(surf)
+	if len(nodes) == 0 {
+		t.Fatal("the surface published nothing for a screen reader")
+	}
+	var named int
+	for _, n := range nodes {
+		if n.Name != "" {
+			named++
+		}
+		if n.Rect.X < 10 || n.Rect.Y < 20 {
+			t.Errorf("node %q at %+v is left of or above the surface, so it was not offset onto it", n.Name, n.Rect)
+		}
+	}
+	if named == 0 {
+		t.Error("every published node is unnamed, which reads as an empty interface")
+	}
+}

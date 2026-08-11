@@ -64,22 +64,7 @@ func Run(cfg Config, h Handler) error {
 	}
 
 	ap := newAppearancePump(win, h)
-
-	var lastW, lastH int
-	surf.Frame = func() ([]byte, int, int) {
-		r := surf.Bounds()
-		if r.W != lastW || r.H != lastH {
-			lastW, lastH = r.W, r.H
-			h.Resize(r.W, r.H, scale)
-		}
-		ap.poll()
-		buf, w, hh, _ := h.Frame()
-		return buf, w, hh
-	}
-	surf.OnInput = func(ev toolkit.Event) { route(h, ev) }
-	if a, ok := h.(Accessible); ok {
-		surf.Elements = func() []toolkit.SurfaceElement { return elements(a) }
-	}
+	bind(surf, h, scale, ap)
 
 	// The handler's Frame is also this application's CLOCK, not just its
 	// painter: background goroutines enqueue scene mutations that are only ever
@@ -113,6 +98,46 @@ func Run(cfg Config, h Handler) error {
 
 	ap.start()
 	return win.Run(surf)
+}
+
+// Bind returns a toolkit.Surface showing h: the frame it presents, the input it
+// takes, and the tree it publishes for a screen reader.
+//
+// Run uses it to fill a native window, but it is exported because a window is
+// not the only place this can go. Any go-widgets host that can lay out a widget
+// can host this application — a desktop shell, a tab in something larger,
+// wasmdesk — and none of them should have to reimplement the translation.
+//
+// scale is the framebuffer pixels per logical point the host is rendering at;
+// pass 1 if it does not scale.
+//
+// It is also what makes the wiring testable. Everything specific to this
+// application lives here — the resize units, the event translation, the element
+// mapping — and none of it needs a window to be wrong, so a test can drive a
+// real app scene through a real surface and assert the scene moved.
+func Bind(h Handler, scale float64) *toolkit.Surface {
+	return bind(toolkit.NewSurface(nil), h, scale, &appearancePump{})
+}
+
+// bind is Bind with the surface and the appearance pump supplied, which is what
+// Run needs: its pump is fed by the window it just opened.
+func bind(surf *toolkit.Surface, h Handler, scale float64, ap *appearancePump) *toolkit.Surface {
+	var lastW, lastH int
+	surf.Frame = func() ([]byte, int, int) {
+		r := surf.Bounds()
+		if r.W != lastW || r.H != lastH {
+			lastW, lastH = r.W, r.H
+			h.Resize(r.W, r.H, scale)
+		}
+		ap.poll()
+		buf, w, hh, _ := h.Frame()
+		return buf, w, hh
+	}
+	surf.OnInput = func(ev toolkit.Event) { route(h, ev) }
+	if a, ok := h.(Accessible); ok {
+		surf.Elements = func() []toolkit.SurfaceElement { return elements(a) }
+	}
+	return surf
 }
 
 // route turns a toolkit event into the handler's vocabulary.
