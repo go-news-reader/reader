@@ -94,6 +94,11 @@ type tokenResp struct {
 	Token string `json:"token"`
 }
 
+// gifResp is the GET /gifs/<id> payload: the single gif wrapped under "gif".
+type gifResp struct {
+	Gif Gif `json:"gif"`
+}
+
 // APIError is a non-2xx response from the RedGIFs API.
 type APIError struct {
 	StatusCode int
@@ -182,6 +187,47 @@ func (c *Client) Search(ctx context.Context, query, order string, page, count in
 		return nil, err
 	}
 	return sp, nil
+}
+
+// GifByID fetches a single gif by its id via GET /gifs/<id>, using the same
+// temporary-token + Referer auth as [Client.Search]: it lazily fetches and
+// caches the anonymous bearer token and refreshes it once if the request comes
+// back 401. This is the resolver other providers use to turn a bare RedGIFs
+// watch/embed link (a redgifs.com/watch/<id> or /ifr/<id> URL, e.g. the ones
+// pasted into Reddit posts) into the actual media variant URLs. A blank id is
+// rejected without a request.
+func (c *Client) GifByID(ctx context.Context, id string) (*Gif, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, errors.New("redgifs: empty gif id")
+	}
+	tok, err := c.ensureToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	g, err := c.gifOnce(ctx, id, tok)
+	if isAuthErr(err) {
+		// The cached token was rejected: force a fresh one and retry once.
+		tok, ferr := c.fetchToken(ctx)
+		if ferr != nil {
+			return nil, ferr
+		}
+		g, err = c.gifOnce(ctx, id, tok)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
+// gifOnce performs a single by-id request with the given token, unwrapping the
+// "gif" envelope RedGIFs wraps the object in.
+func (c *Client) gifOnce(ctx context.Context, id, token string) (*Gif, error) {
+	var gr gifResp
+	if err := c.get(ctx, "/gifs/"+url.PathEscape(id), "", token, &gr); err != nil {
+		return nil, err
+	}
+	return &gr.Gif, nil
 }
 
 // searchOnce performs a single search request with the given token.

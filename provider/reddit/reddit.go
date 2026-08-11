@@ -16,6 +16,7 @@ import (
 	"github.com/go-browserhttp/browserhttp"
 	goreddit "github.com/go-reddit/reddit"
 
+	"github.com/go-news-reader/reader/provider/redgifs"
 	"github.com/go-news-reader/reader/source"
 )
 
@@ -31,9 +32,21 @@ type fetcher interface {
 	SearchPosts(ctx context.Context, query, subreddit string, sort goreddit.SearchSort, opts goreddit.ListingOptions) (*goreddit.Page, error)
 }
 
+// RedgifsResolver resolves a RedGIFs gif id to its media variant URLs. The
+// reddit provider uses it to turn a redgifs.com/watch/<id> or /ifr/<id> link
+// pasted into a post into the actual playable mp4 + poster, instead of the
+// static poster Reddit embeds. *redgifs.Client satisfies it; tests inject a fake
+// so no live network is touched.
+type RedgifsResolver interface {
+	GifByID(ctx context.Context, id string) (*redgifs.Gif, error)
+}
+
 // Provider fetches Reddit posts as normalized source items.
 type Provider struct {
 	client fetcher
+	// redgifs resolves RedGIFs links embedded in posts to direct media; nil
+	// disables that resolution (the post keeps Reddit's static poster).
+	redgifs RedgifsResolver
 }
 
 // New returns an anonymous Reddit provider backed by the portable browser
@@ -51,7 +64,7 @@ func NewWithHTTPClient(hc *http.Client) *Provider {
 		goreddit.WithHTTPClient(hc),
 		goreddit.WithUserAgent(browserhttp.DefaultUserAgent),
 	)
-	return &Provider{client: c}
+	return &Provider{client: c, redgifs: redgifs.NewClientWithHTTPClient(hc)}
 }
 
 // NewWithCookie returns a Reddit provider that authenticates reads with the
@@ -72,12 +85,22 @@ func NewWithCookie(hc *http.Client, sessionCookie string) *Provider {
 		goreddit.WithUserAgent(browserhttp.DefaultUserAgent),
 		goreddit.WithSessionCookie(sessionCookie),
 	)
-	return &Provider{client: c}
+	return &Provider{client: c, redgifs: redgifs.NewClientWithHTTPClient(hc)}
 }
 
 // NewWithClient wraps an already-configured reddit client — e.g. a
-// session-cookie (logged-in) client, or a fake in tests.
+// session-cookie (logged-in) client, or a fake in tests. It has no RedGIFs
+// resolver; attach one with [Provider.WithRedgifs].
 func NewWithClient(c fetcher) *Provider { return &Provider{client: c} }
+
+// WithRedgifs sets the resolver that turns RedGIFs links inside posts into
+// direct media and returns the provider for chaining. The network constructors
+// wire a real *redgifs.Client automatically; this is for [NewWithClient] and for
+// injecting a fake in tests.
+func (p *Provider) WithRedgifs(r RedgifsResolver) *Provider {
+	p.redgifs = r
+	return p
+}
 
 // Kind reports source.Reddit.
 func (p *Provider) Kind() source.Kind { return source.Reddit }
@@ -115,7 +138,7 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 
 	items := make([]source.Item, 0, len(page.Posts))
 	for _, post := range page.Posts {
-		it := mapPost(post)
+		it := p.mapPost(ctx, post)
 		// Tag every item with the subscription's own channel (its r/ or u/ form) so
 		// the feed's per-subscription filter matches — a redditor's posts span many
 		// subreddits, so their intrinsic subreddit would never equal the u/ channel.
@@ -247,7 +270,7 @@ func (p *Provider) SearchPosts(ctx context.Context, query, subreddit string) ([]
 	}
 	items := make([]source.Item, 0, len(page.Posts))
 	for _, post := range page.Posts {
-		items = append(items, mapPost(post))
+		items = append(items, p.mapPost(ctx, post))
 	}
 	return items, nil
 }
@@ -284,8 +307,10 @@ func parseSort(s string) goreddit.Sort {
 	}
 }
 
-// mapPost projects a reddit Post onto the normalized Item.
-func mapPost(p goreddit.Post) source.Item {
+// mapPost projects a reddit Post onto the normalized Item, resolving the
+// external media host the post embeds where it can so the reader shows the
+// actual media instead of a blank page or a bare link.
+func (pr *Provider) mapPost(ctx context.Context, p goreddit.Post) source.Item {
 	it := source.Item{
 		ID:        p.ID,
 		Source:    source.Reddit,
@@ -310,15 +335,33 @@ func mapPost(p goreddit.Post) source.Item {
 		return it // a text post: its content is Body, no link/media to resolve
 	}
 
-	// A media post — an image, a gallery, a reddit-hosted video, or an embedded
-	// external video/GIF host (RedGIFs, Gfycat, Imgur, YouTube… which Reddit tags
-	// post_hint "rich:video"/"hosted:video") — shows a resolved picture: the image
-	// itself, the gallery's first image, or the video's poster. Point Link at that
-	// direct image (the preview pane renders it, and it zooms) rather than at the
-	// media page's URL, which for a gallery permalink or a JS embed host (a
-	// redgifs.com/watch page) would paint blank. A plain external ARTICLE link
-	// falls through to its page. p.PreviewImage() prefers Reddit's resolved
-	// preview; it is a direct image URL even when p.URL is a permalink/embed.
+	// Host-specific resolution: an imgur link resolves to its direct image/mp4,
+	// and a redgifs link resolves — via the RedGIFs API — to the real mp4 + poster
+	// (Reddit only embeds a static poster for these). Each fully handles the media
+	// for the posts it matches, so return once one does.
+	if resolveImgur(&it, p.URL) {
+		return it
+	}
+	if pr.resolveRedgifs(ctx, &it, p) {
+		return it
+	}
+
+	// The generic path: reddit's own image/gallery/hosted-video, plus the
+	// separate v.redd.it audio track when the post is a reddit-hosted video.
+	resolveGeneric(&it, p)
+	return it
+}
+
+// resolveGeneric maps a reddit post's own media the way the reader always has: a
+// media post (image, gallery, hosted/rich video) points Link at Reddit's
+// resolved display image — the picture, the gallery's first image, or the
+// video's poster — which the preview pane renders and zooms, rather than at a
+// media-page URL (a gallery permalink or a JS embed page would paint blank). A
+// plain external article falls through to its page. On top of that a
+// reddit-hosted video also exposes its playable stream and, derived from it, the
+// separate DASH audio track (see [redditAudioURL]) so a future player can mux
+// the two — Reddit serves video and audio as distinct files.
+func resolveGeneric(it *source.Item, p goreddit.Post) {
 	display := p.PreviewImage()
 	isMedia := p.IsGallery || p.IsVideo || isImageURL(p.URL) ||
 		p.PostHint == "image" || p.PostHint == "rich:video" || p.PostHint == "hosted:video"
@@ -331,12 +374,12 @@ func mapPost(p goreddit.Post) source.Item {
 		// above (PreviewImage resolves it), so nothing is mapped as media here.
 		it.Link = p.URL
 	}
-	// Expose a reddit-hosted video's stream as media (the poster shows now; a
-	// future front-end could offer playback).
 	if v := p.VideoURL(); v != "" {
 		it.Media = append(it.Media, source.Media{URL: v, Kind: source.MediaVideo})
+		if a := redditAudioURL(v); a != "" {
+			it.Media = append(it.Media, source.Media{URL: a, Kind: source.MediaAudio})
+		}
 	}
-	return it
 }
 
 // isThumbURL reports whether a reddit thumbnail field is a real image URL and

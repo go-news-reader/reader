@@ -462,3 +462,127 @@ func TestConstructors(t *testing.T) {
 		t.Fatal("NewClientWithHTTPClient(nil) must supply a fallback client")
 	}
 }
+
+// TestGifByIDEmptyID rejects a blank id without issuing any request.
+func TestGifByIDEmptyID(t *testing.T) {
+	c, _ := newTestClient(t, func(_ http.ResponseWriter, r *http.Request) {
+		t.Errorf("no request expected for a blank id, got %s", r.URL.Path)
+	})
+	if _, err := c.GifByID(context.Background(), "   "); err == nil {
+		t.Fatal("blank id should error")
+	}
+}
+
+// TestGifByIDHappyPath fetches a gif by id, unwrapping the "gif" envelope and
+// carrying the auth headers, and preserves the id's casing in the path.
+func TestGifByIDHappyPath(t *testing.T) {
+	var sawPath, sawAuthz, sawReferer, sawUA string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/temporary"):
+			_, _ = w.Write([]byte(`{"token":"JWT.abc"}`))
+		case strings.Contains(r.URL.Path, "/gifs/"):
+			sawPath = r.URL.Path
+			sawAuthz = r.Header.Get("Authorization")
+			sawReferer = r.Header.Get("Referer")
+			sawUA = r.Header.Get("User-Agent")
+			_, _ = w.Write([]byte(`{"gif":{"id":"abc","width":720,"height":1280,
+				"urls":{"hd":"https://media/abc-hd.mp4","poster":"https://media/abc.jpg"}}}`))
+		}
+	})
+	g, err := c.GifByID(context.Background(), "AbC")
+	if err != nil {
+		t.Fatalf("GifByID: %v", err)
+	}
+	if g.ID != "abc" || g.URLs.HD != "https://media/abc-hd.mp4" || g.URLs.Poster != "https://media/abc.jpg" {
+		t.Fatalf("gif = %+v", g)
+	}
+	if g.Width != 720 || g.Height != 1280 {
+		t.Fatalf("dims = %dx%d", g.Width, g.Height)
+	}
+	if !strings.HasSuffix(sawPath, "/gifs/AbC") {
+		t.Errorf("path = %q, want …/gifs/AbC", sawPath)
+	}
+	if sawAuthz != "Bearer JWT.abc" {
+		t.Errorf("authz = %q", sawAuthz)
+	}
+	if sawReferer != referer || sawUA != userAgent {
+		t.Errorf("headers referer=%q ua=%q", sawReferer, sawUA)
+	}
+}
+
+// TestGifByID401Refetches retries once with a fresh token when the by-id call
+// comes back 401.
+func TestGifByID401Refetches(t *testing.T) {
+	var tokenCalls, gifCalls int32
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/temporary"):
+			atomic.AddInt32(&tokenCalls, 1)
+			_, _ = w.Write([]byte(`{"token":"tok"}`))
+		case strings.Contains(r.URL.Path, "/gifs/"):
+			if atomic.AddInt32(&gifCalls, 1) == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"gif":{"id":"x","urls":{"hd":"h"}}}`))
+		}
+	})
+	g, err := c.GifByID(context.Background(), "x")
+	if err != nil {
+		t.Fatalf("GifByID: %v", err)
+	}
+	if g.URLs.HD != "h" {
+		t.Fatalf("hd = %q", g.URLs.HD)
+	}
+	if n := atomic.LoadInt32(&tokenCalls); n != 2 {
+		t.Errorf("token fetches = %d, want 2 (initial + refetch)", n)
+	}
+}
+
+// TestGifByID401ThenTokenError surfaces a token-refetch failure that happens
+// after the by-id call's 401.
+func TestGifByID401ThenTokenError(t *testing.T) {
+	var tokenCalls int32
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/temporary"):
+			if atomic.AddInt32(&tokenCalls, 1) == 1 {
+				_, _ = w.Write([]byte(`{"token":"tok"}`))
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+		case strings.Contains(r.URL.Path, "/gifs/"):
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+	})
+	if _, err := c.GifByID(context.Background(), "x"); err == nil {
+		t.Fatal("want the refetch error")
+	}
+}
+
+// TestGifByIDTokenError surfaces an initial token-fetch failure.
+func TestGifByIDTokenError(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	if _, err := c.GifByID(context.Background(), "x"); err == nil {
+		t.Fatal("want the token error")
+	}
+}
+
+// TestGifByIDError surfaces a non-auth API error from the by-id call.
+func TestGifByIDError(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/auth/temporary") {
+			_, _ = w.Write([]byte(`{"token":"tok"}`))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	var apiErr *APIError
+	_, err := c.GifByID(context.Background(), "x")
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("err = %v, want APIError 500", err)
+	}
+}
