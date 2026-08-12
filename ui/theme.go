@@ -28,14 +28,14 @@ func ThemeFor(os string, dark bool) *toolkit.Theme {
 		return toolkit.WhiteSurLight()
 	case OSLinux:
 		if dark {
-			return adwaitaDark()
+			return toolkit.AdwaitaDark()
 		}
-		return adwaitaLight()
+		return toolkit.AdwaitaLight()
 	case OSWindows:
 		if dark {
-			return fluentDark()
+			return toolkit.FluentDark()
 		}
-		return fluentLight()
+		return toolkit.FluentLight()
 	default:
 		if dark {
 			return toolkit.DefaultDark()
@@ -118,54 +118,4 @@ func errorColor(t *toolkit.Theme) toolkit.RGBA {
 		return v
 	}
 	return rgb(0xD03030)
-}
-
-// adwaitaLight / adwaitaDark approximate GNOME's libadwaita default palette.
-func adwaitaLight() *toolkit.Theme {
-	return withOnAccent(&toolkit.Theme{
-		Background:   rgb(0xFAFAFA),
-		Surface:      rgb(0xFFFFFF),
-		SurfaceAlt:   rgb(0xF0F0F0),
-		OnBackground: rgb(0x2E3436),
-		OnSurface:    rgb(0x2E3436),
-		Accent:       rgb(0x3584E4),
-		Border:       rgb(0xD4D4D4),
-	}, rgb(0xFFFFFF))
-}
-
-func adwaitaDark() *toolkit.Theme {
-	return withOnAccent(&toolkit.Theme{
-		Background:   rgb(0x242424),
-		Surface:      rgb(0x303030),
-		SurfaceAlt:   rgb(0x1E1E1E),
-		OnBackground: rgb(0xFFFFFF),
-		OnSurface:    rgb(0xEEEEEE),
-		Accent:       rgb(0x3584E4),
-		Border:       rgb(0x1B1B1B),
-	}, rgb(0xFFFFFF))
-}
-
-// fluentLight / fluentDark approximate Windows 11's Fluent palette.
-func fluentLight() *toolkit.Theme {
-	return withOnAccent(&toolkit.Theme{
-		Background:   rgb(0xF3F3F3),
-		Surface:      rgb(0xFFFFFF),
-		SurfaceAlt:   rgb(0xEBEBEB),
-		OnBackground: rgb(0x202020),
-		OnSurface:    rgb(0x202020),
-		Accent:       rgb(0x0067C0),
-		Border:       rgb(0xDFDFDF),
-	}, rgb(0xFFFFFF))
-}
-
-func fluentDark() *toolkit.Theme {
-	return withOnAccent(&toolkit.Theme{
-		Background:   rgb(0x202020),
-		Surface:      rgb(0x2B2B2B),
-		SurfaceAlt:   rgb(0x272727),
-		OnBackground: rgb(0xFFFFFF),
-		OnSurface:    rgb(0xF0F0F0),
-		Accent:       rgb(0x4CC2FF),
-		Border:       rgb(0x1D1D1D),
-	}, rgb(0x000000))
 }
