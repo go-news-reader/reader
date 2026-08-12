@@ -49,9 +49,14 @@ func Run(cfg Config, h Handler) error {
 	// lays out in device pixels and uses the scale for type sizes; handing it
 	// logical points instead makes it render a quarter-size buffer into a
 	// full-size window, which is exactly what the first on-device run did.
-	scale := 1.0
-	if s, ok := win.(gw.Scaler); ok && s.RenderScale() > 0 {
-		scale = s.RenderScale()
+	scaleOf := func() float64 { return 1 }
+	if s, ok := win.(gw.Scaler); ok {
+		scaleOf = func() float64 {
+			if v := s.RenderScale(); v > 0 {
+				return v
+			}
+			return 1
+		}
 	}
 
 	// A back-end that reaches the OS pasteboard becomes the toolkit-wide
@@ -64,7 +69,7 @@ func Run(cfg Config, h Handler) error {
 	}
 
 	ap := newAppearancePump(win, h)
-	bind(surf, h, scale, ap)
+	bind(surf, h, scaleOf, ap)
 
 	// The handler's Frame is also this application's CLOCK, not just its
 	// painter: background goroutines enqueue scene mutations that are only ever
@@ -146,24 +151,35 @@ func shouldRepaint(gated bool, np interface{ NeedsPresent() bool }, idle *int) b
 // wasmdesk — and none of them should have to reimplement the translation.
 //
 // scale is the framebuffer pixels per logical point the host is rendering at;
-// pass 1 if it does not scale.
+// pass 1 if it does not scale. A host whose scale CHANGES while running -- a
+// window dragged between displays of different density -- should use Run, which
+// re-reads it every frame.
 //
 // It is also what makes the wiring testable. Everything specific to this
 // application lives here — the resize units, the event translation, the element
 // mapping — and none of it needs a window to be wrong, so a test can drive a
 // real app scene through a real surface and assert the scene moved.
 func Bind(h Handler, scale float64) *toolkit.Surface {
-	return bind(toolkit.NewSurface(nil), h, scale, &appearancePump{})
+	return BindScaled(h, func() float64 { return scale })
+}
+
+// BindScaled is Bind for a host whose scale CHANGES while it runs: a window
+// dragged between displays of different density. The function is called every
+// frame, and the handler is told about a change the moment it happens.
+func BindScaled(h Handler, scaleOf func() float64) *toolkit.Surface {
+	return bind(toolkit.NewSurface(nil), h, scaleOf, &appearancePump{})
 }
 
 // bind is Bind with the surface and the appearance pump supplied, which is what
 // Run needs: its pump is fed by the window it just opened.
-func bind(surf *toolkit.Surface, h Handler, scale float64, ap *appearancePump) *toolkit.Surface {
+func bind(surf *toolkit.Surface, h Handler, scaleOf func() float64, ap *appearancePump) *toolkit.Surface {
 	var lastW, lastH int
+	var lastScale float64
 	surf.Frame = func() ([]byte, int, int) {
 		r := surf.Bounds()
-		if r.W != lastW || r.H != lastH {
-			lastW, lastH = r.W, r.H
+		scale := scaleOf()
+		if r.W != lastW || r.H != lastH || scale != lastScale {
+			lastW, lastH, lastScale = r.W, r.H, scale
 			h.Resize(r.W, r.H, scale)
 		}
 		ap.poll()
