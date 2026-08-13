@@ -895,3 +895,101 @@ func TestA11yElementsRectsAreInTheEventCoordinateSpace(t *testing.T) {
 	}
 	t.Fatal("no Settings element to check")
 }
+
+// findSidebarSub scans for a HitSub row, returning coords for one that maps to a
+// real subscription (real=true) or to the All filter (real=false).
+func findSidebarSub(s *ui.Scene, real bool) (int, int, bool) {
+	for y := 0; y < s.H; y += 2 {
+		for x := 0; x < s.W; x += 2 {
+			if hit := s.HitTest(x, y); hit.Kind == ui.HitSub {
+				if _, ok := s.SubAt(hit.Sub); ok == real {
+					return x, y, true
+				}
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func TestSecondaryClickOpensSubMenu(t *testing.T) {
+	a := app.New(app.Config{Registry: source.NewRegistry(), Width: 1000, Height: 700})
+	h := New(a)
+	s := a.Scene()
+	s.SetSubs([]ui.Subscription{
+		{Source: source.HackerNews, Channel: "top"},
+		{Source: source.Reddit, Channel: "golang"},
+	})
+
+	// A press off the sidebar (the feed area) opens nothing.
+	h.SecondaryClick(s.W-5, s.H-5)
+	if h.ContextMenuActive() {
+		t.Fatal("a press off a subscription must not open a menu")
+	}
+
+	// The All-filter row is a HitSub but maps to no subscription: still nothing.
+	if ax, ay, ok := findSidebarSub(s, false); ok {
+		h.SecondaryClick(ax, ay)
+		if h.ContextMenuActive() {
+			t.Fatal("right-click on the All row must not open a subscription menu")
+		}
+	}
+
+	// A real subscription row opens the menu.
+	rx, ry, ok := findSidebarSub(s, true)
+	if !ok {
+		t.Fatal("no real subscription row found in the sidebar")
+	}
+	h.SecondaryClick(rx, ry)
+	if !h.ContextMenuActive() {
+		t.Fatal("right-click on a subscription should open the context menu")
+	}
+	// Escape closes it (drives ContextMenuActive + ContextMenuEvent).
+	h.ContextMenuEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Escape"})
+	if h.ContextMenuActive() {
+		t.Error("Escape should close the menu")
+	}
+}
+
+func TestSubContextMenuActions(t *testing.T) {
+	a := app.New(app.Config{Registry: source.NewRegistry(), Width: 800, Height: 600})
+	// Mirror the native front-end: background scene writes are enqueued under a
+	// lock and applied on the render thread, so the Refresh/re-aggregate actions
+	// these items fire serialize instead of racing (as they do with inline writes).
+	a.DeferSceneWrites()
+	h := New(a)
+	s := a.Scene()
+	// A real profile so the Unsubscribe action (which edits the active profile)
+	// actually removes the sub and reaches ApplySceneSettings.
+	s.SetProfiles([]settings.Profile{{Name: "Home", Subs: []source.Subscription{
+		{Source: source.HackerNews, Channel: "top"},
+	}}}, 0)
+
+	menu := h.subContextMenu(0, source.HackerNews, "top")
+	labels := []string{}
+	for _, it := range menu.Menu.Items {
+		if it.Separator {
+			labels = append(labels, "---")
+			continue
+		}
+		labels = append(labels, it.Label)
+	}
+	want := []string{"Refresh", "Mark as read", "---", "Unsubscribe"}
+	if len(labels) != len(want) {
+		t.Fatalf("menu labels = %v, want %v", labels, want)
+	}
+	for i := range want {
+		if labels[i] != want[i] {
+			t.Fatalf("menu label[%d] = %q, want %q", i, labels[i], want[i])
+		}
+	}
+
+	// Fire "Mark as read" and "Unsubscribe" (Unsubscribe drops the sub); leave the
+	// Refresh action (which spawns a background aggregate) for last and assert
+	// nothing about the scene after it.
+	menu.Menu.Items[1].Action() // Mark as read
+	menu.Menu.Items[3].Action() // Unsubscribe
+	if _, ok := s.SubAt(0); ok {
+		t.Error("the Unsubscribe action should have removed the subscription")
+	}
+	menu.Menu.Items[0].Action() // Refresh (spawns a goroutine on an empty registry)
+}

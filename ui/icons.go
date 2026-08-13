@@ -52,6 +52,7 @@ var (
 	iconFit       = iconoir.MustGet("expand")          // web preview best-fit zoom
 	iconLockSlash = iconoir.MustGet("lock-slash")      // address bar: insecure (non-https)
 	iconStar      = iconoir.MustGet("star")            // address bar: bookmark toggle (star)
+	iconBin       = iconoir.MustGet("bin")             // sidebar context menu: unsubscribe (delete)
 )
 
 // bookmarkGold is the fill for a saved (bookmarked) star — a warm gold that
@@ -63,6 +64,23 @@ var bookmarkGold = toolkit.RGBA{R: 0xF2, G: 0xA6, B: 0x1C, A: 0xFF}
 // a little breathing room within its cell (matching the previous ~80% weight).
 func drawIcon(p painter.Painter, r toolkit.Rect, ic *iconoir.Icon, col toolkit.RGBA) {
 	iconoir.DrawIcon(p, iconInset(r, 88), ic, col)
+}
+
+// MenuIconRefresh, MenuIconMarkRead and MenuIconUnsubscribe paint the sidebar
+// context menu's row glyphs into the cell the toolkit Menu hands them, in the
+// row's own ink (so they invert on hover). They match toolkit.MenuItem.Icon, so
+// the Handler can hand them straight to the menu without this package's private
+// icon handles leaking out.
+func MenuIconRefresh(p painter.Painter, cell toolkit.Rect, ink toolkit.RGBA) {
+	drawIcon(p, cell, iconRefresh, ink)
+}
+
+func MenuIconMarkRead(p painter.Painter, cell toolkit.Rect, ink toolkit.RGBA) {
+	drawIcon(p, cell, iconCheck, ink)
+}
+
+func MenuIconUnsubscribe(p painter.Painter, cell toolkit.Rect, ink toolkit.RGBA) {
+	drawIcon(p, cell, iconBin, ink)
 }
 
 // drawMenuIcon paints the Iconoir "menu" (burger) glyph: three horizontal bars.

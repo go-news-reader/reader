@@ -201,9 +201,21 @@ func bind(surf *toolkit.Surface, h Handler, scaleOf func() float64, ap *appearan
 // which modifiers were held, which is why this application grew a separate sink
 // for it in the first place.
 func route(h Handler, ev toolkit.Event) {
+	// A popped-up context menu is modal: while it is open every event goes to it
+	// (the toolkit widget highlights, activates, scrolls or dismisses itself) and
+	// nothing reaches the scene beneath. The opening EventSecondaryClick itself
+	// gets here before any menu is active, so it still falls through to the switch.
+	if cm, ok := h.(ContextMenuHost); ok && cm.ContextMenuActive() {
+		cm.ContextMenuEvent(ev)
+		return
+	}
 	switch ev.Kind {
 	case toolkit.EventClick:
 		h.MouseDown(ev.X, ev.Y)
+	case toolkit.EventSecondaryClick:
+		if sc, ok := h.(SecondaryClicker); ok {
+			sc.SecondaryClick(ev.X, ev.Y)
+		}
 	case toolkit.EventMouseDrag, toolkit.EventMouseMove:
 		h.MouseMove(ev.X, ev.Y)
 	case toolkit.EventMouseUp:

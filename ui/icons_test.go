@@ -144,3 +144,24 @@ func TestUnknownIconName(t *testing.T) {
 		}
 	}
 }
+
+// TestMenuRowIcons covers the exported sidebar-context-menu row glyphs: each
+// paints anti-aliased Iconoir ink into the cell it is handed.
+func TestMenuRowIcons(t *testing.T) {
+	box := toolkit.Rect{X: 2, Y: 2, W: 40, H: 40}
+	for name, fn := range map[string]func(painter.Painter, toolkit.Rect, toolkit.RGBA){
+		"refresh":     MenuIconRefresh,
+		"mark-read":   MenuIconMarkRead,
+		"unsubscribe": MenuIconUnsubscribe,
+	} {
+		p, _, buf := iconCanvas(44, 44)
+		fn(p, box, iconInk)
+		inked, aa := inkStats(buf, 44, box)
+		if inked == 0 {
+			t.Fatalf("%s menu icon drew no ink", name)
+		}
+		if !aa {
+			t.Fatalf("%s menu icon drew no anti-aliased edge (not an Iconoir mask?)", name)
+		}
+	}
+}

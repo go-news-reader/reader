@@ -271,3 +271,44 @@ func assertCalls(t *testing.T, r *recorder, want []string) {
 		}
 	}
 }
+
+// menuRecorder is a recorder that also plays a context-menu host, to drive the
+// secondary-click and modal-menu branches of route.
+type menuRecorder struct {
+	recorder
+	menuActive bool
+	secondary  [][2]int
+	menuEvents []toolkit.EventKind
+}
+
+func (m *menuRecorder) SecondaryClick(x, y int) { m.secondary = append(m.secondary, [2]int{x, y}) }
+func (m *menuRecorder) ContextMenuActive() bool { return m.menuActive }
+func (m *menuRecorder) ContextMenuEvent(ev toolkit.Event) {
+	m.menuEvents = append(m.menuEvents, ev.Kind)
+}
+
+func TestRouteSecondaryClickAndModalMenu(t *testing.T) {
+	m := &menuRecorder{}
+	// Closed menu: a secondary press reaches SecondaryClick.
+	route(m, toolkit.Event{Kind: toolkit.EventSecondaryClick, X: 12, Y: 34})
+	if len(m.secondary) != 1 || m.secondary[0] != [2]int{12, 34} {
+		t.Fatalf("secondary click not routed to SecondaryClick: %v", m.secondary)
+	}
+	// Open menu: every event is forwarded to the menu and nothing reaches the scene.
+	m.menuActive = true
+	route(m, toolkit.Event{Kind: toolkit.EventClick, X: 1, Y: 2})
+	route(m, toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Escape"})
+	if len(m.menuEvents) != 2 {
+		t.Fatalf("menu received %d events, want 2 (%v)", len(m.menuEvents), m.menuEvents)
+	}
+	if len(m.calls) != 0 {
+		t.Fatalf("events leaked past the modal menu: %v", m.calls)
+	}
+
+	// A handler that is not a SecondaryClicker simply ignores the secondary press.
+	r := &recorder{}
+	route(r, toolkit.Event{Kind: toolkit.EventSecondaryClick, X: 5, Y: 6})
+	if len(r.calls) != 0 {
+		t.Fatalf("a plain handler should ignore a secondary click: %v", r.calls)
+	}
+}

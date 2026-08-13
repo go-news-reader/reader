@@ -49,6 +49,15 @@ func saveSeen(m map[string]int) {
 // drops to zero. AllFilter (or any marker-less sub) just switches the filter.
 func (a *App) ViewSub(index int) {
 	a.scene.SetActive(index)
+	a.MarkSubSeen(index)
+}
+
+// MarkSubSeen records a subscription's current high-water marker as seen and
+// persists it, dropping its unseen count to zero — without changing which filter
+// is active. ViewSub uses it when a group is opened; the sidebar context menu's
+// "mark as read" uses it in place, leaving the current view untouched. A bad
+// index or a marker-less sub (e.g. AllFilter) is a no-op.
+func (a *App) MarkSubSeen(index int) {
 	key, marker, ok := a.scene.SubMarker(index)
 	if !ok || marker <= 0 {
 		return

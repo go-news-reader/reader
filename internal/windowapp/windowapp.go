@@ -414,6 +414,49 @@ func (h *Handler) Scroll(dy int) {
 	s.Scroll(dy)
 }
 
+// SecondaryClick opens a context menu when the secondary press landed on a
+// sidebar subscription (a real source, not the All filter). The menu is the
+// toolkit's own ContextMenu widget — this only builds its items and their
+// actions, which reuse the same scene/app operations the rest of the UI uses,
+// and hands it to the scene to present. A press anywhere else is ignored.
+func (h *Handler) SecondaryClick(x, y int) {
+	s := h.a.Scene()
+	hit := s.HitTest(x, y)
+	if hit.Kind != ui.HitSub {
+		return
+	}
+	sub, ok := s.SubAt(hit.Sub)
+	if !ok {
+		return
+	}
+	s.OpenContextMenu(h.subContextMenu(hit.Sub, sub.Source, sub.Channel), x, y)
+}
+
+// subContextMenu builds the sidebar-subscription context menu for the source at
+// index. Each item's action reuses an operation the rest of the UI already
+// exposes: a full refresh, marking the group's unseen count to zero, and
+// unsubscribing (persisted + re-aggregated) — so the menu adds a surface, not new
+// behaviour.
+func (h *Handler) subContextMenu(index int, kind source.Kind, channel string) *toolkit.ContextMenu {
+	return toolkit.NewContextMenu(toolkit.NewMenu([]toolkit.MenuItem{
+		{Label: "Refresh", Icon: ui.MenuIconRefresh, Action: func() { go h.a.Refresh(context.Background()) }},
+		{Label: "Mark as read", Icon: ui.MenuIconMarkRead, Action: func() { h.a.MarkSubSeen(index) }},
+		{Separator: true},
+		{Label: "Unsubscribe", Icon: ui.MenuIconUnsubscribe, Action: func() {
+			if h.a.Scene().UnsubscribeActive(kind, channel) {
+				h.a.ApplySceneSettings()
+			}
+		}},
+	}))
+}
+
+// ContextMenuActive reports whether a context menu is popped up, so the window
+// routes input to it rather than the scene. Satisfies window.ContextMenuHost.
+func (h *Handler) ContextMenuActive() bool { return h.a.Scene().ContextMenuActive() }
+
+// ContextMenuEvent forwards one input event to the open context menu.
+func (h *Handler) ContextMenuEvent(ev toolkit.Event) { h.a.Scene().ContextMenuEvent(ev) }
+
 // SystemAppearance applies host look-and-feel harvested by the native back-end
 // (dark/light, accent, system font) to the app. This satisfies the optional
 // window.AppearanceSink capability; the compile-time assertion below keeps the
@@ -423,6 +466,8 @@ func (h *Handler) SystemAppearance(a window.SystemAppearance) {
 }
 
 var _ window.AppearanceSink = (*Handler)(nil)
+var _ window.SecondaryClicker = (*Handler)(nil)
+var _ window.ContextMenuHost = (*Handler)(nil)
 
 // Shortcut handles a command-style modifier chord (Ctrl/Cmd + a base key)
 // forwarded by the native back-end. In the feed view with the embedded web

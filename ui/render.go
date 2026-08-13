@@ -221,6 +221,10 @@ func (s *Scene) layout() {
 
 // Draw paints the whole scene into buf (s.W*s.H*4 RGBA bytes).
 func (s *Scene) Draw(buf []byte) {
+	// A popped-up context menu is an overlay above every mode's own drawing, so
+	// paint it last on whatever the mode below produced. Deferred so it runs on
+	// each mode's early return, not just the feed path.
+	defer s.drawContextMenuOverlay(buf)
 	switch s.mode {
 	case ModeDetail:
 		s.drawDetail(buf)

@@ -14,6 +14,8 @@ package window
 import (
 	"errors"
 	"image/color"
+
+	"github.com/go-widgets/toolkit"
 )
 
 // ErrUnsupported is returned by [Run] on a platform without a native back-end.
@@ -47,6 +49,24 @@ type AppearanceSink interface {
 // rune) so the app can act on real-browser-style shortcuts like Cmd+=.
 type ShortcutSink interface {
 	Shortcut(r rune, ctrl, meta bool)
+}
+
+// SecondaryClicker is an optional [Handler] capability: a secondary (right /
+// two-finger / Control-click) press arrives here as the context-menu gesture,
+// with the same device-pixel coordinates as a MouseDown. A handler that has no
+// context menu simply does not implement it, and the press is ignored.
+type SecondaryClicker interface {
+	SecondaryClick(x, y int)
+}
+
+// ContextMenuHost is an optional [Handler] capability: while it reports a context
+// menu open, the window feeds every input event to ContextMenuEvent instead of
+// the usual MouseDown/Move/Scroll/Key path, so the menu is modal. The handler
+// closes the menu itself (an item fired, a click landed outside, Escape) and then
+// reports it inactive again.
+type ContextMenuHost interface {
+	ContextMenuActive() bool
+	ContextMenuEvent(ev toolkit.Event)
 }
 
 // SystemClipboard is a host OS text clipboard (read + write). Its method set is

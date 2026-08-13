@@ -438,6 +438,12 @@ type Scene struct {
 	lastMouseX    int
 	lastMouseY    int
 
+	// ctxMenu is the toolkit ContextMenu currently popped up over the scene (a
+	// sidebar right-click), or nil. The scene only holds, draws and forwards
+	// events to it; the menu widget owns all its own layout, hit-testing, hover,
+	// keyboard nav and dismissal, and the Handler owns the items' actions.
+	ctxMenu *toolkit.ContextMenu
+
 	// groupExpanded records which Usenet post groups (keyed by release base) are
 	// expanded in the feed; it survives re-renders and scrolling. Absent/false =
 	// collapsed (the default).
