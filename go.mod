@@ -10,6 +10,7 @@ require (
 	github.com/go-iconoir/iconoir v0.1.0
 	github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38
 	github.com/go-instagram/instagram v0.2.0
+	github.com/go-keyring/keyring v0.1.0
 	github.com/go-lemmy/lemmy v0.1.0
 	github.com/go-mastodon/mastodon v0.2.0
 	github.com/go-newsgroups/newznab v0.1.0
@@ -36,6 +37,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/breml/rootcerts v0.3.7 // indirect
+	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/dop251/goja v0.0.0-20260723142020-b4aef50fa347 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -44,6 +46,8 @@ require (
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
+	github.com/go-freedesktop/secretservice v0.1.0 // indirect
+	github.com/go-macos/keychain v0.1.0 // indirect
 	github.com/go-macos/objc v0.1.1 // indirect
 	github.com/go-opentype/bidi v0.2.1 // indirect
 	github.com/go-opentype/opentype v0.5.0 // indirect

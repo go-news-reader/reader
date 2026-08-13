@@ -8,6 +8,8 @@ github.com/bufbuild/protocompile v0.14.1 h1:iA73zAf/fyljNjQKwYzUHD6AD4R8KMasmwa/
 github.com/bufbuild/protocompile v0.14.1/go.mod h1:ppVdAIhbr2H8asPk6k4pY7t9zB1OU5DoEw9xY/FUi1c=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
+github.com/danieljoos/wincred v1.2.3 h1:v7dZC2x32Ut3nEfRH+vhoZGvN72+dQ/snVXo/vMFLdQ=
+github.com/danieljoos/wincred v1.2.3/go.mod h1:6qqX0WNrS4RzPZ1tnroDzq9kY3fu1KwE7MRLQK4X0bs=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -33,6 +35,8 @@ github.com/go-datetime/dates v0.1.0 h1:Uj8TaTZ09DXdq75EGQ/teFdrXpfVAC3ZDHAPQvPTn
 github.com/go-datetime/dates v0.1.0/go.mod h1:KeZ1wUeMScJD6HOvj3hINwbsB+GCSFjJLWcJhrBlwIo=
 github.com/go-erasure/reedsolomon v0.3.0 h1:A+qrLr3OdHOftL+EyoqrdUu1sFiCb23PDWxgvc9foxU=
 github.com/go-erasure/reedsolomon v0.3.0/go.mod h1:Tqwi8qBE7RYyG/sOOKCZpGCn7+gIGHlJ7A2CsjWQVZQ=
+github.com/go-freedesktop/secretservice v0.1.0 h1:TvkRjrJFluGux0MMOllbZ3rQrCK74xn5MOxTQzEy+VM=
+github.com/go-freedesktop/secretservice v0.1.0/go.mod h1:PiF8irQ+aFqjMhiwdTDI2lYLk4HZ55eQPVJIUQ8K2+E=
 github.com/go-hackernews/hackernews v0.1.0 h1:4d9f4KmqfEnd8WTRyx2ee5jnA4JJz7QHZqA7q3nuGCY=
 github.com/go-hackernews/hackernews v0.1.0/go.mod h1:qqjIppBfii2cO163KCgdBX1RjlcEfp4MROYs4SZjay0=
 github.com/go-iconoir/iconoir v0.1.0 h1:Xw9XAVZmAUxGexpsNGCB6SeoUaUDh5FQQerMEbv7qgU=
@@ -41,12 +45,16 @@ github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38 h1:p+DjIujiwUvBiy
 github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38/go.mod h1:nWwQCf77xG1GhaSD3rvlp7FNjjDhz47vrztyeBvIerk=
 github.com/go-instagram/instagram v0.2.0 h1:93vT55kKHYtLtNWXolNVo3CAMSaKH5qNF1ZmE+RFVsQ=
 github.com/go-instagram/instagram v0.2.0/go.mod h1:FNtFVnKzf/mUyFS3St/C2wrUeuR+1c2AmlMf/ICsnj8=
+github.com/go-keyring/keyring v0.1.0 h1:pMtGuDZqs3mTQGtwh5gZN6Lam/13O33YARCS6QSsSqY=
+github.com/go-keyring/keyring v0.1.0/go.mod h1:zIjubD0nB04n0SOYJsWuEwp7h9uanqLbUwsiJF9FITk=
 github.com/go-lemmy/lemmy v0.1.0 h1:BTYxhsrquoFA3Ud3fH3/o7iQQKvGU/HJIWeZswuf418=
 github.com/go-lemmy/lemmy v0.1.0/go.mod h1:Dul9nVfhYUJNgodn3HCWQFLgbO3ReGNZnFiEFLDx6LM=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
 github.com/go-logr/stdr v1.2.2 h1:hSWxHoqTgW2S2qGc0LTAI563KZ5YKYRhT3MFKZMbjag=
 github.com/go-logr/stdr v1.2.2/go.mod h1:mMo/vtBO5dYbehREoey6XUKy/eSumjCCveDpRre4VKE=
+github.com/go-macos/keychain v0.1.0 h1:QkKT97eeJ5m/FloDcoi4UmxIvZIosIwinRjexs3icqI=
+github.com/go-macos/keychain v0.1.0/go.mod h1:sR+WtyxxCqldTpbPizjLa/pFd0RPme+VSa5C3Qa4NE8=
 github.com/go-macos/objc v0.1.1 h1:fcuSplZNWzpZjimxMN3HkDHW7XnHFaGaEDIwrTbhdxs=
 github.com/go-macos/objc v0.1.1/go.mod h1:00GJyieLzPcb65rPLVWNPPUCVm79nmmiEXUDsslRpOs=
 github.com/go-mastodon/mastodon v0.2.0 h1:fB75XP83P6kIDBL1qPKINfRyh4DXICwdkmQZLx/FGks=
@@ -133,8 +141,11 @@ github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c/go.mod h1:cNQ3dwVJtS
 github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef h1:Ch6Q+AZUxDBCVqdkI8FSpFyZDtCVBc2VmejdNrm5rRQ=
 github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef/go.mod h1:nXTWP6+gD5+LUJ8krVhhoeHjvHTutPxMYl5SvkcnJNE=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
-github.com/stretchr/testify v1.7.2 h1:4jaiDzPyXQvSd7D0EjG45355tLlV3VOECpq10pLC+8s=
+github.com/stretchr/objx v0.5.2 h1:xuMeJ0Sdp5ZMRXx/aWO6RZxdr3beISkG5/G/aIRr3pY=
+github.com/stretchr/objx v0.5.2/go.mod h1:FRsXN1f5AsAjCGJKqEizvkpNtU+EGNCLh3NxZ/8L+MA=
 github.com/stretchr/testify v1.7.2/go.mod h1:R6va5+xMeoiuVRoj+gSkQ7d3FALtqAAGI1FQKckRals=
+github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
+github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/xyproto/randomstring v1.0.5 h1:YtlWPoRdgMu3NZtP45drfy1GKoojuR7hmRcnhZqKjWU=
 github.com/xyproto/randomstring v1.0.5/go.mod h1:rgmS5DeNXLivK7YprL0pY+lTuhNQW3iGxZ18UQApw/E=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=

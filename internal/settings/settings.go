@@ -251,9 +251,13 @@ func (s *Settings) InfiniteScrollEnabled() bool {
 // well-known names from [CredentialSchema] (e.g. "client_id", "instance",
 // "token", "addr", "tls"). At most one Account exists per Kind.
 //
-// Secrets (client secrets, tokens, passwords, session cookies) are persisted in
-// the settings.json file, which is written with mode 0600. A future improvement
-// is a platform Keychain / secret-store backend; today the values live on disk.
+// Secrets (client secrets, tokens, passwords, session cookies) — the fields
+// [CredentialSchema] marks Secret — are stored off-disk in the host credential
+// vault (macOS Keychain, Windows Credential Manager, Linux Secret Service) via
+// [Store]; see [SecretStore] and secrets.go. Only on a host with no reachable
+// vault (headless Linux) do they fall back to the settings.json file, which is
+// written with mode 0600. Non-secret fields (instance URLs, host:port, …) always
+// live in the JSON.
 type Account struct {
 	Kind   source.Kind       `json:"kind"`
 	Fields map[string]string `json:"fields,omitempty"`
@@ -511,15 +515,37 @@ func DefaultPath() (string, error) {
 	return filepath.Join(dir, appDir, "settings.json"), nil
 }
 
-// Store is a file-backed settings persister.
-type Store struct{ Path string }
+// Store is a file-backed settings persister. Account secrets are kept off the
+// JSON file in the host credential vault when one is reachable — see
+// [SecretStore] and secrets.go; Secrets is the injectable seam (nil selects the
+// production go-keyring/keyring backend).
+type Store struct {
+	Path    string
+	Secrets SecretStore
+}
 
-// NewStore returns a Store rooted at path.
+// NewStore returns a Store rooted at path, using the production keyring-backed
+// secret store.
 func NewStore(path string) *Store { return &Store{Path: path} }
+
+// secrets returns the configured [SecretStore], defaulting to the production
+// keyring-backed one when the seam is unset.
+func (s *Store) secrets() SecretStore {
+	if s.Secrets != nil {
+		return s.Secrets
+	}
+	return keyringSecrets{}
+}
 
 // Load reads the settings from the store's path. A missing file yields
 // [Default] (not an error); a present-but-corrupt file is a hard error so the
 // user notices rather than silently losing their profiles.
+//
+// When a credential vault is reachable, account secrets are read back from it
+// (see [SecretStore]); and any plaintext secret still present in the file — one
+// written before off-disk secrets existed, or by the fallback while the vault
+// was down — is migrated into the vault and then purged from disk. The migration
+// is idempotent: a second Load of the purged file finds nothing to move.
 func (s *Store) Load() (*Settings, error) {
 	data, err := os.ReadFile(s.Path)
 	if err != nil {
@@ -533,11 +559,32 @@ func (s *Store) Load() (*Settings, error) {
 		return nil, err
 	}
 	out.Normalize()
+	migrated, err := s.hydrateSecrets(&out)
+	if err != nil {
+		return nil, err
+	}
+	if migrated {
+		// Rewrite the file without the plaintext secrets now held in the vault.
+		if err := s.Save(&out); err != nil {
+			return nil, err
+		}
+	}
 	return &out, nil
 }
 
 // Save writes v to the store's path, creating the parent directory as needed.
+// When a credential vault is reachable, secret account fields are stored in it
+// and omitted from the JSON; otherwise they are written to the file (mode 0600),
+// the documented headless fallback. v itself is never modified.
 func (s *Store) Save(v *Settings) error {
+	disk := v
+	if s.secrets().Available() {
+		d, err := s.pushSecrets(v)
+		if err != nil {
+			return err
+		}
+		disk = d
+	}
 	if err := os.MkdirAll(filepath.Dir(s.Path), 0o755); err != nil {
 		return err
 	}
@@ -548,5 +595,5 @@ func (s *Store) Save(v *Settings) error {
 	defer f.Close()
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	return enc.Encode(disk)
 }
