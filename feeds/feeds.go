@@ -81,12 +81,19 @@ type Options struct {
 	// Network log can display them. Nil disables logging (each provider keeps its
 	// own default client).
 	Recorder *httplog.Recorder
+
+	// SourceConcurrency caps how many subscriptions fetch at once during an
+	// aggregate refresh. 0 lets the registry pick its default. It exists so a
+	// profile with many subscriptions does not open one HTTP request per
+	// subscription simultaneously.
+	SourceConcurrency int
 }
 
 // Registry builds a source.Registry with every applicable provider registered
 // according to opts.
 func Registry(opts Options) *source.Registry {
 	r := source.NewRegistry()
+	r.MaxConcurrent = opts.SourceConcurrency
 	hc := loggedClient(opts.Recorder) // nil when no recorder is configured
 
 	// Reddit: authenticated with the user's session cookie when present, else anonymous.

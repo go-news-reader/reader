@@ -92,6 +92,12 @@ func defaultBuildApp(c config) *app.App {
 	// The initial registry already honours any persisted per-provider credentials
 	// (so a stored Reddit session cookie is live from launch); the accounts editor
 	// rebuilds it live from the same base options afterwards.
+	// The fetch-concurrency cap is a global setting, not a per-account credential,
+	// so set it on the base options: both the initial registry below and every
+	// account-rebuild registry (which start from c.opts) then honour it.
+	if c.set != nil {
+		c.opts.SourceConcurrency = c.set.SourceFetchConcurrency()
+	}
 	initOpts := c.opts
 	if c.set != nil {
 		initOpts = app.AccountsToOptions(c.opts, c.set.Accounts)

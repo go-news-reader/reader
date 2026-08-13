@@ -568,3 +568,22 @@ func TestPreviewTextScaleNormalizeAndRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip preview text scale = %v, want 1.75", out.PreviewTextScale)
 	}
 }
+
+func TestSourceFetchConcurrency(t *testing.T) {
+	cases := []struct {
+		name string
+		n    int
+		want int
+	}{
+		{"default (zero)", 0, DefaultSourceConcurrency},
+		{"floor (one kept)", 1, 1},
+		{"clamp high", MaxSourceConcurrency + 50, MaxSourceConcurrency},
+		{"in range", 6, 6},
+	}
+	for _, c := range cases {
+		s := Settings{SourceConcurrency: c.n}
+		if got := s.SourceFetchConcurrency(); got != c.want {
+			t.Errorf("%s: SourceFetchConcurrency(%d) = %d, want %d", c.name, c.n, got, c.want)
+		}
+	}
+}

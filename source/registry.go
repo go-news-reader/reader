@@ -13,6 +13,28 @@ import (
 type Registry struct {
 	mu        sync.RWMutex
 	providers map[Kind]Provider
+
+	// MaxConcurrent bounds how many source Feed calls run at once across an
+	// aggregate fan-out. Without it a profile with hundreds of subscriptions
+	// would open hundreds of simultaneous HTTP requests on every refresh —
+	// exhausting the connection pool and tripping remote rate limits. Zero means
+	// defaultConcurrency; the fan-out still enqueues every subscription, only the
+	// number fetching at any instant is capped.
+	MaxConcurrent int
+}
+
+// defaultConcurrency bounds simultaneous source fetches when a Registry sets no
+// MaxConcurrent — brisk enough to fill the feed quickly without flooding remote
+// APIs (or the local socket pool) when a profile carries many subscriptions.
+const defaultConcurrency = 8
+
+// concLimit is the effective fan-out width: MaxConcurrent when positive, else the
+// default. Always at least 1.
+func (r *Registry) concLimit() int {
+	if r.MaxConcurrent > 0 {
+		return r.MaxConcurrent
+	}
+	return defaultConcurrency
 }
 
 // NewRegistry returns an empty registry.
@@ -162,8 +184,11 @@ func (r *Registry) AggregateStream(ctx context.Context, subs []Subscription, onU
 		err    error
 	}
 	ch := make(chan outcome, total)
+	sem := make(chan struct{}, r.concLimit())
 	for i, sub := range subs {
 		go func(i int, sub Subscription) {
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			res, err := r.Feed(ctx, sub.Source, Query{
 				Channel: sub.Channel,
 				Sort:    sub.Sort,
@@ -232,8 +257,11 @@ func (r *Registry) AggregateMore(ctx context.Context, subs []Subscription, curso
 	}
 
 	ch := make(chan outcome, len(todo))
+	sem := make(chan struct{}, r.concLimit())
 	for _, p := range todo {
 		go func(p paged) {
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			res, err := r.Feed(ctx, p.sub.Source, Query{
 				Channel: p.sub.Channel,
 				Sort:    p.sub.Sort,

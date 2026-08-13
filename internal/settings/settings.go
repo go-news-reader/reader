@@ -59,8 +59,12 @@ type Settings struct {
 	// settings file predating the field) means the default; Normalize clamps a set
 	// value to [MinMediaCacheMB, MaxMediaCacheMB]. Read the effective byte budget
 	// through [Settings.MediaCacheBytes].
-	MediaCacheMB int       `json:"mediaCacheMB,omitempty"`
-	Accounts     []Account `json:"accounts,omitempty"` // per-provider credentials
+	MediaCacheMB int `json:"mediaCacheMB,omitempty"`
+	// SourceConcurrency caps how many subscriptions fetch at once during an
+	// aggregate refresh. 0 (unset / a file predating the field) means the default;
+	// read the effective value through [Settings.SourceFetchConcurrency].
+	SourceConcurrency int       `json:"sourceConcurrency,omitempty"`
+	Accounts          []Account `json:"accounts,omitempty"` // per-provider credentials
 	// BrowserSingleTab makes the web-preview browser reuse a single tab instead of
 	// keeping a switchable multi-tab strip. It is a tri-state pointer so an unset
 	// preference (a fresh install, or a settings file predating this field) can be
@@ -177,6 +181,34 @@ func ClampMediaCacheMB(mb int) int {
 // mebibytes to bytes.
 func (s Settings) MediaCacheBytes() int64 {
 	return int64(ClampMediaCacheMB(s.MediaCacheMB)) << 20
+}
+
+// Source-fetch concurrency default and ceiling: how many subscriptions may fetch
+// at once during an aggregate refresh. A non-positive value (a fresh install or a
+// settings file predating the field) uses the default; a user edit is capped at
+// MaxSourceConcurrency. The floor is naturally 1 (any positive value is kept).
+const (
+	DefaultSourceConcurrency = 8
+	MaxSourceConcurrency     = 32
+)
+
+// ClampSourceConcurrency confines n to the supported range, backfilling a
+// non-positive value to the default so callers always get a usable width.
+func ClampSourceConcurrency(n int) int {
+	switch {
+	case n <= 0:
+		return DefaultSourceConcurrency
+	case n > MaxSourceConcurrency:
+		return MaxSourceConcurrency
+	default:
+		return n
+	}
+}
+
+// SourceFetchConcurrency reports the effective simultaneous-fetch cap, applying
+// the default and clamping (see ClampSourceConcurrency).
+func (s Settings) SourceFetchConcurrency() int {
+	return ClampSourceConcurrency(s.SourceConcurrency)
 }
 
 // Default zoom-shortcut base keys (a real-browser feel: Ctrl/Cmd + "="/"-").
