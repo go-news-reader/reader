@@ -209,7 +209,13 @@ func stubStore(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "settings.json")
 	orig := settingsStore
-	settingsStore = func() (*settings.Store, error) { return settings.NewStore(p), nil }
+	// An in-memory vault, never the host's: a test binary reading back a Keychain
+	// item it did not write raises an authorisation dialog nobody is there to
+	// answer (#174).
+	vault := settings.NewMemorySecrets()
+	settingsStore = func() (*settings.Store, error) {
+		return &settings.Store{Path: p, Secrets: vault}, nil
+	}
 	t.Cleanup(func() { settingsStore = orig })
 	return p
 }
@@ -257,7 +263,9 @@ func TestRunWindowLoadError(t *testing.T) {
 	// Point the store at a directory so Load errors (present but unreadable).
 	dir := t.TempDir()
 	orig := settingsStore
-	settingsStore = func() (*settings.Store, error) { return settings.NewStore(dir), nil }
+	settingsStore = func() (*settings.Store, error) {
+		return &settings.Store{Path: dir, Secrets: settings.NewMemorySecrets()}, nil
+	}
 	t.Cleanup(func() { settingsStore = orig })
 	var out, errb bytes.Buffer
 	if code := run([]string{"-window"}, &out, &errb); code != 1 {

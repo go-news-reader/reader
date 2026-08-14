@@ -482,7 +482,7 @@ func TestBrowserDefaultSingleTab(t *testing.T) {
 // the current page's URL through the store, and OnNavigate syncs the star.
 func TestBookmarkPersistence(t *testing.T) {
 	dir := t.TempDir()
-	store := settings.NewStore(dir + "/settings.json")
+	store := testStore(t, dir+"/settings.json")
 	a := New(Config{Registry: newReg(), Store: store, Width: 900, Height: 600})
 	syncFetch(a)
 	a.SelectPreview(webItem("h1", "https://site/")) // Open → OnNavigate(SyncBookmarkStar)+fetch

@@ -15,7 +15,7 @@ import (
 func TestAdjustPreviewTextScalePersistsAndReports(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.json")
 	a := New(Config{
-		Registry: newReg(), Store: settings.NewStore(path), OS: ui.OSMac,
+		Registry: newReg(), Store: testStore(t, path), OS: ui.OSMac,
 	})
 	var refreshed int
 	a.SetRefreshHook(func() { refreshed++ })
@@ -33,7 +33,7 @@ func TestAdjustPreviewTextScalePersistsAndReports(t *testing.T) {
 		t.Fatalf("status = %q, want %q", got, "Reader text size 135%")
 	}
 	// The change was persisted to disk.
-	loaded, err := settings.NewStore(path).Load()
+	loaded, err := testStore(t, path).Load()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -36,7 +36,7 @@ func newImportApp(t *testing.T, prov source.Provider, subs ...source.Subscriptio
 	}
 	path := filepath.Join(t.TempDir(), "s.json")
 	a := New(Config{
-		Registry: newReg(prov), Settings: set, Store: settings.NewStore(path),
+		Registry: newReg(prov), Settings: set, Store: testStore(t, path),
 		Options: feeds.Options{}, OS: ui.OSMac,
 	})
 	a.SetRefreshHook(func() {})
@@ -68,7 +68,7 @@ func TestImportRedditSubscriptionsSuccess(t *testing.T) {
 	if !hasRust {
 		t.Fatalf("r/rust not in a.subs: %+v", a.subs)
 	}
-	loaded, err := settings.NewStore(path).Load()
+	loaded, err := testStore(t, path).Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func newImportAppPlain(t *testing.T) (*App, string) {
 	path := filepath.Join(t.TempDir(), "s.json")
 	a := New(Config{
 		Registry: newReg(fakeProv{kind: source.Reddit}), Settings: set,
-		Store: settings.NewStore(path), Options: feeds.Options{}, OS: ui.OSMac,
+		Store: testStore(t, path), Options: feeds.Options{}, OS: ui.OSMac,
 	})
 	a.SetRefreshHook(func() {})
 	return a, path

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/source"
 )
 
@@ -49,7 +48,7 @@ func TestImportFollowsSuccess(t *testing.T) {
 	if !hasSubIn(a.subs, source.Reddit, "r/rust") || !hasSubIn(a.subs, source.Reddit, "u/spez") {
 		t.Fatalf("new subs not in a.subs: %+v", a.subs)
 	}
-	loaded, err := settings.NewStore(path).Load()
+	loaded, err := testStore(t, path).Load()
 	if err != nil {
 		t.Fatal(err)
 	}

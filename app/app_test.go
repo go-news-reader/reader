@@ -436,7 +436,7 @@ func TestApplySceneSettingsPersistsAndRebuilds(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.json")
 	a := New(Config{
 		Registry: newReg(fakeProv{kind: source.Reddit, items: []source.Item{{ID: "x", Source: source.Reddit}}}),
-		Settings: set, Store: settings.NewStore(path), OS: ui.OSMac,
+		Settings: set, Store: testStore(t, path), OS: ui.OSMac,
 	})
 	var refreshed int
 	a.SetRefreshHook(func() { refreshed++; a.Refresh(context.Background()) })
@@ -451,7 +451,7 @@ func TestApplySceneSettingsPersistsAndRebuilds(t *testing.T) {
 		t.Fatalf("subs not rebuilt: %+v", a.subs)
 	}
 	// Settings were persisted with the new active index.
-	loaded, err := settings.NewStore(path).Load()
+	loaded, err := testStore(t, path).Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +492,7 @@ func TestApplyAccountsRebuildsRegistryAndPersists(t *testing.T) {
 	rec := httplog.NewRecorder(4)
 	a := New(Config{
 		Registry: newReg(fakeProv{kind: source.Reddit, items: []source.Item{{ID: "x", Source: source.Reddit}}}),
-		Settings: set, Store: settings.NewStore(path), Recorder: rec, Options: feeds.Options{}, OS: ui.OSMac,
+		Settings: set, Store: testStore(t, path), Recorder: rec, Options: feeds.Options{}, OS: ui.OSMac,
 	})
 	// The rebuilt registry is captured through the builder seam (so no real
 	// providers are constructed) and yields a distinct item, proving the swap.
@@ -515,7 +515,7 @@ func TestApplyAccountsRebuildsRegistryAndPersists(t *testing.T) {
 	if gotOpts.Recorder != rec {
 		t.Fatal("shared recorder not re-wired into the rebuilt registry")
 	}
-	loaded, err := settings.NewStore(path).Load()
+	loaded, err := testStore(t, path).Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +535,7 @@ func TestImportRedditSessionFromFirefoxSuccess(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.json")
 	a := New(Config{
 		Registry: newReg(fakeProv{kind: source.Reddit, items: []source.Item{{ID: "x", Source: source.Reddit}}}),
-		Settings: set, Store: settings.NewStore(path), Options: feeds.Options{}, OS: ui.OSMac,
+		Settings: set, Store: testStore(t, path), Options: feeds.Options{}, OS: ui.OSMac,
 	})
 	var gotOpts feeds.Options
 	a.SetRegistryBuilder(func(o feeds.Options) *source.Registry {
@@ -554,7 +554,7 @@ func TestImportRedditSessionFromFirefoxSuccess(t *testing.T) {
 		t.Fatalf("session cookie not applied to rebuilt options: %+v", gotOpts)
 	}
 	// ...persisted to disk...
-	loaded, err := settings.NewStore(path).Load()
+	loaded, err := testStore(t, path).Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -620,7 +620,7 @@ func TestImportSessionFromFirefoxSuccess(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "s.json")
 			a := New(Config{
 				Registry: newReg(fakeProv{kind: tc.kind}), Settings: set,
-				Store: settings.NewStore(path), OS: ui.OSMac,
+				Store: testStore(t, path), OS: ui.OSMac,
 			})
 			var gotOpts feeds.Options
 			a.SetRegistryBuilder(func(o feeds.Options) *source.Registry { gotOpts = o; return newReg() })
@@ -636,7 +636,7 @@ func TestImportSessionFromFirefoxSuccess(t *testing.T) {
 			if got := tc.wantOpts(gotOpts); got != "SESSION-STR" {
 				t.Fatalf("%s session not applied to rebuilt options: %q", tc.kind, got)
 			}
-			loaded, err := settings.NewStore(path).Load()
+			loaded, err := testStore(t, path).Load()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -937,7 +937,7 @@ func TestImportTikTokSessionSplitsFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.json")
 	a := New(Config{
 		Registry: newReg(fakeProv{kind: source.TikTok}), Settings: set,
-		Store: settings.NewStore(path), OS: ui.OSMac,
+		Store: testStore(t, path), OS: ui.OSMac,
 	})
 	var gotOpts feeds.Options
 	a.SetRegistryBuilder(func(o feeds.Options) *source.Registry { gotOpts = o; return newReg() })
@@ -952,7 +952,7 @@ func TestImportTikTokSessionSplitsFields(t *testing.T) {
 	if gotOpts.TikTokSession != "SID123" || gotOpts.TikTokMSToken != "MST456" {
 		t.Fatalf("options = session %q / msToken %q, want SID123 / MST456", gotOpts.TikTokSession, gotOpts.TikTokMSToken)
 	}
-	loaded, err := settings.NewStore(path).Load()
+	loaded, err := testStore(t, path).Load()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -491,7 +491,7 @@ func TestCredentialSchema(t *testing.T) {
 
 func TestAccountsRoundTrip(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "s.json")
-	st := NewStore(p)
+	st := NewStore(p) // the production store -- TestMain has made the host vault a fake
 	in := Default()
 	in.SetAccount(Account{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "reddit_session=sec"}})
 	if err := st.Save(in); err != nil {
