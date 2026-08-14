@@ -260,12 +260,8 @@ func runWindow(cfg config, stdout, stderr io.Writer) int {
 // feed concurrently so the window appears immediately and fills in once loaded.
 // Off macOS (or if the window can't open) it falls back to a printed notice.
 //
-// The actual window backend is chosen at build time by presentWindow: the
-// default build uses the reader's own internal/window (present_reader.go); the
-// `gwwindow` build tag swaps in the shared go-widgets/window backend through the
-// internal/windowgw adapter (present_gw.go). This is the phase-1 control for
-// de-duplicating the reader's native windowing against go-widgets/window without
-// removing the existing code.
+// presentWindow (present_reader.go) opens the window through internal/window, the
+// reader's adapter over the shared go-widgets/window backend's toolkit.Surface.
 func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 	// Marshal background scene writes onto the render thread: the present loop and
 	// input handlers run on the main thread, while refreshFeed aggregates on a

@@ -1,9 +1,6 @@
-// Default windowing: the reader's own internal/window backend (Cocoa / win32 /
-// X11). This is the shipped path; the `gwwindow` build tag replaces it with the
-// shared go-widgets/window backend (present_gw.go) for the phase-1 adoption
-// control.
-
-//go:build !gwwindow
+// Windowing: the reader's own internal/window backend, an adapter over
+// go-widgets/window's toolkit.Surface (Cocoa / win32 / X11). This is the sole
+// shipped path.
 
 package main
 
@@ -13,7 +10,7 @@ import (
 	"github.com/go-news-reader/reader/internal/windowapp"
 )
 
-// windowTitle is the native window's title, shared by both backends.
+// windowTitle is the native window's title.
 const windowTitle = "News Reader"
 
 // presentWindow opens the reader's own native window and blocks until it closes.
