@@ -26,7 +26,7 @@ require (
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.9.0
 	github.com/go-widgets/toolkit v0.154.0
-	github.com/go-widgets/window v0.30.0
+	github.com/go-widgets/window v0.32.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.83.0
@@ -49,6 +49,7 @@ require (
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
 	github.com/go-macos/objc v0.1.1 // indirect
+	github.com/go-mswin/win32 v0.1.0 // indirect
 	github.com/go-opentype/bidi v0.2.1 // indirect
 	github.com/go-opentype/opentype v0.5.0 // indirect
 	github.com/go-opentype/shape v0.4.0 // indirect
