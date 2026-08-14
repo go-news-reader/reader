@@ -37,7 +37,8 @@ var ErrNoImage = errors.New("usenet: no decodable image in post")
 // be safe for concurrent use. Thumbnails are bounded to maxDim. workers is
 // clamped to [1, len(reqs)]; empty reqs (or a nil callback) is a no-op. It blocks
 // until every fed request has been delivered. A cancelled ctx stops feeding new
-// requests; those already dispatched still complete.
+// requests; those already dispatched still complete. A ctx cancelled before the
+// call dispatches nothing at all, so onResult is never invoked.
 func (p *Provider) PrefetchImages(ctx context.Context, reqs []ImageRequest, workers, maxDim int, onResult func(ImageResult)) {
 	if len(reqs) == 0 || onResult == nil {
 		return
@@ -73,6 +74,18 @@ func (p *Provider) PrefetchImages(ctx context.Context, reqs []ImageRequest, work
 	}
 feed:
 	for _, r := range reqs {
+		// A context that is ALREADY done wins outright, before the offer is made.
+		//
+		// The select below cannot give it priority: when a worker is ready to
+		// receive and the context is done, both cases are ready and Go picks
+		// uniformly at random. So a prefetch cancelled before the feeder got to its
+		// first offer dispatched work anyway -- about one round in two hundred with
+		// two workers, and in every hundred rounds with eight, which is what made
+		// TestPrefetchImagesCtxCancel fail on a loaded CI runner rather than on an
+		// idle laptop.
+		if ctx.Err() != nil {
+			break feed
+		}
 		select {
 		case tasks <- r:
 		case <-ctx.Done():
