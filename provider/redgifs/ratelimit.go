@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cenkalti/backoff/v5"
 )
 
 // RedGIFs answers bursts of requests — exactly what aggregating many
@@ -27,8 +29,9 @@ const defaultRequestsPerMinute = 60
 // wedged endpoint cannot loop forever.
 const maxRetries = 4
 
-// baseBackoff and maxBackoff bound the exponential fallback wait used when a 429
-// response carries no Retry-After header: 500ms, 1s, 2s, … capped at maxBackoff.
+// baseBackoff and maxBackoff configure the [backoff.ExponentialBackOff] fallback
+// used when a 429 response carries no usable Retry-After header: 500ms, 1s, 2s, …
+// capped at maxBackoff.
 const (
 	baseBackoff = 500 * time.Millisecond
 	maxBackoff  = 4 * time.Second
@@ -112,34 +115,57 @@ func (l *limiter) pauseFor(d time.Duration) {
 }
 
 // retryAfter returns the wait a 429 response asks for via its Retry-After header
-// — either delta-seconds ("5") or an HTTP-date — or ok=false when the header is
-// absent or unparseable (the caller then falls back to backoff).
-func (l *limiter) retryAfter(h http.Header) (time.Duration, bool) {
+// — either delta-seconds ("5") or an HTTP-date — as a [backoff.RetryAfterError],
+// the reference library's signal that a server-supplied delay overrides the
+// exponential schedule. It returns nil when the header is absent or unparseable,
+// so the caller falls back to [backoff.ExponentialBackOff].
+func (l *limiter) retryAfter(h http.Header) *backoff.RetryAfterError {
 	v := strings.TrimSpace(h.Get("Retry-After"))
 	if v == "" {
-		return 0, false
+		return nil
 	}
 	if secs, err := strconv.Atoi(v); err == nil {
 		if secs < 0 {
 			secs = 0
 		}
-		return time.Duration(secs) * time.Second, true
+		return &backoff.RetryAfterError{Duration: time.Duration(secs) * time.Second}
 	}
 	if t, err := http.ParseTime(v); err == nil {
-		if d := t.Sub(l.now()); d > 0 {
-			return d, true
+		d := t.Sub(l.now())
+		if d < 0 {
+			d = 0
 		}
-		return 0, true
+		return &backoff.RetryAfterError{Duration: d}
 	}
-	return 0, false
+	return nil
 }
 
-// backoff is the exponential fallback wait for the attempt-th 429 without a
-// Retry-After header: baseBackoff·2ⁿ, clamped at maxBackoff.
-func backoff(attempt int) time.Duration {
-	d := baseBackoff << attempt
-	if d > maxBackoff || d <= 0 {
-		return maxBackoff
+// newExpBackoff builds the exponential fallback schedule for a single request's
+// 429 retries: baseBackoff·2ⁿ (500ms, 1s, 2s, …) capped at maxBackoff, with no
+// jitter so pacing stays deterministic. A fresh instance is used per request
+// because [backoff.ExponentialBackOff] is stateful and not safe for concurrent
+// use.
+func newExpBackoff() *backoff.ExponentialBackOff {
+	b := &backoff.ExponentialBackOff{
+		InitialInterval:     baseBackoff,
+		RandomizationFactor: 0,
+		Multiplier:          2,
+		MaxInterval:         maxBackoff,
 	}
-	return d
+	b.Reset()
+	return b
+}
+
+// nextDelay decides how long to wait before re-sending a 429'd request. It
+// mirrors what [backoff.Retry] does internally: it advances the exponential
+// schedule, but when the response carries a usable Retry-After the
+// server-supplied [backoff.RetryAfterError] duration wins and the exponential
+// schedule is reset.
+func (l *limiter) nextDelay(exp backoff.BackOff, h http.Header) time.Duration {
+	next := exp.NextBackOff()
+	if ra := l.retryAfter(h); ra != nil {
+		next = ra.Duration
+		exp.Reset()
+	}
+	return next
 }

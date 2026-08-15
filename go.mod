@@ -3,6 +3,7 @@ module github.com/go-news-reader/reader
 go 1.26.4
 
 require (
+	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/go-atproto/atproto v0.1.0
 	github.com/go-birdsite/twitter v0.3.0
 	github.com/go-browserhttp/browserhttp v0.2.0

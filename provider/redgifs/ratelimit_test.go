@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/cenkalti/backoff/v5"
 )
 
 // fakeClock is a controllable clock + sleep for the limiter: sleeping advances
@@ -85,50 +87,74 @@ func TestLimiterPauseFor(t *testing.T) {
 
 func TestRetryAfterSeconds(t *testing.T) {
 	l, _ := newFakeLimiter(600)
-	if d, ok := l.retryAfter(http.Header{"Retry-After": {"7"}}); !ok || d != 7*time.Second {
-		t.Fatalf("retryAfter seconds = %v,%v, want 7s,true", d, ok)
+	if ra := l.retryAfter(http.Header{"Retry-After": {"7"}}); ra == nil || ra.Duration != 7*time.Second {
+		t.Fatalf("retryAfter seconds = %v, want 7s", ra)
 	}
-	if d, ok := l.retryAfter(http.Header{"Retry-After": {"-3"}}); !ok || d != 0 {
-		t.Fatalf("negative retryAfter = %v,%v, want 0,true", d, ok)
+	if ra := l.retryAfter(http.Header{"Retry-After": {"-3"}}); ra == nil || ra.Duration != 0 {
+		t.Fatalf("negative retryAfter = %v, want 0", ra)
 	}
 }
 
 func TestRetryAfterHTTPDate(t *testing.T) {
 	l, fc := newFakeLimiter(600)
 	future := fc.t.Add(90 * time.Second).UTC().Format(http.TimeFormat)
-	if d, ok := l.retryAfter(http.Header{"Retry-After": {future}}); !ok || d != 90*time.Second {
-		t.Fatalf("retryAfter date = %v,%v, want 90s,true", d, ok)
+	if ra := l.retryAfter(http.Header{"Retry-After": {future}}); ra == nil || ra.Duration != 90*time.Second {
+		t.Fatalf("retryAfter date = %v, want 90s", ra)
 	}
 	past := fc.t.Add(-time.Minute).UTC().Format(http.TimeFormat)
-	if d, ok := l.retryAfter(http.Header{"Retry-After": {past}}); !ok || d != 0 {
-		t.Fatalf("past retryAfter = %v,%v, want 0,true", d, ok)
+	if ra := l.retryAfter(http.Header{"Retry-After": {past}}); ra == nil || ra.Duration != 0 {
+		t.Fatalf("past retryAfter = %v, want 0", ra)
 	}
 }
 
 func TestRetryAfterAbsentOrJunk(t *testing.T) {
 	l, _ := newFakeLimiter(600)
-	if _, ok := l.retryAfter(http.Header{}); ok {
-		t.Fatal("absent Retry-After should be ok=false")
+	if ra := l.retryAfter(http.Header{}); ra != nil {
+		t.Fatalf("absent Retry-After should be nil, got %v", ra)
 	}
-	if _, ok := l.retryAfter(http.Header{"Retry-After": {"soon"}}); ok {
-		t.Fatal("junk Retry-After should be ok=false")
+	if ra := l.retryAfter(http.Header{"Retry-After": {"soon"}}); ra != nil {
+		t.Fatalf("junk Retry-After should be nil, got %v", ra)
 	}
 }
 
-func TestBackoff(t *testing.T) {
-	if d := backoff(0); d != baseBackoff {
-		t.Fatalf("backoff(0) = %v, want %v", d, baseBackoff)
+func TestNewExpBackoffSchedule(t *testing.T) {
+	// No jitter: the schedule is deterministic and caps at maxBackoff, matching
+	// the historical 500ms, 1s, 2s, 4s, 4s, … fallback.
+	b := newExpBackoff()
+	want := []time.Duration{baseBackoff, 2 * baseBackoff, 4 * baseBackoff, maxBackoff, maxBackoff}
+	for i, w := range want {
+		if got := b.NextBackOff(); got != w {
+			t.Fatalf("NextBackOff #%d = %v, want %v", i+1, got, w)
+		}
 	}
-	if d := backoff(1); d != 2*baseBackoff {
-		t.Fatalf("backoff(1) = %v, want %v", d, 2*baseBackoff)
+}
+
+func TestNextDelay(t *testing.T) {
+	l, _ := newFakeLimiter(600)
+
+	// No usable Retry-After: fall back to the exponential schedule, which keeps
+	// advancing across calls.
+	b := newExpBackoff()
+	if d := l.nextDelay(b, http.Header{}); d != baseBackoff {
+		t.Fatalf("nextDelay(no header) = %v, want %v", d, baseBackoff)
 	}
-	// A large attempt clamps at maxBackoff (both the > cap and the overflow<=0
-	// paths land here).
-	if d := backoff(10); d != maxBackoff {
-		t.Fatalf("backoff(10) = %v, want %v", d, maxBackoff)
+	if d := l.nextDelay(b, http.Header{"Retry-After": {"junk"}}); d != 2*baseBackoff {
+		t.Fatalf("nextDelay(junk header) = %v, want %v", d, 2*baseBackoff)
 	}
-	if d := backoff(1000); d != maxBackoff {
-		t.Fatalf("backoff(1000) = %v, want %v (overflow)", d, maxBackoff)
+
+	// A usable Retry-After overrides the schedule and resets it, so the next
+	// fallback starts again from baseBackoff.
+	if d := l.nextDelay(b, http.Header{"Retry-After": {"9"}}); d != 9*time.Second {
+		t.Fatalf("nextDelay(Retry-After 9) = %v, want 9s", d)
+	}
+	if d := l.nextDelay(b, http.Header{}); d != baseBackoff {
+		t.Fatalf("nextDelay after reset = %v, want %v", d, baseBackoff)
+	}
+
+	// The override is surfaced as the reference library's own error type.
+	var ra *backoff.RetryAfterError = l.retryAfter(http.Header{"Retry-After": {"1"}})
+	if ra == nil || ra.Duration != time.Second {
+		t.Fatalf("retryAfter type/value = %v, want 1s *backoff.RetryAfterError", ra)
 	}
 }
 

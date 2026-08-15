@@ -279,6 +279,9 @@ func (c *Client) get(ctx context.Context, path, rawQuery, bearer string, out any
 	if rawQuery != "" {
 		u += "?" + rawQuery
 	}
+	// A fresh exponential schedule per request drives the 429 fallback when the
+	// server sends no usable Retry-After.
+	exp := newExpBackoff()
 	for attempt := 0; ; attempt++ {
 		if err := c.limiter.wait(ctx); err != nil {
 			return err
@@ -300,12 +303,9 @@ func (c *Client) get(ctx context.Context, path, rawQuery, bearer string, out any
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
-			d, ok := c.limiter.retryAfter(resp.Header)
+			d := c.limiter.nextDelay(exp, resp.Header)
 			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
-			if !ok {
-				d = backoff(attempt)
-			}
 			c.limiter.pauseFor(d)
 			if err := c.limiter.sleep(ctx, d); err != nil {
 				return err
