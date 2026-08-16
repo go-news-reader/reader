@@ -206,11 +206,16 @@ func (s *Scene) Draw(buf []byte) {
 			// placeholder rather than a bare "No items." that looks broken.
 			s.drawLoadingPlaceholder(p, img, feedX, cardW, muteS)
 		} else {
+			// Centred in the FEED pane, not in everything right of the sidebar.
+			// The preview pane takes the right-hand share of that space, so
+			// centring across the window put the label under the divider and the
+			// chrome drawn afterwards cut it mid-word ("No it"). feedX/feedW is
+			// the same geometry the cards and the scrollbar use.
 			msg := "No items."
-			cx := m.sidebarW + (s.W-m.sidebarW-m.title.width(msg))/2
+			mw := m.title.width(msg)
 			lbl := toolkit.NewLabel(msg)
 			lbl.Font, lbl.Ink = m.title.font, muteS
-			lbl.SetBounds(toolkit.Rect{X: cx, Y: s.H / 2, W: m.title.width(msg), H: m.title.height})
+			lbl.SetBounds(toolkit.Rect{X: feedX + (feedW-mw)/2, Y: s.H / 2, W: mw, H: m.title.height})
 			lbl.Draw(p, th)
 		}
 	}

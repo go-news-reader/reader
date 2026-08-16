@@ -115,6 +115,12 @@ func (s *Scene) DraggingPreview() bool { return s.draggingPreview }
 // feedGeom returns the feed list's left origin and width, accounting for the
 // sidebar on the left and the preview pane on the right. Every feed layout /
 // draw / hit-test path goes through it so the three stay consistent.
+// FeedGeom is the feed pane's horizontal extent in scene pixels: where the
+// cards, the scrollbar and the empty-state label all live. Exported so a caller
+// -- a test, a host laying something over the pane -- can ask for the geometry
+// the renderer actually uses instead of recomputing it and being subtly wrong.
+func (s *Scene) FeedGeom() (x, w int) { return s.feedGeom() }
+
 func (s *Scene) feedGeom() (x, w int) {
 	m := s.m
 	x = m.sidebarW + m.pad
