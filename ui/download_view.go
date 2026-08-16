@@ -99,9 +99,16 @@ func (s *Scene) layoutDownloadPanel() {
 	s.dlClearR = toolkit.Rect{X: r.X + r.W - m.pad - cw, Y: r.Y + (rpxOf(s, dlHeaderH)-m.badgeH)/2, W: cw, H: m.badgeH}
 }
 
-// drawDownloadPanel paints the panel: surface, top divider, header (title +
-// Clear) and the download rows (a toolkit VBox of HBox rows).
+// drawDownloadPanel paints the panel entirely from composed go-widgets — nothing
+// is hand-drawn. The panel surface + its 1px top divider are toolkit.Backdrop
+// fills; the header title is a toolkit.Label in the reader's TrueType face; the
+// "Clear" affordance is a stock toolkit.Button pill (its centred label lands at
+// the same x the old +pad inset produced, since dlClearR is the text width plus
+// 2·pad); and the download rows are a toolkit VBox of HBox rows. The img param is
+// kept for signature parity with the other docked-draw methods but is unused now
+// that no glyph is blitted directly.
 func (s *Scene) drawDownloadPanel(p *painter.PixelPainter, img *image.RGBA) {
+	_ = img
 	r := s.downloadPanelRect()
 	if r.W == 0 {
 		return
@@ -109,16 +116,30 @@ func (s *Scene) drawDownloadPanel(p *painter.PixelPainter, img *image.RGBA) {
 	m := s.m
 	th := s.theme
 	s.layoutDownloadPanel()
-	p.FillRect(painter.Rect(r), th.SurfaceAlt)
-	p.FillRect(painter.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, th.Border) // top divider
+
+	// Panel surface + top divider: solid toolkit.Backdrop fills, not bare painter
+	// rects, so the panel ground is widget-composed.
+	surf := &toolkit.Backdrop{Fill: th.SurfaceAlt}
+	surf.SetBounds(r)
+	surf.Draw(p, th)
+	div := &toolkit.Backdrop{Fill: th.Border}
+	div.SetBounds(toolkit.Rect{X: r.X, Y: r.Y, W: r.W, H: 1})
+	div.Draw(p, th)
 
 	headerH := rpxOf(s, dlHeaderH)
-	title := fmt.Sprintf("Downloads (%d)", len(s.downloads))
-	m.side.draw(img, r.X+m.pad, r.Y+(headerH-m.side.height)/2, title, th.OnSurface)
-	// Clear button.
-	p.FillRoundRect(painter.Rect(s.dlClearR), rpxOf(s, 4), th.Surface)
-	p.StrokeRoundRect(painter.Rect(s.dlClearR), rpxOf(s, 4), th.Border, 1)
-	m.side.draw(img, s.dlClearR.X+m.pad, s.dlClearR.Y+(s.dlClearR.H-m.side.height)/2, "Clear", th.OnSurface)
+	// Header title: a top-anchored toolkit.Label (same origin/ink/face as the old
+	// glyph-blit) instead of a hand-drawn text run.
+	title := toolkit.NewLabel(fmt.Sprintf("Downloads (%d)", len(s.downloads)))
+	title.Font, title.Ink, title.VAlign = m.side.font, th.OnSurface, toolkit.VTop
+	title.SetBounds(toolkit.Rect{X: r.X + m.pad, Y: r.Y + (headerH-m.side.height)/2, W: s.dlClearR.X - (r.X + m.pad), H: m.side.height})
+	title.Draw(p, th)
+
+	// Clear: a stock toolkit.Button at dlClearR (hit-tested unchanged via
+	// HitClearDownloads), replacing the FillRoundRect + StrokeRoundRect + glyph-blit.
+	clear := &toolkit.Button{Label: "Clear"}
+	clear.Font = m.side.font
+	clear.SetBounds(s.dlClearR)
+	clear.Draw(p, th)
 
 	// Rows: one HBox per download inside a VBox, laid out by the toolkit.
 	rowsN := len(s.downloads)
