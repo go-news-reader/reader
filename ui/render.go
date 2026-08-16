@@ -386,16 +386,16 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	titleLbl.Draw(p, th)
 	// Search box: render the topbar's toolkit.SearchEntry widget itself (its own
 	// AA font via ttFont), so what the user sees is the bound widget's text. The
-	// scene overlays a rounded focus ring + caret because SearchEntry is
-	// focus-agnostic. (topbar is full-width at y=0, so local == absolute coords.)
+	// widget draws its own aligned caret and — via FocusRingRadius/Width — its own
+	// rounded accent focus ring. (topbar is full-width at y=0, so local == absolute
+	// coords.)
 	se := s.searchEntry
 	se.SetBounds(toolkit.Rect(s.searchR))
 	se.Font = ttFont(false, rpxOf(s, 13))
-	se.SetFocused(s.searchFocused) // the widget draws its own aligned caret
+	se.FocusRingRadius = rpxOf(s, 6)
+	se.FocusRingWidth = rpxOf(s, 2)
+	se.SetFocused(s.searchFocused)
 	se.Draw(p, th)
-	if s.searchFocused {
-		p.StrokeRoundRect(painter.Rect(s.searchR), rpxOf(s, 6), th.Accent, rpxOf(s, 2))
-	}
 	// After a copy, paint a translucent select-all highlight OVER the query text
 	// (visual feedback of what went to the clipboard). SearchEntry.Draw fills its
 	// own background, so the highlight must go on top — a translucent accent lets

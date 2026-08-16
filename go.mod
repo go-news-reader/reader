@@ -26,7 +26,7 @@ require (
 	github.com/go-webengine/engine v0.3.11
 	github.com/go-widgets/mvvm v0.5.0
 	github.com/go-widgets/painter v0.11.0
-	github.com/go-widgets/toolkit v0.169.0
+	github.com/go-widgets/toolkit v0.170.0
 	github.com/go-widgets/window v0.39.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
