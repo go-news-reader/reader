@@ -90,11 +90,11 @@ func (s *Scene) previewWidth() int {
 	w := rpxOf(s, previewPaneW)
 	if s.previewUserW > 0 {
 		w = s.previewUserW // user-dragged width pins the pane, clamped below
-	} else if grow := avail * 2 / 5; grow > w {
-		// With no explicit drag, the default pane tracks the window: it claims up
-		// to ~2/5 of the space a pane may use, so the preview (image included)
-		// grows when the window grows instead of only shrinking. It never drops
-		// below the preferred width.
+	} else if grow := (s.W - s.m.sidebarW) * 2 / 3; grow > w {
+		// With no explicit drag, the reading pane is the star: it defaults to ~2/3
+		// of the feed+preview area (a narrow card list, ~1/3, on the left), and
+		// tracks the window so it grows with it. A drag pins a custom width; the
+		// clamps below still keep a usable feed (feedKeepW) and pane (previewMinW).
 		w = grow
 	}
 	if w > avail {
