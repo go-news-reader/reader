@@ -257,3 +257,21 @@ func TestFeedLoadingDefaultSeams(t *testing.T) {
 		t.Fatal("default pullRefresh never aggregated")
 	}
 }
+
+// TestLoadMoreScopesToActiveTab checks that with a source tab selected, LoadMore
+// pages only that source (the per-tab lazy model) rather than every subscription.
+func TestLoadMoreScopesToActiveTab(t *testing.T) {
+	prov := &pageProv{kind: source.Reddit, byCur: map[string]source.Result{
+		"":   {Items: []source.Item{{ID: "a", Source: source.Reddit, Created: 2}}, Cursor: "c1"},
+		"c1": {Items: []source.Item{{ID: "b", Source: source.Reddit, Created: 1}}, Cursor: "c2"},
+	}}
+	a := newPagingApp(t, prov, true)
+	a.RefreshStreaming(context.Background())
+	a.scene.SetActive(0) // select the source tab -> LoadMore scopes to it
+	if errs := a.LoadMore(context.Background()); len(errs) != 0 {
+		t.Fatalf("LoadMore errs = %v", errs)
+	}
+	if !eqIDs(a.Items(), "a", "b") {
+		t.Fatalf("scoped load-more items = %v, want [a b]", ids(a.Items()))
+	}
+}
