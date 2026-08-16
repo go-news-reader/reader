@@ -737,21 +737,26 @@ func (s *Scene) previewHeaderH() int {
 // draws the decoded thumbnail, a spinner while it loads, or a kind placeholder.
 type previewImage struct {
 	toolkit.Base
-	s   *Scene
-	it  source.Item
-	p   *painter.PixelPainter
-	img *image.RGBA
+	s  *Scene
+	it source.Item
+	p  *painter.PixelPainter
 }
 
-func (w *previewImage) Draw(_ painter.Painter, th *toolkit.Theme) {
+// Draw composes the image cell — a SurfaceAlt toolkit.Backdrop ground, then
+// either the decoded thumbnail (through the toolkit Image widget), a loading
+// Label above an animated Spinner, or a centred kind Label — with nothing
+// hand-drawn.
+func (w *previewImage) Draw(pt painter.Painter, th *toolkit.Theme) {
 	s, b := w.s, w.Bounds()
 	s.previewImgR = b
-	w.p.FillRect(painter.Rect(b), th.SurfaceAlt)
+	ground := &toolkit.Backdrop{Fill: th.SurfaceAlt}
+	ground.SetBounds(b)
+	ground.Draw(pt, th)
 	switch {
 	case s.thumb(w.it.ID) != nil:
 		s.drawPreviewImage(w.p, th, s.thumb(w.it.ID), b)
 	case s.previewImgPending:
-		// Clear, centred loading placeholder: a label above a sizable spinner, so a
+		// Clear, centred loading placeholder: a Label above a sizable Spinner, so a
 		// slow reconstruct reads as "loading", not a frozen blank pane.
 		msg := "Loading preview…"
 		lw := s.m.meta.width(msg)
@@ -759,18 +764,25 @@ func (w *previewImage) Draw(_ painter.Painter, th *toolkit.Theme) {
 		gap := rpxOf(s, 12)
 		blockH := s.m.meta.height + gap + d
 		top := b.Y + (b.H-blockH)/2
-		s.m.meta.draw(w.img, b.X+(b.W-lw)/2, top, msg, mute(th.OnSurface, th.SurfaceAlt))
-		s.spinnerAt(toolkit.Rect{X: b.X + (b.W-d)/2, Y: top + s.m.meta.height + gap, W: d, H: d}, toolkit.SpinnerDots).Draw(w.p, th)
+		lbl := toolkit.NewLabel(msg)
+		lbl.Font, lbl.Ink, lbl.VAlign = s.m.meta.font, mute(th.OnSurface, th.SurfaceAlt), toolkit.VTop
+		lbl.SetBounds(toolkit.Rect{X: b.X + (b.W-lw)/2, Y: top, W: lw, H: s.m.meta.height})
+		lbl.Draw(pt, th)
+		s.spinnerAt(toolkit.Rect{X: b.X + (b.W-d)/2, Y: top + s.m.meta.height + gap, W: d, H: d}, toolkit.SpinnerDots).Draw(pt, th)
 	default:
-		lbl := "image"
+		kind := "image"
 		if len(w.it.Media) > 0 {
-			lbl = string(w.it.Media[0].Kind)
+			kind = string(w.it.Media[0].Kind)
 		}
-		s.m.meta.draw(w.img, b.X+(b.W-s.m.meta.width(lbl))/2, b.Y+(b.H-s.m.meta.height)/2, lbl, mute(th.OnSurface, th.Surface))
+		lw := s.m.meta.width(kind)
+		lbl := toolkit.NewLabel(kind)
+		lbl.Font, lbl.Ink, lbl.VAlign = s.m.meta.font, mute(th.OnSurface, th.Surface), toolkit.VTop
+		lbl.SetBounds(toolkit.Rect{X: b.X + (b.W-lw)/2, Y: b.Y + (b.H-s.m.meta.height)/2, W: lw, H: s.m.meta.height})
+		lbl.Draw(pt, th)
 	}
 }
 
-func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
+func (s *Scene) drawPreview(p *painter.PixelPainter) {
 	if s.previewR.W == 0 {
 		return
 	}
@@ -778,20 +790,30 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	th := s.theme
 	muteS := mute(th.OnSurface, th.Surface)
 	r := s.previewR
-	p.FillRect(painter.Rect(r), th.Surface)
-	p.FillRect(painter.Rect{X: r.X, Y: r.Y, W: 1, H: r.H}, th.Border) // left divider
-	s.drawGripHandle(p, r.X)                                          // resize grab handle
+	// Pane ground and left divider as composed toolkit.Backdrops, not hand-drawn
+	// FillRects.
+	surface := &toolkit.Backdrop{Fill: th.Surface}
+	surface.SetBounds(r)
+	surface.Draw(p, th)
+	divider := &toolkit.Backdrop{Fill: th.Border}
+	divider.SetBounds(toolkit.Rect{X: r.X, Y: r.Y, W: 1, H: r.H})
+	divider.Draw(p, th)
+	s.drawGripHandle(p, r.X) // resize grab handle
 
 	if !s.previewHas {
 		msg := "Select an item to preview"
-		m.side.draw(img, r.X+(r.W-m.side.width(msg))/2, r.Y+r.H/2-m.side.height/2, msg, muteS)
+		lw := m.side.width(msg)
+		lbl := toolkit.NewLabel(msg)
+		lbl.Font, lbl.Ink, lbl.VAlign = m.side.font, muteS, toolkit.VTop
+		lbl.SetBounds(toolkit.Rect{X: r.X + (r.W-lw)/2, Y: r.Y + r.H/2 - m.side.height/2, W: lw, H: m.side.height})
+		lbl.Draw(p, th)
 		return
 	}
 
 	// A web-linked item: a fixed header over the embedded browser (its own chrome,
 	// page and progress bar), not the scrolling image/text column.
 	if s.webPreviewItem() {
-		s.drawWebPreview(p, img)
+		s.drawWebPreview(p)
 		return
 	}
 
@@ -834,7 +856,7 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	col.AddFixed(mkLabel(truncate(d.metaFace, d.meta, d.innerW), metaFont, muteS), d.metaFace.height)
 	col.AddFixed(toolkit.NewLabel(""), gap)
 	if d.imgH > 0 {
-		col.AddFixed(&previewImage{s: s, it: it, p: p, img: img}, d.imgH)
+		col.AddFixed(&previewImage{s: s, it: it, p: p}, d.imgH)
 		col.AddFixed(toolkit.NewLabel(""), gap)
 	}
 	for _, ln := range d.bodyLines {
@@ -842,7 +864,7 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 	}
 	// Comment thread (Reddit text posts), appended to the SAME scrolling column so
 	// it participates in the pane scroll and the cross-surface text selection.
-	s.appendComments(col, &d, p, mkLabel)
+	s.appendComments(col, &d, mkLabel)
 	col.SetBounds(toolkit.Rect{X: x, Y: r.Y + m.pad - s.previewScroll.offset, W: d.innerW, H: d.height})
 	// Clip the scrolling content to the pane so overflow (notably a tall
 	// rendered web page, but also scrolled-up header/body) never paints over the
@@ -861,10 +883,11 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 
 	// "Open" pill (fixed, over the content).
 	if s.previewOpenR.W > 0 {
-		p.FillRoundRect(painter.Rect(s.previewOpenR), rpxOf(s, 6), th.Accent)
-		m.side.draw(img, s.previewOpenR.X+m.pad, s.previewOpenR.Y+(s.previewOpenR.H-m.side.height)/2, "Open", themeOnAccent(th))
+		pill := &previewOpenPill{s: s}
+		pill.SetBounds(s.previewOpenR)
+		pill.Draw(p, th)
 	}
-	s.drawTextZoomButtons(p, img)
+	s.drawTextZoomButtons(p)
 }
 
 // appendComments appends the previewed post's comment thread to the scrolling
@@ -875,7 +898,7 @@ func (s *Scene) drawPreview(p *painter.PixelPainter, img *image.RGBA) {
 // cross-surface text selection (CollectRuns walks the nested boxes). It is a
 // no-op when the item has no comment section. The appended heights sum to
 // d.sectionH, which layoutComments already folded into the content height.
-func (s *Scene) appendComments(col *toolkit.VBox, d *previewBody, p *painter.PixelPainter, mkLabel func(string, toolkit.Font, toolkit.RGBA) *toolkit.Label) {
+func (s *Scene) appendComments(col *toolkit.VBox, d *previewBody, mkLabel func(string, toolkit.Font, toolkit.RGBA) *toolkit.Label) {
 	if d.commentsHeading == "" && !d.commentsLoading {
 		return
 	}
@@ -888,7 +911,7 @@ func (s *Scene) appendComments(col *toolkit.VBox, d *previewBody, p *painter.Pix
 	bodyFace := getFace(s.ptPx(13), false)
 
 	col.AddFixed(toolkit.NewLabel(""), rpxOf(s, commentGapPt))
-	col.AddFixed(&commentDivider{s: s, p: p}, rpxOf(s, 1))
+	col.AddFixed(&commentDivider{}, rpxOf(s, 1))
 	col.AddFixed(toolkit.NewLabel(""), rpxOf(s, commentTightPt))
 	if d.commentsHeading != "" {
 		col.AddFixed(mkLabel(d.commentsHeading, headFont, th.OnSurface), d.commentsHeadFace.height)
@@ -907,7 +930,7 @@ func (s *Scene) appendComments(col *toolkit.VBox, d *previewBody, p *painter.Pix
 		if c.inset > 0 {
 			row := toolkit.NewHBox()
 			row.Spacing = 0
-			row.AddFixed(&commentGuide{s: s, p: p}, c.inset)
+			row.AddFixed(&commentGuide{s: s}, c.inset)
 			row.AddFlex(inner, 1)
 			col.AddFixed(row, c.height)
 		} else {
@@ -918,50 +941,97 @@ func (s *Scene) appendComments(col *toolkit.VBox, d *previewBody, p *painter.Pix
 }
 
 // commentDivider paints a 1px horizontal rule (Border colour) across its bounds:
-// the subtle separator between the post body and the comment thread.
+// the subtle separator between the post body and the comment thread, as a
+// composed toolkit.Backdrop rather than a hand-drawn FillRect.
 type commentDivider struct {
 	toolkit.Base
-	s *Scene
-	p *painter.PixelPainter
 }
 
-func (w *commentDivider) Draw(_ painter.Painter, th *toolkit.Theme) {
-	b := w.Bounds()
-	w.p.FillRect(painter.Rect{X: b.X, Y: b.Y, W: b.W, H: b.H}, th.Border)
+func (w *commentDivider) Draw(pt painter.Painter, th *toolkit.Theme) {
+	ground := &toolkit.Backdrop{Fill: th.Border}
+	ground.SetBounds(w.Bounds())
+	ground.Draw(pt, th)
 }
 
 // commentGuide paints a subtle vertical thread guide down the right edge of a
 // nested comment's left inset, so replies read as indented under their parent.
+// It is a composed toolkit.Backdrop, not a hand-drawn FillRect.
 type commentGuide struct {
 	toolkit.Base
 	s *Scene
-	p *painter.PixelPainter
 }
 
-func (w *commentGuide) Draw(_ painter.Painter, th *toolkit.Theme) {
+func (w *commentGuide) Draw(pt painter.Painter, th *toolkit.Theme) {
 	b := w.Bounds()
 	gx := b.X + b.W - rpxOf(w.s, 1)
-	w.p.FillRect(painter.Rect{X: gx, Y: b.Y, W: rpxOf(w.s, 1), H: b.H}, mute(th.OnSurface, th.Surface))
+	ground := &toolkit.Backdrop{Fill: mute(th.OnSurface, th.Surface)}
+	ground.SetBounds(toolkit.Rect{X: gx, Y: b.Y, W: rpxOf(w.s, 1), H: b.H})
+	ground.Draw(pt, th)
+}
+
+// previewOpenPill is the preview pane's accent "Open" affordance as a
+// self-contained composing widget: a rounded accent Backdrop ground carrying a
+// left-inset on-accent Label. It is the on-accent inverse of the reading view's
+// detailPill (Surface ground + accent label); Button would centre the label and
+// stroke a border whose corner anti-aliasing diverges from the old bare fill, so
+// this thin pill reproduces the old FillRoundRect + m.side.draw byte for byte.
+// Clicks stay routed by previewHitTest (HitOpenPreview), so the Open flow in
+// internal/windowapp is unchanged; this widget only paints the visual.
+type previewOpenPill struct {
+	toolkit.Base
+	s *Scene
+}
+
+func (w *previewOpenPill) Draw(pt painter.Painter, th *toolkit.Theme) {
+	s, b := w.s, w.Bounds()
+	m := s.m
+	ground := &toolkit.Backdrop{Fill: th.Accent, Radius: rpxOf(s, 6)}
+	ground.SetBounds(b)
+	ground.Draw(pt, th)
+	lbl := toolkit.NewLabel("Open")
+	lbl.Font, lbl.Ink, lbl.VAlign = m.side.font, themeOnAccent(th), toolkit.VTop
+	lbl.SetBounds(toolkit.Rect{X: b.X + m.pad, Y: b.Y + (b.H-m.side.height)/2, W: b.W - m.pad, H: m.side.height})
+	lbl.Draw(pt, th)
+}
+
+// previewZoomPill is one A−/A+ reader-text zoom pill: neutral chrome — a
+// SurfaceAlt rounded fill with a Border outline and a centred OnSurface Label —
+// so it reads as a secondary control beside the accent Open pill. Like the
+// reading view's detailPill it is a thin composing widget (there is no stock
+// borderless, self-strokable rounded pill); it reproduces the old FillRoundRect
+// + StrokeRoundRect + m.side.draw byte for byte through the painter it is handed.
+type previewZoomPill struct {
+	toolkit.Base
+	s     *Scene
+	label string
+}
+
+func (w *previewZoomPill) Draw(pt painter.Painter, th *toolkit.Theme) {
+	s, b := w.s, w.Bounds()
+	m := s.m
+	rad := rpxOf(s, 6)
+	pt.FillRoundRect(painter.Rect{X: b.X, Y: b.Y, W: b.W, H: b.H}, rad, th.SurfaceAlt)
+	pt.StrokeRoundRect(painter.Rect{X: b.X, Y: b.Y, W: b.W, H: b.H}, rad, th.Border, rpxOf(s, 1))
+	lw := m.side.width(w.label)
+	lbl := toolkit.NewLabel(w.label)
+	lbl.Font, lbl.Ink, lbl.VAlign = m.side.font, th.OnSurface, toolkit.VTop
+	lbl.SetBounds(toolkit.Rect{X: b.X + (b.W-lw)/2, Y: b.Y + (b.H-m.side.height)/2, W: lw, H: m.side.height})
+	lbl.Draw(pt, th)
 }
 
 // drawTextZoomButtons paints the A−/A+ reader-text zoom pills at the top of the
-// preview pane (laid out by layoutPreview, left of the Open pill). They are
-// neutral chrome — a SurfaceAlt fill with a Border outline and OnSurface glyphs —
-// so they read as secondary controls beside the accent Open pill. Shared by the
-// text and web preview draws so the pills show for any previewed post. Both call
-// sites run only with an item selected, so layoutPreview has sized the pills.
-func (s *Scene) drawTextZoomButtons(p *painter.PixelPainter, img *image.RGBA) {
-	m := s.m
-	th := s.theme
-	rad := rpxOf(s, 6)
+// preview pane (laid out by layoutPreview, left of the Open pill) as composed
+// previewZoomPill widgets. Shared by the text and web preview draws so the pills
+// show for any previewed post. Both call sites run only with an item selected,
+// so layoutPreview has sized the pills.
+func (s *Scene) drawTextZoomButtons(p *painter.PixelPainter) {
 	for _, b := range []struct {
 		r     toolkit.Rect
 		label string
 	}{{s.sTextSmallerR, "A−"}, {s.sTextLargerR, "A+"}} {
-		p.FillRoundRect(painter.Rect(b.r), rad, th.SurfaceAlt)
-		p.StrokeRoundRect(painter.Rect(b.r), rad, th.Border, rpxOf(s, 1))
-		lw := m.side.width(b.label)
-		m.side.draw(img, b.r.X+(b.r.W-lw)/2, b.r.Y+(b.r.H-m.side.height)/2, b.label, th.OnSurface)
+		pill := &previewZoomPill{s: s, label: b.label}
+		pill.SetBounds(b.r)
+		pill.Draw(p, s.theme)
 	}
 }
 
@@ -969,7 +1039,7 @@ func (s *Scene) drawTextZoomButtons(p *painter.PixelPainter, img *image.RGBA) {
 // across the top, then the embedded toolkit.Browser (its own tab strip, toolbar,
 // address field, scrollable page and loading bar) filling the rest, with the
 // "Open" pill floated on top. The browser was positioned by layoutPreview.
-func (s *Scene) drawWebPreview(p *painter.PixelPainter, img *image.RGBA) {
+func (s *Scene) drawWebPreview(p *painter.PixelPainter) {
 	m := s.m
 	th := s.theme
 	muteS := mute(th.OnSurface, th.Surface)
@@ -1017,10 +1087,11 @@ func (s *Scene) drawWebPreview(p *painter.PixelPainter, img *image.RGBA) {
 
 	// "Open" pill floated over the header, top-right.
 	if s.previewOpenR.W > 0 {
-		p.FillRoundRect(painter.Rect(s.previewOpenR), rpxOf(s, 6), th.Accent)
-		m.side.draw(img, s.previewOpenR.X+m.pad, s.previewOpenR.Y+(s.previewOpenR.H-m.side.height)/2, "Open", themeOnAccent(th))
+		pill := &previewOpenPill{s: s}
+		pill.SetBounds(s.previewOpenR)
+		pill.Draw(p, th)
 	}
-	s.drawTextZoomButtons(p, img)
+	s.drawTextZoomButtons(p)
 }
 
 // previewHitTest resolves a click inside the pane: the Open button (full detail)

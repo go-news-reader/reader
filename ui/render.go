@@ -225,7 +225,7 @@ func (s *Scene) Draw(buf []byte) {
 	}
 
 	// --- right preview/details pane (over the feed, docked right) ---
-	s.drawPreview(p, img)
+	s.drawPreview(p)
 
 	// --- download-manager panel (docked bottom, over the feed/preview) ---
 	s.drawDownloadPanel(p, img)
