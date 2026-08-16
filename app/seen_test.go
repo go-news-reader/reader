@@ -78,6 +78,10 @@ func TestViewSubMarksSeen(t *testing.T) {
 		Registry:      newReg(),
 		Subscriptions: []source.Subscription{{Source: source.Usenet, Channel: "g"}, {Source: source.Usenet, Channel: "empty"}},
 	})
+	// ViewSub now spawns a background per-tab load (loadTab) whose scene writes
+	// post asynchronously; defer them onto the drain queue (as the real render
+	// thread does) so the background load doesn't race this test's scene writes.
+	a.DeferSceneWrites()
 	a.scene.SetItems([]source.Item{{Source: source.Usenet, Channel: "g", GroupCount: 100, GroupHigh: 500}})
 
 	a.ViewSub(0) // marks group g seen at its high water

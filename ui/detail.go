@@ -214,7 +214,9 @@ type detailPill struct {
 func (w *detailPill) Draw(pt painter.Painter, th *toolkit.Theme) {
 	s, b := w.s, w.Bounds()
 	m := s.m
-	pt.FillRoundRect(painter.Rect{X: b.X, Y: b.Y, W: b.W, H: b.H}, rpxOf(s, 6), th.Surface)
+	ground := &toolkit.Backdrop{Fill: th.Surface, Radius: rpxOf(s, 6)}
+	ground.SetBounds(b)
+	ground.Draw(pt, th)
 	lbl := toolkit.NewLabel(w.label)
 	lbl.Font, lbl.Ink, lbl.VAlign = m.side.font, th.Accent, toolkit.VTop
 	lbl.SetBounds(toolkit.Rect{X: b.X + m.pad, Y: b.Y + (b.H-m.side.height)/2, W: b.W - m.pad, H: m.side.height})

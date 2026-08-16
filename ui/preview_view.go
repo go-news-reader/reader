@@ -1016,8 +1016,9 @@ func (w *previewZoomPill) Draw(pt painter.Painter, th *toolkit.Theme) {
 	s, b := w.s, w.Bounds()
 	m := s.m
 	rad := rpxOf(s, 6)
-	pt.FillRoundRect(painter.Rect{X: b.X, Y: b.Y, W: b.W, H: b.H}, rad, th.SurfaceAlt)
-	pt.StrokeRoundRect(painter.Rect{X: b.X, Y: b.Y, W: b.W, H: b.H}, rad, th.Border, rpxOf(s, 1))
+	ground := &toolkit.Backdrop{Fill: th.SurfaceAlt, Radius: rad, Stroke: th.Border, StrokeWidth: rpxOf(s, 1)}
+	ground.SetBounds(b)
+	ground.Draw(pt, th)
 	lw := m.side.width(w.label)
 	lbl := toolkit.NewLabel(w.label)
 	lbl.Font, lbl.Ink, lbl.VAlign = m.side.font, th.OnSurface, toolkit.VTop
