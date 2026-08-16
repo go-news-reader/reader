@@ -162,7 +162,10 @@ func (s *Scene) Draw(buf []byte) {
 	onAccent := themeOnAccent(th)
 	muteS := mute(th.OnSurface, th.Surface)
 
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
+	// Window ground: a solid toolkit.Backdrop, not a hand-drawn FillRect.
+	ground := &toolkit.Backdrop{Fill: th.Background}
+	ground.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: s.H})
+	ground.Draw(p, th)
 
 	// Begin this frame's cross-surface selectable-run accumulation. The sidebar,
 	// the feed cards and the preview text each append their on-screen runs below;
@@ -205,7 +208,10 @@ func (s *Scene) Draw(buf []byte) {
 		} else {
 			msg := "No items."
 			cx := m.sidebarW + (s.W-m.sidebarW-m.title.width(msg))/2
-			m.title.draw(img, cx, s.H/2, msg, muteS)
+			lbl := toolkit.NewLabel(msg)
+			lbl.Font, lbl.Ink = m.title.font, muteS
+			lbl.SetBounds(toolkit.Rect{X: cx, Y: s.H / 2, W: m.title.width(msg), H: m.title.height})
+			lbl.Draw(p, th)
 		}
 	}
 
@@ -213,15 +219,21 @@ func (s *Scene) Draw(buf []byte) {
 	if m.sidebarW > 0 {
 		blitAt(img, s.sidebarSprite(), 0, m.topbarH)
 		// A 1px divider at the sidebar's right edge plus a centred grab handle so
-		// the resize affordance is visible and easy to hit.
-		p.FillRect(painter.Rect{X: m.sidebarW - 1, Y: m.topbarH, W: 1, H: s.H - m.topbarH}, th.Border)
+		// the resize affordance is visible and easy to hit. The divider is a
+		// 1px-wide toolkit.Backdrop rather than a hand-drawn FillRect.
+		div := &toolkit.Backdrop{Fill: th.Border}
+		div.SetBounds(toolkit.Rect{X: m.sidebarW - 1, Y: m.topbarH, W: 1, H: s.H - m.topbarH})
+		div.Draw(p, th)
 		s.drawGripHandle(p, m.sidebarW)
 	}
 	blitAt(img, s.topbarSprite(onAccent), 0, 0)
 
 	// --- status footer text (optional) ---
 	if s.Status != "" {
-		m.meta.draw(img, m.sidebarW+m.pad, s.H-m.meta.height-rpxOf(s, 4), s.Status, muteS)
+		status := toolkit.NewLabel(s.Status)
+		status.Font, status.Ink = m.meta.font, muteS
+		status.SetBounds(toolkit.Rect{X: m.sidebarW + m.pad, Y: s.H - m.meta.height - rpxOf(s, 4), W: m.meta.width(s.Status), H: m.meta.height})
+		status.Draw(p, th)
 	}
 
 	// --- right preview/details pane (over the feed, docked right) ---
@@ -287,17 +299,27 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	buf := make([]byte, m.sidebarW*h*4)
 	p := painter.NewPixelPainter(buf, m.sidebarW, h)
 	img := &image.RGBA{Pix: buf, Stride: m.sidebarW * 4, Rect: image.Rect(0, 0, m.sidebarW, h)}
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: m.sidebarW, H: h}, th.SurfaceAlt)
+	// Sidebar ground: a solid SurfaceAlt toolkit.Backdrop.
+	ground := &toolkit.Backdrop{Fill: th.SurfaceAlt}
+	ground.SetBounds(toolkit.Rect{X: 0, Y: 0, W: m.sidebarW, H: h})
+	ground.Draw(p, th)
 
-	// Profile tabs (sidebar-local coords).
+	// Profile tabs (sidebar-local coords): the active tab's pill is a rounded
+	// toolkit.Backdrop; each tab name is a toolkit.Label.
 	for _, t := range s.profTabs {
 		ly := t.rect.Y - m.topbarH
 		col := th.OnSurface
 		if t.index == s.activeProf {
-			p.FillRoundRect(painter.Rect{X: t.rect.X, Y: ly, W: t.rect.W, H: t.rect.H}, rpxOf(s, 5), th.Accent)
+			pill := &toolkit.Backdrop{Fill: th.Accent, Radius: rpxOf(s, 5)}
+			pill.SetBounds(toolkit.Rect{X: t.rect.X, Y: ly, W: t.rect.W, H: t.rect.H})
+			pill.Draw(p, th)
 			col = onAccent
 		}
-		m.tab.draw(img, t.rect.X+m.tabPad, ly+(t.rect.H-m.tab.height)/2, s.Profiles[t.index].Name, col)
+		name := s.Profiles[t.index].Name
+		nameLbl := toolkit.NewLabel(name)
+		nameLbl.Font, nameLbl.Ink = m.tab.font, col
+		nameLbl.SetBounds(toolkit.Rect{X: t.rect.X + m.tabPad, Y: ly + (t.rect.H-m.tab.height)/2, W: m.tab.width(name), H: m.tab.height})
+		nameLbl.Draw(p, th)
 	}
 
 	// The scrollable middle list is a toolkit.TreeView (its bounds were set in
@@ -318,10 +340,17 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	navCol := mute(th.OnSurface, th.SurfaceAlt)
 	navTextX := m.pad + m.navIcon + rpxOf(s, 6)
 	drawNavRow := func(localY int, icon func(painter.Painter, toolkit.Rect, toolkit.RGBA, int), text string) {
-		p.FillRect(painter.Rect{X: 0, Y: localY - 1, W: m.sidebarW, H: 1}, th.Border)
+		// 1px top divider as a toolkit.Backdrop; the icon stays a painter glyph
+		// (the sanctioned icon layer); the label is a toolkit.Label.
+		rowDiv := &toolkit.Backdrop{Fill: th.Border}
+		rowDiv.SetBounds(toolkit.Rect{X: 0, Y: localY - 1, W: m.sidebarW, H: 1})
+		rowDiv.Draw(p, th)
 		ir := toolkit.Rect{X: m.pad, Y: localY + (m.sideItemH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
 		icon(p, ir, navCol, s.iconStroke())
-		m.side.draw(img, navTextX, localY+(m.sideItemH-m.side.height)/2, text, navCol)
+		navLbl := toolkit.NewLabel(text)
+		navLbl.Font, navLbl.Ink = m.side.font, navCol
+		navLbl.SetBounds(toolkit.Rect{X: navTextX, Y: localY + (m.sideItemH-m.side.height)/2, W: m.side.width(text), H: m.side.height})
+		navLbl.Draw(p, th)
 	}
 	drawNavRow(s.accountsR.Y-m.topbarH, drawUserIcon, "Accounts")
 	drawNavRow(s.logR.Y-m.topbarH, drawListIcon, "Network log")
@@ -342,13 +371,19 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	buf := make([]byte, s.W*m.topbarH*4)
 	p := painter.NewPixelPainter(buf, s.W, m.topbarH)
 	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, m.topbarH)}
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
+	// Accent band as a toolkit.Backdrop.
+	band := &toolkit.Backdrop{Fill: th.Accent}
+	band.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH})
+	band.Draw(p, th)
 	// Burger button at the left, then the title. The burger is a drawn menu icon
 	// (three bars) rather than a font glyph, and is always drawn so a collapsed
-	// sidebar can be reopened.
+	// sidebar can be reopened. The "News" title is a toolkit.Label (on-accent).
 	ic := m.navIcon
 	drawMenuIcon(p, toolkit.Rect{X: s.burgerR.X + (s.burgerR.W-ic)/2, Y: (m.topbarH - ic) / 2, W: ic, H: ic}, onAccent, s.iconStroke())
-	m.title.draw(img, s.burgerR.W+m.pad, (m.topbarH-m.title.height)/2, "News", onAccent)
+	titleLbl := toolkit.NewLabel("News")
+	titleLbl.Font, titleLbl.Ink = m.title.font, onAccent
+	titleLbl.SetBounds(toolkit.Rect{X: s.burgerR.W + m.pad, Y: (m.topbarH - m.title.height) / 2, W: m.title.width("News"), H: m.title.height})
+	titleLbl.Draw(p, th)
 	// Search box: render the topbar's toolkit.SearchEntry widget itself (its own
 	// AA font via ttFont), so what the user sees is the bound widget's text. The
 	// scene overlays a rounded focus ring + caret because SearchEntry is
@@ -371,7 +406,9 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 		tx := s.searchR.X + toolkit.SearchEntryPadX + toolkit.SearchEntryIconW
 		hl := th.Accent
 		hl.A = 0x55
-		p.FillRect(painter.Rect{X: tx, Y: s.searchR.Y + (s.searchR.H-f.Height())/2, W: f.Measure(s.searchEntry.Text), H: f.Height()}, hl)
+		over := &toolkit.Backdrop{Fill: hl}
+		over.SetBounds(toolkit.Rect{X: tx, Y: s.searchR.Y + (s.searchR.H-f.Height())/2, W: f.Measure(s.searchEntry.Text), H: f.Height()})
+		over.Draw(p, th)
 	}
 	s.topbarKey, s.topbarSpr = k, img
 	return img
@@ -497,7 +534,11 @@ func (s *Scene) drawAuthBanner(p *painter.PixelPainter, img *image.RGBA, ap Auth
 	tx := x + toolkit.BannerPadX + iconD + toolkit.BannerPadX/2
 	ty := y + (m.bannerH-m.side.height)/2
 	lbl := sourceLabel(ap.Kind) + " needs sign-in — Open Accounts"
-	m.side.draw(img, tx, ty, truncate(m.side, lbl, x+w-tx-m.pad), onAccent)
+	text := truncate(m.side, lbl, x+w-tx-m.pad)
+	msg := toolkit.NewLabel(text)
+	msg.Font, msg.Ink = m.side.font, onAccent
+	msg.SetBounds(toolkit.Rect{X: tx, Y: ty, W: m.side.width(text), H: m.side.height})
+	msg.Draw(p, s.theme)
 }
 
 // sameItem reports whether two items are the same post. it.ID is only unique
@@ -542,14 +583,18 @@ func (s *Scene) drawGripHandle(p *painter.PixelPainter, cx int) {
 	gw := rpxOf(s, 4)
 	gh := rpxOf(s, 36)
 	gy := m.topbarH + (s.H-m.topbarH-gh)/2
-	p.FillRoundRect(painter.Rect{X: cx - gw/2, Y: gy, W: gw, H: gh}, gw/2, mute(s.theme.OnSurface, s.theme.Surface))
+	grip := &toolkit.Backdrop{Fill: mute(s.theme.OnSurface, s.theme.Surface), Radius: gw / 2}
+	grip.SetBounds(toolkit.Rect{X: cx - gw/2, Y: gy, W: gw, H: gh})
+	grip.Draw(p, s.theme)
 }
 
 // drawDot paints a small filled circle-ish marker (a rounded square) for a
 // source colour in the sidebar.
 func (s *Scene) drawDot(p *painter.PixelPainter, x, cy int, col toolkit.RGBA) {
 	d := rpxOf(s, 8)
-	p.FillRoundRect(painter.Rect{X: x, Y: cy - d/2, W: d, H: d}, d/2, col)
+	dot := &toolkit.Backdrop{Fill: col, Radius: d / 2}
+	dot.SetBounds(toolkit.Rect{X: x, Y: cy - d/2, W: d, H: d})
+	dot.Draw(p, s.theme)
 }
 
 // HitTest maps a click at (x, y) to an action.

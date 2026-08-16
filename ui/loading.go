@@ -52,7 +52,10 @@ func (s *Scene) drawLoadingPlaceholder(p *painter.PixelPainter, img *image.RGBA,
 	msg := "Loading…"
 	cx := feedX + (feedW-m.title.width(msg))/2
 	cy := s.H/2 - m.title.height
-	m.title.draw(img, cx, cy, msg, muteS)
+	lbl := toolkit.NewLabel(msg)
+	lbl.Font, lbl.Ink = m.title.font, muteS
+	lbl.SetBounds(toolkit.Rect{X: cx, Y: cy, W: m.title.width(msg), H: m.title.height})
+	lbl.Draw(p, s.theme)
 
 	// Animated spinner centred below the label.
 	d := rpxOf(s, 52)
