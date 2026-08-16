@@ -50,7 +50,6 @@ func saveSeen(m map[string]int) {
 func (a *App) ViewSub(index int) {
 	a.scene.SetActive(index)
 	a.MarkSubSeen(index)
-	a.loadTab(index)
 }
 
 // MarkSubSeen records a subscription's current high-water marker as seen and

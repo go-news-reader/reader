@@ -268,10 +268,6 @@ func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 	// background goroutine. Enable it before that goroutine starts so the scene is
 	// only ever mutated from Frame (see app.App.DeferSceneWrites).
 	a.DeferSceneWrites()
-	// Open the first source tab so the launch loads only that source (per-tab lazy
-	// model), not every subscription at once. Set before the background load so it
-	// picks up the right active tab.
-	a.OpenDefaultTab()
 	go refreshFeed(a, stderr)
 	runtime.LockOSThread()
 	if err := presentWindow(a, cfg); err != nil {
@@ -287,7 +283,7 @@ func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 // immediately, shows a live loading indicator, and fills in progressively as
 // each source returns.
 func refreshFeed(a *app.App, stderr io.Writer) {
-	for _, e := range a.LoadActiveTab(context.Background()) {
+	for _, e := range a.RefreshStreaming(context.Background()) {
 		fmt.Fprintln(stderr, "warning:", e)
 	}
 }

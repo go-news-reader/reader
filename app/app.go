@@ -178,11 +178,6 @@ type App struct {
 	// field so tests substitute a synchronous variant.
 	loadMoreFetch    func()
 	pullRefreshFetch func()
-	// tabFetch/allFetch back the per-tab lazy model: selecting a sidebar source
-	// that has not been fetched yet loads only that source; selecting "All"
-	// aggregates on demand. Fields so tests drive them synchronously.
-	tabFetch func(source.Subscription)
-	allFetch func()
 
 	// searchFetch is the Reddit search view's seam: it runs the query (subreddits or
 	// posts) against the Reddit provider off the render thread and delivers results
@@ -432,8 +427,6 @@ func New(cfg Config) *App {
 	// synchronously).
 	a.loadMoreFetch = func() { go a.LoadMore(context.Background()) }
 	a.pullRefreshFetch = func() { go a.PullRefresh(context.Background()) }
-	a.tabFetch = func(sub source.Subscription) { go a.refreshOneSub(context.Background(), sub) }
-	a.allFetch = func() { go a.RefreshStreaming(context.Background()) }
 	a.scene.OnReachBottom = func() { a.loadMoreFetch() }
 	a.scene.OnPullRefresh = func() { a.pullRefreshFetch() }
 	// The Reddit search view runs its query off the render thread; a field so tests
@@ -1220,12 +1213,6 @@ func (a *App) LoadMore(ctx context.Context) []error {
 	}
 	// Claim the in-flight guard and snapshot the cursors under one lock; bail if a
 	// load-more is already running or nothing is left to page.
-	// Scope pagination to the tab in view: a single source when one is selected
-	// (only that source pages, the per-tab lazy model), every source for "All".
-	subs := a.subs
-	if idx := a.scene.ActiveFilter(); idx >= 0 && idx < len(a.subs) {
-		subs = []source.Subscription{a.subs[idx]}
-	}
 	a.moreMu.Lock()
 	if a.loadingMore {
 		a.moreMu.Unlock()
@@ -1233,9 +1220,9 @@ func (a *App) LoadMore(ctx context.Context) []error {
 	}
 	snap := map[string]string{}
 	has := false
-	for _, sub := range subs {
-		if v := a.cursors[source.SubKey(sub)]; v != "" {
-			snap[source.SubKey(sub)] = v
+	for k, v := range a.cursors {
+		if v != "" {
+			snap[k] = v
 			has = true
 		}
 	}
@@ -1251,6 +1238,7 @@ func (a *App) LoadMore(ctx context.Context) []error {
 		a.moreMu.Unlock()
 	}()
 
+	subs := a.subs
 	items, next, errs := a.reg.AggregateMore(ctx, subs, snap)
 
 	// Advance the carried cursors with the fresh tokens (exhausted sources come
@@ -1294,63 +1282,12 @@ func itemKey(it source.Item) string { return string(it.Source) + "\x00" + it.ID 
 // one selected), it re-fetches ONLY that subscription — the one the user is
 // looking at — instead of re-aggregating every source. With no single
 // subscription selected ("All"), it falls back to a full streaming refresh.
-func (a *App) PullRefresh(ctx context.Context) []error { return a.LoadActiveTab(ctx) }
-
-// LoadActiveTab loads the tab the sidebar currently shows: a single subscription
-// when one is selected (only that source is fetched — the per-tab lazy model), or
-// a full streaming aggregate for the "All" filter. It backs both the initial load
-// and pull-to-refresh, and always re-fetches (unlike the lazy first-visit load).
-func (a *App) LoadActiveTab(ctx context.Context) []error {
+func (a *App) PullRefresh(ctx context.Context) []error {
 	idx := a.scene.ActiveFilter()
 	if idx < 0 || idx >= len(a.subs) {
 		return a.RefreshStreaming(ctx) // "All" filter → refresh every source
 	}
 	return a.refreshOneSub(ctx, a.subs[idx])
-}
-
-// OpenDefaultTab selects the first source as the active tab so a launch loads
-// only that source (the per-tab lazy model) rather than aggregating everything.
-// A no-op with no subscriptions, leaving the "All" filter in place.
-func (a *App) OpenDefaultTab() {
-	if len(a.subs) > 0 {
-		a.scene.SetActive(0)
-	}
-}
-
-// loadTab lazily fetches what a just-selected tab needs the first time it is
-// shown: a specific source that has never been fetched, or a full aggregate for
-// "All" while any source is still unfetched. A tab already loaded shows its
-// cached items untouched (a manual pull re-fetches).
-func (a *App) loadTab(index int) {
-	sub, one, all := a.tabToLoad(index)
-	switch {
-	case one:
-		a.tabFetch(sub)
-	case all:
-		a.allFetch()
-	}
-}
-
-// tabToLoad reports what the tab at index still needs: a specific sub to fetch
-// (one), a full aggregate (all), or neither. "Loaded" is keyed on the cursor map
-// — refreshOneSub / RefreshStreaming record a token (even "") for every source
-// they fetch, so a present key means the source has been loaded this session.
-func (a *App) tabToLoad(index int) (sub source.Subscription, one, all bool) {
-	a.moreMu.Lock()
-	defer a.moreMu.Unlock()
-	if index < 0 || index >= len(a.subs) {
-		for _, s := range a.subs {
-			if _, ok := a.cursors[source.SubKey(s)]; !ok {
-				return source.Subscription{}, false, true
-			}
-		}
-		return source.Subscription{}, false, false
-	}
-	s := a.subs[index]
-	if _, ok := a.cursors[source.SubKey(s)]; !ok {
-		return s, true, false
-	}
-	return source.Subscription{}, false, false
 }
 
 // refreshOneSub re-fetches a single subscription and splices its fresh page into
