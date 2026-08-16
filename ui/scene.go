@@ -406,6 +406,10 @@ type Scene struct {
 	// disk), used to derive the unseen/new count shown next to each sidebar group.
 	seen map[string]int
 
+	// viewed is the set of item IDs the user has opened in the preview pane this
+	// session; their feed cards are drawn muted ("already read"), via feedDimmed.
+	viewed map[string]bool
+
 	// Network-log (ModeLog) view: a scrollable, newest-first list of the HTTP
 	// exchanges the providers made, fed live from an injected source so the app
 	// need not push updates. logSource is nil when no recorder is wired.

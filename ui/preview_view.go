@@ -160,7 +160,21 @@ func (s *Scene) SelectPreview(it source.Item) {
 	s.previewScroll.offset = 0
 	s.previewImgPending = false
 	s.browserFocused = false // a new selection drops browser keyboard focus
+	s.markViewed(it.ID)      // opening a post marks its card "already read" (muted)
 	s.touch()
+}
+
+// markViewed records that item id has been opened in the preview pane, so its
+// feed card is drawn muted (see feedDimmed). A blank id (a synthetic/placeholder
+// item) is ignored.
+func (s *Scene) markViewed(id string) {
+	if id == "" {
+		return
+	}
+	if s.viewed == nil {
+		s.viewed = map[string]bool{}
+	}
+	s.viewed[id] = true
 }
 
 // PreviewItem returns the previewed item and whether one is selected.

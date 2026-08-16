@@ -359,7 +359,23 @@ func TestFeedItemAtAndDimmed(t *testing.T) {
 	}
 	// No read state yet: nothing is dimmed.
 	if s.feedDimmed(0) {
-		t.Fatal("feedDimmed should be false")
+		t.Fatal("feedDimmed should be false before anything is viewed")
+	}
+	// Opening row 0's item in the preview marks it "already read": its card dims,
+	// the others stay bright.
+	it0, _ := s.feedItemAt(0)
+	s.SelectPreview(it0)
+	if !s.feedDimmed(0) {
+		t.Fatal("a viewed item's card should be dimmed")
+	}
+	if s.feedDimmed(last) {
+		t.Fatal("an unviewed item's card must not be dimmed")
+	}
+	// A blank id (a synthetic/placeholder item) is never recorded as viewed.
+	before := len(s.viewed)
+	s.markViewed("")
+	if len(s.viewed) != before {
+		t.Fatal("markViewed must ignore a blank id")
 	}
 }
 

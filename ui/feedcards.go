@@ -197,10 +197,17 @@ func (s *Scene) FeedModelItems() []source.Item {
 	return s.feed.model.Slice()
 }
 
-// feedDimmed reports whether feed row i is muted ("already read"). The reader
-// keeps no per-item read state yet, so nothing is dimmed; the hook is here so a
-// later read-state store only has to fill it in.
-func (s *Scene) feedDimmed(i int) bool { _ = i; return false }
+// feedDimmed reports whether feed row i is muted ("already read"): true once its
+// item has been opened in the preview pane this session (tracked in s.viewed).
+// The CardList veils a dimmed card; a fast path skips the lookup while nothing
+// has been viewed.
+func (s *Scene) feedDimmed(i int) bool {
+	if len(s.viewed) == 0 {
+		return false
+	}
+	it, ok := s.feedItemAt(i)
+	return ok && s.viewed[it.ID]
+}
 
 // feedSelect handles a CardList selection (click or keyboard cursor move) at row
 // i: it previews the row's item. It routes through the app seam when installed
