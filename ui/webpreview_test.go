@@ -481,7 +481,7 @@ func TestWebPreviewAnimationTick(t *testing.T) {
 		t.Fatal("a loading browser tab should animate")
 	}
 	before := s.Browser().Phase
-	s.AdvanceAnim() // must advance the browser's loading-bar phase
+	s.AdvanceAnim(1) // must advance the browser's loading-bar phase
 	if s.Browser().Phase == before {
 		t.Fatal("AdvanceAnim should tick the browser phase")
 	}

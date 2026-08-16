@@ -824,14 +824,23 @@ func (s *Scene) SetGIFPlaying(v bool) { s.gifPlaying = v; s.touch() }
 // preview (front-ends/tests observe it).
 func (s *Scene) GIFPlaying() bool { return s.gifPlaying }
 
-// AdvanceAnim advances the animation clock by one frame and marks the scene
-// dirty. A present loop calls it once per tick while [Animating] is true; the
-// indeterminate indicator derives its position from the frame counter.
-func (s *Scene) AdvanceAnim() {
-	s.animFrame++
+// AdvanceAnim advances the animation clock by n frames and marks the scene
+// dirty. A present loop calls it while [Animating] is true; the indeterminate
+// indicator derives its position from the frame counter. n is the number of
+// tick intervals that have elapsed since the last advance, so a loop that
+// throttles its redraws to below the tick rate (advancing every few ticks
+// instead of every one) still turns the spinner at the same real-time speed —
+// it just steps it in larger, less frequent increments. n <= 0 is a no-op, so a
+// spurious call can never rewind or freeze the clock.
+func (s *Scene) AdvanceAnim(n int) {
+	if n <= 0 {
+		return
+	}
+	s.animFrame += n
 	// Advance the embedded browser's indeterminate loading bar in step with the
-	// spinner cadence (one revolution per spinnerPeriod frames).
-	s.browser.Tick(1.0 / float64(spinnerPeriod))
+	// spinner cadence (one revolution per spinnerPeriod frames), by the same n
+	// frames so its speed matches the spinner's regardless of the redraw cadence.
+	s.browser.Tick(float64(n) / float64(spinnerPeriod))
 	s.touch()
 }
 

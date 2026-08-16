@@ -229,8 +229,18 @@ type App struct {
 	// waiting to be drawn". presentBusy is written by Frame on the render thread
 	// and means "the last frame is animating or a debounce is pending, so keep
 	// ticking". NeedsPresent is their union; see internal/window's gated ticker.
-	presentWake int32
-	presentBusy int32
+	presentWake     int32
+	presentBusy     int32
+	presentThrottle int32
+
+	// lastAnim is the wall-clock time the animation clock was last advanced. Frame
+	// steps the indeterminate spinner by the real time elapsed since it (see
+	// animFrameInterval), so the spinner turns at the same speed no matter how
+	// often the present loop actually calls Frame — which lets that loop redraw the
+	// spinner at a fraction of its tick rate (presentThrottle) without slowing it
+	// down. Zero while not animating; established on the first animating frame.
+	// Touched only on the render thread (in Frame), so it needs no lock.
+	lastAnim time.Time
 
 	// vmu serializes view-model mutations. mvvm.Observable/ObservableList are
 	// intentionally not concurrency-safe, yet several background operations mutate
@@ -1080,11 +1090,21 @@ func (a *App) SetSystemAppearance(dark bool, accent color.RGBA, hasAccent bool, 
 	a.applyTheme()
 }
 
+// animFrameInterval is one animation frame of real time. The indeterminate
+// spinner advances one frame per interval (spinnerPeriod frames per revolution),
+// so stepping it by the whole-number of intervals elapsed since the last advance
+// turns it at the same speed whether the present loop calls Frame 60 or 15 times
+// a second — which is what lets that loop throttle the spinner's redraws (see
+// presentThrottle) without slowing the spinner down.
+const animFrameInterval = time.Second / 60
+
 // Frame returns the current framebuffer, redrawing into the back buffer only
 // when the scene's damage sequence has advanced since the last call. While the
 // scene is animating (a refresh is streaming in), it advances the animation
-// clock first so every present tick yields a fresh frame; when nothing is
-// loading the scene is idle and the damage gate skips the redraw entirely.
+// clock by the real time elapsed since the last advance, so the moving indicator
+// keeps a steady real-time speed however often the present loop repaints it;
+// when nothing is loading the scene is idle and the damage gate skips the redraw
+// entirely.
 func (a *App) Frame() (buf []byte, changed bool) {
 	// Apply any scene mutations enqueued by background goroutines first, on this
 	// (the render) thread, so the scene is only ever touched here.
@@ -1092,15 +1112,30 @@ func (a *App) Frame() (buf []byte, changed bool) {
 	a.tickGIF()         // advance the playing animated-GIF preview (if any) to its due frame
 	a.tickWebDebounce() // fire a debounced page render once the selection settles
 	s := a.scene
+	// Advance the animation clock by the real time elapsed since it last stepped,
+	// so the indeterminate spinner keeps a steady speed no matter how often the
+	// present loop redraws it (it throttles the spinner's redraws — see the
+	// presentThrottle signal below). The first animating frame only establishes
+	// the clock; later frames step whole animation frames and carry the remainder
+	// forward. A real content change is never throttled — it arrives as a drained
+	// scene write that bumps Rev directly, redrawing on its own present.
 	if s.Animating() {
-		s.AdvanceAnim()
-	}
-	// Spin the feed CardList's pull-to-fetch strip in step: it is a toolkit
-	// Animator the scene's damage clock does not reach, so tick its tree while it
-	// is fetching. AdvanceAnim above already marked the frame dirty (a feed fetch
-	// implies Animating), so the advanced spinner is picked up by this frame.
-	if s.FeedAnimating() {
-		s.FeedTick(1.0 / 60.0)
+		if a.lastAnim.IsZero() {
+			a.lastAnim = a.now()
+		} else if n := int(a.now().Sub(a.lastAnim) / animFrameInterval); n > 0 {
+			s.AdvanceAnim(n)
+			// Spin the feed CardList's pull-to-fetch strip in step: it is a toolkit
+			// Animator the scene's damage clock does not reach, so tick its tree while
+			// it is fetching, by the same elapsed interval so it keeps pace with the
+			// spinner. AdvanceAnim above already marked the frame dirty (a feed fetch
+			// implies Animating), so the advanced spinner is picked up by this frame.
+			if s.FeedAnimating() {
+				s.FeedTick(float64(n) * animFrameInterval.Seconds())
+			}
+			a.lastAnim = a.lastAnim.Add(time.Duration(n) * animFrameInterval)
+		}
+	} else {
+		a.lastAnim = time.Time{}
 	}
 	// Tell a gated present loop whether to keep ticking on its own: an animating
 	// scene advances every frame, and an armed web-preview debounce must be given
@@ -1110,6 +1145,19 @@ func (a *App) Frame() (buf []byte, changed bool) {
 		atomic.StoreInt32(&a.presentBusy, 1)
 	} else {
 		atomic.StoreInt32(&a.presentBusy, 0)
+	}
+	// Tell the present loop when it may redraw below its tick rate: the only thing
+	// moving is the indeterminate loading spinner. That is throttle-safe because
+	// its clock is real-time (above), so a slower redraw does not slow it. It is
+	// NOT safe while a GIF is playing (real content, whose frames the loop must
+	// present promptly) or a web-preview debounce is counting render ticks (it
+	// times out in frames, so it needs them at the full rate) — both keep the full
+	// cadence. A queued content write overrides this via presentWake, redrawing at
+	// once.
+	if s.Animating() && !s.GIFPlaying() && !a.webArmed {
+		atomic.StoreInt32(&a.presentThrottle, 1)
+	} else {
+		atomic.StoreInt32(&a.presentThrottle, 0)
 	}
 	size := s.W * s.H * 4
 	if len(a.bufs[0]) != size {
@@ -1139,6 +1187,24 @@ func (a *App) Scene() *ui.Scene { return a.scene }
 // gated loop keeps a slow heartbeat rather than trusting this alone.
 func (a *App) NeedsPresent() bool {
 	return atomic.LoadInt32(&a.presentWake) != 0 || atomic.LoadInt32(&a.presentBusy) != 0
+}
+
+// PresentImmediate reports that a background scene write is queued, so the next
+// present must not be throttled — the new content has to reach the screen at
+// once. A gated present loop checks it to override its spinner throttle. Safe
+// from the loop's goroutine (the flag is atomic).
+func (a *App) PresentImmediate() bool {
+	return atomic.LoadInt32(&a.presentWake) != 0
+}
+
+// PresentThrottle reports that the only thing animating is the indeterminate
+// loading spinner, whose clock is real-time, so a gated present loop may redraw
+// it below its tick rate to spare the CPU a full-window blit on every tick. It
+// is false the moment anything else needs the full cadence (a queued write, a
+// playing GIF, a web-preview debounce) or nothing is animating at all. Safe from
+// the loop's goroutine (the flag is atomic).
+func (a *App) PresentThrottle() bool {
+	return atomic.LoadInt32(&a.presentThrottle) != 0
 }
 
 // Refresh aggregates the active profile's subscriptions (concurrently,

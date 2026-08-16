@@ -94,17 +94,17 @@ func Run(cfg Config, h Handler) error {
 		// only inside Frame — surfaces within a few hundred ms, and so any missed
 		// wake self-heals. A handler that cannot answer keeps the old every-tick
 		// behaviour.
-		np, gated := h.(interface{ NeedsPresent() bool })
+		np, gated := h.(presenter)
 		stop := make(chan struct{})
 		defer close(stop)
 		go func() {
 			t := time.NewTicker(time.Second / 60)
 			defer t.Stop()
-			idle := 0
+			var st presentState
 			for {
 				select {
 				case <-t.C:
-					if shouldRepaint(gated, np, &idle) {
+					if shouldRepaint(gated, np, &st) {
 						r.Repaint()
 					}
 				case <-stop:
@@ -124,19 +124,74 @@ func Run(cfg Config, h Handler) error {
 // a change NeedsPresent cannot see — an appearance switch — stays off screen.
 const heartbeatTicks = 15
 
-// shouldRepaint decides whether the gated ticker blits on this tick and advances
-// the idle counter. An ungated handler (one that cannot answer NeedsPresent, e.g.
-// a test's) always repaints, preserving the pre-gating behaviour. A gated one
-// repaints when the handler needs it, and otherwise only on every heartbeatTicks
-// -th idle tick; idle counts consecutive skipped ticks and resets on any repaint.
-func shouldRepaint(gated bool, np interface{ NeedsPresent() bool }, idle *int) bool {
-	if !gated || np.NeedsPresent() {
-		*idle = 0
+// spinnerTicks is how many ticks the gated present loop lets pass between blits
+// while the ONLY thing moving is the indeterminate loading spinner. At the 60 Hz
+// tick this repaints it ~15 times a second — visually smooth for a spinner —
+// instead of blitting the whole window 60 times a second, which is the reader's
+// biggest cost during a streaming load. The spinner's clock is real-time, so it
+// still turns at full speed; only its redraw rate drops. Anything that needs the
+// full cadence (a queued content write, a playing GIF, a web-preview debounce)
+// clears the throttle and blits every tick.
+const spinnerTicks = 4
+
+// presenter is the handler contract the gated present loop needs: whether a
+// present is wanted at all (NeedsPresent), whether one is queued content that
+// must not be throttled (PresentImmediate), and whether the only motion is the
+// throttle-safe loading spinner (PresentThrottle).
+type presenter interface {
+	NeedsPresent() bool
+	PresentImmediate() bool
+	PresentThrottle() bool
+}
+
+// presentState is the gated loop's per-tick bookkeeping: consecutive idle ticks
+// (for the heartbeat) and consecutive throttled spinner ticks (for the spinner
+// cadence). Both reset whenever the loop blits.
+type presentState struct {
+	idle    int
+	spinner int
+}
+
+// shouldRepaint decides whether the gated ticker blits on this tick. An ungated
+// handler (one that cannot answer the presenter contract, e.g. a test's) always
+// repaints, preserving the pre-gating behaviour. A gated one:
+//   - blits at once when content is queued (PresentImmediate), so a streamed
+//     source reaches the screen without throttle delay;
+//   - while only the loading spinner moves (PresentThrottle), blits every
+//     spinnerTicks-th tick, holding the spinner's real-time speed at a quarter of
+//     the blit cost;
+//   - while something else needs the full cadence (a GIF, a debounce) blits every
+//     tick, as before;
+//   - while fully idle, blits only on the heartbeatTicks-th tick.
+//
+// The counters track consecutive skipped ticks of each kind and reset on any
+// blit, so a state change takes effect on the next tick.
+func shouldRepaint(gated bool, np presenter, st *presentState) bool {
+	if !gated {
+		st.idle, st.spinner = 0, 0
 		return true
 	}
-	*idle++
-	if *idle >= heartbeatTicks {
-		*idle = 0
+	if np.PresentImmediate() {
+		st.idle, st.spinner = 0, 0
+		return true
+	}
+	if np.NeedsPresent() {
+		st.idle = 0
+		if !np.PresentThrottle() {
+			st.spinner = 0
+			return true
+		}
+		st.spinner++
+		if st.spinner >= spinnerTicks {
+			st.spinner = 0
+			return true
+		}
+		return false
+	}
+	st.spinner = 0
+	st.idle++
+	if st.idle >= heartbeatTicks {
+		st.idle = 0
 		return true
 	}
 	return false

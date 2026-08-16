@@ -136,6 +136,14 @@ func (h *Handler) Frame() ([]byte, int, int, bool) {
 // to skip the blit on an idle, unchanged window; see internal/window's ticker.
 func (h *Handler) NeedsPresent() bool { return h.a.NeedsPresent() }
 
+// PresentImmediate reports that queued content must be blitted without throttle
+// delay; the gated present loop uses it to override its spinner throttle.
+func (h *Handler) PresentImmediate() bool { return h.a.PresentImmediate() }
+
+// PresentThrottle reports that the only motion is the loading spinner, which the
+// gated present loop may redraw below its tick rate; see internal/window.
+func (h *Handler) PresentThrottle() bool { return h.a.PresentThrottle() }
+
 // Resize maps a logical size to device pixels via the backing scale.
 func (h *Handler) Resize(w, height int, scale float64) {
 	s := h.a.Scene()

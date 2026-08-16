@@ -281,28 +281,103 @@ func TestRefreshStreamingNoSubs(t *testing.T) {
 
 func TestFrameAnimatesWhileLoading(t *testing.T) {
 	a := New(Config{Registry: newReg(), Width: 360, Height: 240})
+	clock := time.Unix(0, 0)
+	a.now = func() time.Time { return clock }
 	// Idle: a second Frame with no state change does not redraw.
 	a.Frame()
 	if _, changed := a.Frame(); changed {
 		t.Fatal("idle scene redrew without damage")
 	}
-	// Loading: every Frame advances the animation clock and yields a fresh frame.
+	// Loading: the animation clock advances by the real time elapsed since it last
+	// stepped, so the spinner keeps a steady speed however often Frame is called.
 	a.Scene().SetLoading(true, 0, 2)
+	a.Frame() // drain the SetLoading damage AND establish the animation clock
 	f0 := a.Scene().AnimFrame()
+	// A frame less than one animation interval later steps nothing and redraws
+	// nothing (the spinner has not moved).
+	clock = clock.Add(animFrameInterval / 2)
+	if _, changed := a.Frame(); changed {
+		t.Fatal("a sub-interval frame redrew without the spinner moving")
+	}
+	if a.Scene().AnimFrame() != f0 {
+		t.Fatal("the animation clock advanced before a full interval elapsed")
+	}
+	// Four intervals of real time later, the clock steps by exactly four frames and
+	// the scene redraws — regardless of how few times Frame was called between.
+	clock = time.Unix(0, 0).Add(4*animFrameInterval + animFrameInterval/2)
 	if _, changed := a.Frame(); !changed {
-		t.Fatal("loading scene did not produce an animated frame")
+		t.Fatal("the spinner moved but the frame was not redrawn")
 	}
-	if _, changed := a.Frame(); !changed {
-		t.Fatal("loading scene stopped animating on the second frame")
+	if got := a.Scene().AnimFrame(); got != f0+4 {
+		t.Fatalf("anim frame = %d, want %d (stepped by the elapsed intervals)", got, f0+4)
 	}
-	if a.Scene().AnimFrame() <= f0 {
-		t.Fatalf("anim frame did not advance: %d -> %d", f0, a.Scene().AnimFrame())
-	}
-	// Loading off: animation stops, idle gate restored.
+	// Loading off: animation stops, the clock resets, idle gate restored.
 	a.Scene().SetLoading(false, 2, 2)
 	a.Frame() // consume the damage from SetLoading
 	if _, changed := a.Frame(); changed {
 		t.Fatal("scene kept animating after loading cleared")
+	}
+	if !a.lastAnim.IsZero() {
+		t.Fatal("the animation clock should reset when animation stops")
+	}
+}
+
+// TestFrameContentChangeRedrawsImmediatelyWhileThrottled proves the throttle
+// only gates the spinner cadence: a content change queued between spinner steps
+// redraws on its own tick, so streamed sources still appear promptly, and the
+// present loop is told to blit it immediately (PresentImmediate).
+func TestFrameContentChangeRedrawsImmediatelyWhileThrottled(t *testing.T) {
+	a := New(Config{Registry: newReg(), Width: 360, Height: 240})
+	clock := time.Unix(0, 0)
+	a.now = func() time.Time { return clock }
+	a.DeferSceneWrites()
+	a.Scene().SetLoading(true, 0, 3)
+	a.Frame() // consume the SetLoading damage; the spinner clock is now set
+	f0 := a.Scene().AnimFrame()
+	// A background scene write lands (a streamed source): it raises the present
+	// wake, so the loop is told to blit at once and NOT to throttle.
+	a.post(func() { a.Scene().SetItems([]source.Item{{ID: "1", Source: source.HackerNews, Title: "hi"}}) })
+	if !a.PresentImmediate() {
+		t.Fatal("a queued content write must ask the present loop to blit immediately")
+	}
+	if _, changed := a.Frame(); !changed { // no clock advance: same instant
+		t.Fatal("a content change between spinner steps must redraw immediately")
+	}
+	// It redrew on the content change, not because the spinner stepped.
+	if a.Scene().AnimFrame() != f0 {
+		t.Fatal("content-change redraw must not advance the animation clock early")
+	}
+	// Frame drained the queued write, so the wake drops and the loop can throttle
+	// the spinner again.
+	if a.PresentImmediate() {
+		t.Fatal("Frame should drain the queued write and drop the present wake")
+	}
+}
+
+// TestPresentThrottleOnlyForSpinner proves the present-throttle signal is raised
+// for the indeterminate loading spinner but cleared the moment real content
+// motion (a playing GIF) needs the full blit cadence.
+func TestPresentThrottleOnlyForSpinner(t *testing.T) {
+	a := New(Config{Registry: newReg(), Width: 360, Height: 240})
+	if a.PresentThrottle() {
+		t.Fatal("an idle scene is not throttleable — nothing is animating")
+	}
+	a.Scene().SetLoading(true, 0, 2)
+	a.Frame()
+	if !a.PresentThrottle() {
+		t.Fatal("a loading spinner should be throttleable")
+	}
+	// A playing GIF is real content: the loop must present its frames at full rate.
+	a.Scene().SetGIFPlaying(true)
+	a.Frame()
+	if a.PresentThrottle() {
+		t.Fatal("a playing GIF must not be throttled")
+	}
+	a.Scene().SetGIFPlaying(false)
+	a.Scene().SetLoading(false, 2, 2)
+	a.Frame()
+	if a.PresentThrottle() {
+		t.Fatal("a settled scene is not throttleable")
 	}
 }
 

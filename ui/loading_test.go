@@ -98,12 +98,40 @@ func TestAdvanceAnim(t *testing.T) {
 	s := newScene()
 	f0 := s.AnimFrame()
 	r0 := s.Rev()
-	s.AdvanceAnim()
+	s.AdvanceAnim(1)
 	if s.AnimFrame() != f0+1 {
 		t.Fatalf("anim frame = %d, want %d", s.AnimFrame(), f0+1)
 	}
 	if s.Rev() == r0 {
 		t.Fatal("AdvanceAnim should bump the damage sequence")
+	}
+}
+
+// TestAdvanceAnimByN proves a multi-tick advance steps the clock by exactly n,
+// so a throttled present loop that redraws less often than it ticks still turns
+// the spinner at the same real-time speed.
+func TestAdvanceAnimByN(t *testing.T) {
+	s := newScene()
+	f0 := s.AnimFrame()
+	s.AdvanceAnim(4)
+	if s.AnimFrame() != f0+4 {
+		t.Fatalf("anim frame = %d, want %d", s.AnimFrame(), f0+4)
+	}
+}
+
+// TestAdvanceAnimNonPositiveIsNoop proves a zero/negative advance neither moves
+// the clock nor marks the scene dirty, so a spurious call cannot rewind or
+// spuriously redraw.
+func TestAdvanceAnimNonPositiveIsNoop(t *testing.T) {
+	s := newScene()
+	f0, r0 := s.AnimFrame(), s.Rev()
+	s.AdvanceAnim(0)
+	s.AdvanceAnim(-3)
+	if s.AnimFrame() != f0 {
+		t.Fatalf("anim frame = %d, want unchanged %d", s.AnimFrame(), f0)
+	}
+	if s.Rev() != r0 {
+		t.Fatal("a non-positive AdvanceAnim must not bump the damage sequence")
 	}
 }
 
@@ -154,7 +182,7 @@ func TestLoadingPlaceholderAnimates(t *testing.T) {
 	a := renderPNG(t, s, "loading-empty-frame0")
 	// Advance half a revolution so the hand points the opposite way.
 	for i := 0; i < spinnerPeriod/2; i++ {
-		s.AdvanceAnim()
+		s.AdvanceAnim(1)
 	}
 	b := renderPNG(t, s, "loading-empty-frame1")
 
@@ -194,7 +222,7 @@ func TestLoadingPlaceholderAnimates(t *testing.T) {
 	// carry no accent on the former track row.
 	s.SetLoading(false, 3, 3)
 	c := renderPNG(t, s, "loaded-empty-idle")
-	s.AdvanceAnim() // no-op visually (not animating), but prove idempotence
+	s.AdvanceAnim(1) // no-op visually (not animating), but prove idempotence
 	d := make([]byte, len(c))
 	s.Draw(d)
 	if bufDiff(c, d) != 0 {

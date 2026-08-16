@@ -14,4 +14,12 @@ func TestHandlerNeedsPresent(t *testing.T) {
 	if !h.NeedsPresent() {
 		t.Fatal("Handler.NeedsPresent should report the app's animating state")
 	}
+	// A loading spinner is throttle-safe: the Handler forwards that verdict so the
+	// present loop redraws it below the tick rate.
+	if !h.PresentThrottle() {
+		t.Fatal("Handler.PresentThrottle should report the app's spinner-throttle state")
+	}
+	if h.PresentImmediate() {
+		t.Fatal("no queued write, so Handler.PresentImmediate should be false")
+	}
 }

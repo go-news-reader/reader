@@ -168,7 +168,7 @@ func TestPreviewWidthVisibility(t *testing.T) {
 func TestFeedGeomSubtractsPane(t *testing.T) {
 	s := previewScene()
 	s.layout()
-	_, w := s.feedGeom()
+	_, w := s.FeedGeom() // the exported wrapper front-ends call
 	full := s.W - s.m.sidebarW - 2*s.m.pad
 	if w >= full {
 		t.Fatalf("feed width %d not reduced by the pane (full %d)", w, full)
