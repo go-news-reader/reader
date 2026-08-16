@@ -25,9 +25,9 @@ require (
 	github.com/go-tiktok/tiktok v0.3.0
 	github.com/go-webengine/engine v0.3.11
 	github.com/go-widgets/mvvm v0.5.0
-	github.com/go-widgets/painter v0.9.0
-	github.com/go-widgets/toolkit v0.154.0
-	github.com/go-widgets/window v0.37.0
+	github.com/go-widgets/painter v0.11.0
+	github.com/go-widgets/toolkit v0.163.0
+	github.com/go-widgets/window v0.38.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.83.0
@@ -48,6 +48,7 @@ require (
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
+	github.com/go-gfx/gfx v0.1.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
 	github.com/go-macos/objc v0.1.1 // indirect
 	github.com/go-mswin/win32 v0.1.0 // indirect
@@ -70,10 +71,10 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/image v0.44.0 // indirect
+	golang.org/x/image v0.45.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	modernc.org/libc v1.74.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
