@@ -100,6 +100,29 @@ func TestSystemAppearance(t *testing.T) {
 	t.Fatal("SystemAppearance did not forward the harvested accent to the app")
 }
 
+// TestTopbarRefreshButton clicks the visible topbar Refresh button and asserts it
+// fires the very same scene seam (OnPullRefresh) the pull-to-refresh gesture uses,
+// so the button and the overscroll gesture do one thing.
+func TestTopbarRefreshButton(t *testing.T) {
+	a := newApp(t)
+	h := New(a)
+	fired := 0
+	a.Scene().OnPullRefresh = func() { fired++ }
+	click(t, h, ui.HitRefresh)
+	if fired != 1 {
+		t.Fatalf("topbar Refresh fired OnPullRefresh %d times, want 1", fired)
+	}
+}
+
+// TestTopbarRefreshButtonNilSafe guards the runHit branch when no refresh seam is
+// wired (OnPullRefresh nil): the click must be a no-op, not a panic.
+func TestTopbarRefreshButtonNilSafe(t *testing.T) {
+	a := newApp(t)
+	h := New(a)
+	a.Scene().OnPullRefresh = nil
+	click(t, h, ui.HitRefresh) // must not panic
+}
+
 func TestFrame(t *testing.T) {
 	h := New(newApp(t))
 	buf, w, hgt, changed := h.Frame()

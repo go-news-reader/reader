@@ -108,13 +108,19 @@ func (s *Scene) layout() {
 	// the feed view so a collapsed sidebar can be reopened.
 	s.burgerR = toolkit.Rect{X: 0, Y: 0, W: m.topbarH, H: m.topbarH}
 
-	// Search field in the topbar, right of the burger+title header. The header
-	// reserves at least the sidebar width, so nothing overlaps when collapsed.
+	// Refresh button (right of the topbar) re-fetches the feed — the visible,
+	// discoverable twin of the pull-to-refresh overscroll gesture. A topbarH square
+	// pinned to the right edge, matching the burger's cell on the left.
+	s.refreshR = toolkit.Rect{X: s.W - m.topbarH, Y: 0, W: m.topbarH, H: m.topbarH}
+
+	// Search field in the topbar, between the burger+title header and the refresh
+	// button. The header reserves at least the sidebar width, so nothing overlaps
+	// when collapsed.
 	headerW := s.burgerR.W + m.pad + m.title.width("News") + m.pad
 	if headerW < m.sidebarW {
 		headerW = m.sidebarW
 	}
-	s.searchR = toolkit.Rect{X: headerW + m.pad, Y: (m.topbarH - m.searchH) / 2, W: s.W - headerW - 2*m.pad, H: m.searchH}
+	s.searchR = toolkit.Rect{X: headerW + m.pad, Y: (m.topbarH - m.searchH) / 2, W: s.refreshR.X - headerW - 2*m.pad, H: m.searchH}
 
 	// Per-newsgroup post counts for the bottom status bar (computed here so the
 	// feed geometry, which subtracts the bar, is consistent this frame).
@@ -415,6 +421,10 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 		over.SetBounds(toolkit.Rect{X: tx, Y: s.searchR.Y + (s.searchR.H-f.Height())/2, W: f.Measure(s.searchEntry.Text), H: f.Height()})
 		over.Draw(p, th)
 	}
+	// Refresh button at the right, drawn as the Iconoir "refresh-double" glyph at
+	// the same visual weight as the burger, so the topbar reads as burger | search |
+	// refresh.
+	drawRefreshIcon(p, toolkit.Rect{X: s.refreshR.X + (s.refreshR.W-ic)/2, Y: (m.topbarH - ic) / 2, W: ic, H: ic}, onAccent, s.iconStroke())
 	s.topbarKey, s.topbarSpr = k, img
 	return img
 }
@@ -624,6 +634,9 @@ func (s *Scene) HitTest(x, y int) Hit {
 	if y < m.topbarH {
 		if inRect(s.burgerR, x, y) {
 			return Hit{Kind: HitBurger}
+		}
+		if inRect(s.refreshR, x, y) {
+			return Hit{Kind: HitRefresh}
 		}
 		if inRect(s.searchR, x, y) {
 			return Hit{Kind: HitSearch}

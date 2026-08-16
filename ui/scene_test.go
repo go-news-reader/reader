@@ -322,6 +322,18 @@ func TestHitTest(t *testing.T) {
 	if s.HitTest(5, m.topbarH/2).Kind != HitBurger {
 		t.Fatal("topbar left should be the burger")
 	}
+	// Refresh button occupies the right of the topbar: a topbarH square pinned to
+	// the right edge. Its centre hit-tests to HitRefresh; just left of it is the
+	// search field (never Refresh).
+	if s.refreshR != (toolkit.Rect{X: s.W - m.topbarH, Y: 0, W: m.topbarH, H: m.topbarH}) {
+		t.Fatalf("refresh rect = %+v", s.refreshR)
+	}
+	if got := s.HitTest(s.W-m.topbarH/2, m.topbarH/2).Kind; got != HitRefresh {
+		t.Fatalf("topbar right should be Refresh, got %d", got)
+	}
+	if got := s.HitTest(s.refreshR.X-2, m.topbarH/2).Kind; got == HitRefresh {
+		t.Fatal("just left of the refresh button must not be Refresh")
+	}
 	// Topbar, not on burger or search (over the title area) -> none.
 	if s.HitTest(m.topbarH+2, m.topbarH/2).Kind != HitNone {
 		t.Fatal("topbar none")

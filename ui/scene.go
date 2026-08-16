@@ -85,6 +85,7 @@ const (
 	HitLog                        // the sidebar Network-log entry (open the HTTP log)
 	HitCloseLog                   // the log view's "< Back" button (return to the feed)
 	HitBurger                     // the topbar burger button (collapse/expand the sidebar)
+	HitRefresh                    // the topbar refresh button (re-fetch the feed) — mirrors the pull-to-refresh gesture
 	HitSidebarDivider             // the draggable divider at the sidebar's right edge
 	HitFixAuth                    // an in-feed "needs sign-in" banner row — Value = source kind
 	HitToggleGroup                // a Usenet group card's header/chevron — Value = release base
@@ -528,6 +529,7 @@ type Scene struct {
 	logR      toolkit.Rect // sidebar Network-log entry
 	accountsR toolkit.Rect // sidebar Accounts entry
 	burgerR   toolkit.Rect // topbar burger button (feed view)
+	refreshR  toolkit.Rect // topbar refresh button (feed view)
 	searchR   toolkit.Rect
 
 	// The chrome (sidebar/topbar) is cached in single sprite slots — like Evas

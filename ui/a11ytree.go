@@ -86,6 +86,7 @@ func (s *Scene) a11yFeed() []A11yNode {
 		node(toolkit.RoleDocument, "News", "", toolkit.Rect{W: s.W, H: s.H}),
 		node(toolkit.RoleButton, "Toggle sidebar", "", s.burgerR),
 		node(toolkit.RoleSearchbox, "Search", s.Search(), s.searchR),
+		node(toolkit.RoleButton, "Refresh", "", s.refreshR),
 	}
 
 	// profTabs is rebuilt from Profiles by the layout pass above, so every index

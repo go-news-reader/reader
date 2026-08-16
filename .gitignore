@@ -2,3 +2,8 @@
 /reader
 /*.png
 .DS_Store
+
+# Coverage profiles: produced by `go test -coverprofile`, never committed.
+cov.out
+*.cov
+coverage.out

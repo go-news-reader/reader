@@ -225,6 +225,12 @@ func (h *Handler) runHit(hit ui.Hit) {
 		vm.CloseView.Execute()
 	case ui.HitBurger:
 		vm.ToggleSidebar.Execute()
+	case ui.HitRefresh:
+		// The visible topbar twin of the pull-to-refresh overscroll gesture: fire
+		// the very same scene seam so the button and the gesture do one thing.
+		if fn := s.OnPullRefresh; fn != nil {
+			fn()
+		}
 	case ui.HitSidebarDivider:
 		s.BeginSidebarResize()
 	case ui.HitPreviewDivider:
