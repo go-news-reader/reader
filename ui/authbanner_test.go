@@ -35,9 +35,10 @@ func TestAuthBannerRenderAndHit(t *testing.T) {
 	feedX := m.sidebarW + m.pad
 	feedTop := m.topbarH
 
-	// Pixel fact: the first banner pill is painted in the theme accent.
+	// The banners are pinned above the feed list, one per prompt, stacked from the
+	// topbar down. Pixel fact: the first banner pill is painted in the theme accent.
 	bx := feedX + 4
-	by := feedTop + m.pad + m.bannerH/2
+	by := feedTop + m.bannerH/2
 	if got := px(buf, s.W, bx, by); got.R != s.theme.Accent.R || got.G != s.theme.Accent.G || got.B != s.theme.Accent.B {
 		t.Fatalf("banner pixel = %v, want accent %v", got, s.theme.Accent)
 	}
@@ -47,32 +48,39 @@ func TestAuthBannerRenderAndHit(t *testing.T) {
 		t.Fatalf("banner-0 hit = %+v", h)
 	}
 	// Clicking banner row 1 returns HitFixAuth for Mastodon.
-	by1 := feedTop + m.pad + m.bannerH + m.cardGap + m.bannerH/2
+	by1 := feedTop + (m.bannerH + m.cardGap) + m.bannerH/2
 	if h := s.HitTest(bx, by1); h.Kind != HitFixAuth || h.Value != string(source.Mastodon) {
 		t.Fatalf("banner-1 hit = %+v", h)
 	}
 }
 
-func TestAuthBannerEmptyLayoutUnchanged(t *testing.T) {
+func TestAuthBannerShiftsFeedList(t *testing.T) {
 	s := newScene()
 	s.layout()
-	base := s.rows[0].top
-	// No prompts -> the first card sits at the same top offset as before.
+	// No prompts: the feed list starts immediately below the topbar.
+	base := s.feed.list.Bounds().Y
+	if base != s.m.topbarH {
+		t.Fatalf("no-prompt list top = %d, want topbarH %d", base, s.m.topbarH)
+	}
+	// Prompts push the feed list down by the pinned banner stack's height.
+	s.SetAuthPrompts(threePrompts())
+	s.layout()
+	if s.feedBannerH() == 0 || s.feed.list.Bounds().Y != base+s.feedBannerH() {
+		t.Fatalf("banners did not push the feed list down: top=%d base=%d bannerH=%d",
+			s.feed.list.Bounds().Y, base, s.feedBannerH())
+	}
+	// Clearing the prompts restores the original list top.
 	s.SetAuthPrompts(nil)
 	s.layout()
-	if s.rows[0].top != base {
-		t.Fatalf("empty prompts shifted the feed: %d != %d", s.rows[0].top, base)
-	}
-	if len(s.authRows) != 0 {
-		t.Fatalf("authRows = %d, want 0", len(s.authRows))
+	if s.feed.list.Bounds().Y != base {
+		t.Fatalf("cleared prompts left the feed list at %d, want %d", s.feed.list.Bounds().Y, base)
 	}
 }
 
-func TestAuthBannerScrollClipping(t *testing.T) {
-	// A prompt per source kind in a short window so some banners fall below the
-	// viewport (the y >= s.H clip), then scroll far so the early banners pass
-	// above the feed top (the y+bannerH < feedTop clip). Both draw-clip branches
-	// and the drawAuthBanner path are exercised.
+func TestAuthBannerManyRender(t *testing.T) {
+	// One prompt per source kind in a short window: the pinned banner stack is
+	// taller than the viewport, so drawAuthBanner paints (and the painter clamps)
+	// every prompt without panicking; a feed scroll leaves the pinned banners put.
 	kinds := []source.Kind{
 		source.Reddit, source.HackerNews, source.Syndication, source.Usenet,
 		source.Mastodon, source.Lemmy, source.Bluesky, source.Twitter,
@@ -85,9 +93,9 @@ func TestAuthBannerScrollClipping(t *testing.T) {
 	s := New(500, 260, ThemeFor(OSLinux, false))
 	s.SetItems(sampleItems())
 	s.SetAuthPrompts(prompts)
-	renderPNG(t, s, "auth-prompt-many") // some banners below s.H -> clipped
+	renderPNG(t, s, "auth-prompt-many")
 
-	s.Scroll(100000) // clamp to bottom; early banners scroll above the feed top
+	s.Scroll(100000) // scrolls the feed cards; the pinned banners stay put
 	renderPNG(t, s, "auth-prompt-scrolled")
 }
 

@@ -124,23 +124,14 @@ func (s *Scene) SelectableAt(x, y int) bool {
 		if s.previewHas && !s.webPreviewItem() && inRect(s.previewR, x, y) {
 			return true
 		}
-		// The sidebar's text column and the feed list of cards: a press here that
-		// hit-tested to no interactive target still begins a selection, so a drag
-		// over a card title or a sidebar label selects it.
-		return inRect(s.sidebarTextRegion(), x, y) || inRect(s.feedListRegion(), x, y)
+		// The feed list of cards: a press here that hit-tested to no interactive
+		// target still begins a selection, so a drag over a card title selects it.
+		// (The sidebar's middle list is a TreeView whose rows resolve to actions,
+		// not selectable text, so it no longer participates in text selection.)
+		return inRect(s.feedListRegion(), x, y)
 	default:
 		return false
 	}
-}
-
-// sidebarTextRegion is the sidebar's scrollable label band (between the profile
-// tabs and the pinned footer), in screen coords. Empty when the sidebar is
-// collapsed. A press inside it may begin a selection over the sidebar labels.
-func (s *Scene) sidebarTextRegion() toolkit.Rect {
-	if s.m.sidebarW == 0 {
-		return toolkit.Rect{}
-	}
-	return toolkit.Rect{X: 0, Y: s.sideBandTop, W: s.m.sidebarW, H: s.sideBandBot - s.sideBandTop}
 }
 
 // feedListRegion is the feed's card viewport in screen coords: right of the

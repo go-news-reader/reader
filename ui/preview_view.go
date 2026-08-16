@@ -127,7 +127,7 @@ func (s *Scene) feedGeom() (x, w int) {
 // feedScrollbarShown reports whether the feed's vertical scrollbar is visible
 // (its content overflows the viewport between the topbar and the download panel).
 func (s *Scene) feedScrollbarShown() bool {
-	return s.feedScroll.contentH > s.feedBottom()-s.m.topbarH
+	return s.feedContentH() > s.feedViewportH()
 }
 
 // feedCardW is the feed content width for cards/banners: when the scrollbar is
@@ -365,16 +365,19 @@ func (s *Scene) PrefetchWebURLs(it source.Item, n int) []string {
 	if n <= 0 {
 		return nil
 	}
-	cards := make([]int, 0, len(s.rows))
-	for i, r := range s.rows {
-		if r.group == nil {
-			cards = append(cards, i)
+	s.ensureFeed()
+	// The web-renderable cards are the standalone (non-group) feed entries; a
+	// Usenet group summary has no web target, so it is skipped like a text post.
+	items := make([]source.Item, 0, len(s.feed.display))
+	for _, e := range s.feed.display {
+		if e.group == nil {
+			items = append(items, e.item)
 		}
 	}
 	cur := -1
-	for ci, ri := range cards {
-		if sameItem(s.rows[ri].item, it) {
-			cur = ci
+	for i := range items {
+		if sameItem(items[i], it) {
+			cur = i
 			break
 		}
 	}
@@ -388,10 +391,10 @@ func (s *Scene) PrefetchWebURLs(it source.Item, n int) []string {
 			break
 		}
 		j := cur + off
-		if j < 0 || j >= len(cards) {
+		if j < 0 || j >= len(items) {
 			continue
 		}
-		u := webPreviewURL(s.rows[cards[j]].item)
+		u := webPreviewURL(items[j])
 		if u == "" {
 			continue
 		}

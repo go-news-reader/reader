@@ -44,6 +44,11 @@ func TestPrefetchWebURLs(t *testing.T) {
 	if len(got) != 2 || got[0] != "https://c/" || got[1] != "https://a/" {
 		t.Fatalf("neighbours of b = %v, want [https://c/ https://a/]", got)
 	}
+	// n=1 stops after the first neighbour lands (the len(out) >= n break, hit on the
+	// next loop iteration).
+	if one := s.PrefetchWebURLs(feed[2], 1); len(one) != 1 || one[0] != "https://c/" {
+		t.Fatalf("n=1 neighbours = %v, want [https://c/]", one)
+	}
 
 	// De-duplication + out-of-range offsets: a centre whose prev and next share a
 	// URL, with no items two steps out.
@@ -57,5 +62,27 @@ func TestPrefetchWebURLs(t *testing.T) {
 	got = s.PrefetchWebURLs(dup[1], 3)
 	if len(got) != 1 || got[0] != "https://same/" {
 		t.Fatalf("dedup neighbours = %v, want [https://same/]", got)
+	}
+
+	// A Usenet multipart GROUP entry is a summary card with no web target, so it is
+	// dropped when building the web-renderable neighbour list (the group-skip
+	// branch): the two web items on either side remain reachable across it.
+	grp := []source.Item{
+		webIt("a", "https://a/"),
+		usenetItem("g1", `[1/2] - "rel.r00" yEnc (1/1) 100`),
+		usenetItem("g2", `[2/2] - "rel.r01" yEnc (1/1) 100`),
+		webIt("b", "https://b/"),
+	}
+	s.SetItems(grp)
+	s.layout()
+	res := s.PrefetchWebURLs(grp[0], 3)
+	reached := false
+	for _, u := range res {
+		if u == "https://b/" {
+			reached = true
+		}
+	}
+	if !reached {
+		t.Fatalf("group-skip prefetch = %v, want it to reach https://b/ across the group", res)
 	}
 }

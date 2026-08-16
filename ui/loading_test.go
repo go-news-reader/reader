@@ -130,9 +130,7 @@ func TestSpinnerPhaseWraps(t *testing.T) {
 	}
 }
 
-// TestLoadingDrawDirect exercises the indicator helpers directly, including the
-// drawLoadStrip loadTotal==0 branch (which the guarded layout path never
-// reaches), so a degenerate total never divides by zero.
+// TestLoadingDrawDirect exercises the empty-feed placeholder helper directly.
 func TestLoadingDrawDirect(t *testing.T) {
 	s := New(700, 460, ThemeFor(OSLinux, false))
 	s.layout()
@@ -140,12 +138,6 @@ func TestLoadingDrawDirect(t *testing.T) {
 	// drawLoadingPlaceholder with a tiny feed width still centres its spinner.
 	p, img := sceneCanvas(s)
 	s.drawLoadingPlaceholder(p, img, 0, 60, mute(s.theme.OnSurface, s.theme.Surface))
-
-	// drawLoadStrip with loadTotal==0 skips the determinate fraction (the false
-	// branch of the `loadTotal > 0` guard) and must not divide by zero.
-	s.SetLoading(true, 0, 0)
-	p2, img2 := sceneCanvas(s)
-	s.drawLoadStrip(p2, img2, 0, 0, 40, mute(s.theme.OnSurface, s.theme.Surface))
 }
 
 // TestLoadingPlaceholderAnimates renders the empty-feed loading placeholder at
@@ -210,98 +202,41 @@ func TestLoadingPlaceholderAnimates(t *testing.T) {
 	}
 }
 
-// TestLoadStripAndPendingSidebar renders the partial-progress state: some items
-// already shown, a top-of-feed strip, and a pending sidebar source. It proves
-// the strip renders (accent present in its band), that it animates, and that a
-// pending source visibly changes the sidebar sprite versus none pending.
-func TestLoadStripAndPendingSidebar(t *testing.T) {
+// TestFetchingStripAndPendingSidebar proves the partial-progress state now rides
+// on the CardList's own pull-to-fetch strip (FetchingBottom + BottomLabel) rather
+// than a hand-drawn top strip, and that a pending sidebar source visibly changes
+// the sidebar sprite versus none pending.
+func TestFetchingStripAndPendingSidebar(t *testing.T) {
 	s := New(800, 520, ThemeFor(OSLinux, false))
 	s.SetItems(sampleItems())
 	s.SetSubs(sampleSubs())
 	// HackerNews still pending; Reddit already returned.
 	s.SetPendingSources([]source.Subscription{{Source: source.HackerNews}})
 	s.SetLoading(true, 1, 2)
-
-	strip := renderPNG(t, s, "loading-partial")
-
 	s.layout()
-	m := s.m
-	if !s.showStrip {
-		t.Fatal("progress strip not laid out with items present")
-	}
-	// Accent appears somewhere in the strip band (the moving highlight / fill).
-	feedTop := m.topbarH
-	bandY0 := feedTop + s.loadStripTop - s.feedScroll.offset
-	accent := s.theme.Accent
-	foundAccent := false
-	for y := bandY0; y < bandY0+m.loadStripH && !foundAccent; y++ {
-		for x := m.sidebarW + m.pad; x < s.W-m.pad; x++ {
-			if p := px(strip, s.W, x, y); p.R == accent.R && p.G == accent.G && p.B == accent.B {
-				foundAccent = true
-				break
-			}
-		}
-	}
-	if !foundAccent {
-		t.Fatal("no accent pixel in the progress strip band")
-	}
 
-	// The strip carries a subtle spinner cue: advancing frames shifts the small
-	// trailing toolkit.Spinner. The determinate ProgressBar is the primary
-	// feedback, so the motion is intentionally light (a thin hand).
-	countAccent := func(buf []byte) int {
-		n := 0
-		for y := bandY0; y < bandY0+m.loadStripH; y++ {
-			for x := m.sidebarW + m.pad; x < s.W-m.pad; x++ {
-				if p := px(buf, s.W, x, y); p.R == accent.R && p.G == accent.G && p.B == accent.B {
-					n++
-				}
-			}
-		}
-		return n
+	// A refresh in flight spins the CardList's bottom pull-to-fetch strip and
+	// labels it, and the scene reports it as animating.
+	list := s.FeedCardList()
+	if !list.FetchingBottom || list.BottomLabel == "" {
+		t.Fatalf("loading did not arm the CardList fetch strip: fetching=%v label=%q",
+			list.FetchingBottom, list.BottomLabel)
 	}
-	before := make([]byte, len(strip))
-	copy(before, strip)
-	for i := 0; i < spinnerPeriod/2; i++ {
-		s.AdvanceAnim()
+	if !s.FeedAnimating() {
+		t.Fatal("a fetching feed should report FeedAnimating")
 	}
-	after := make([]byte, s.W*s.H*4)
-	s.Draw(after)
-	if bufDiff(before, after) < 8 {
-		t.Fatal("progress strip spinner did not animate between frames")
-	}
-
-	// The determinate ProgressBar fill grows with completed sources: a full 2/2
-	// paints more accent across the strip band than a half 1/2.
-	half := countAccent(strip)
-	s.SetLoading(true, 2, 2)
-	full := renderPNG(t, s, "loading-partial-full")
-	if fullN := countAccent(full); fullN <= half {
-		t.Fatalf("full ProgressBar (%d accent px) not wider than half (%d)", fullN, half)
-	}
+	renderPNG(t, s, "loading-partial")
 
 	// Pending sidebar marker: a scene with a pending source renders a different
 	// sidebar than one with none (the spinner is drawn).
 	sp1 := s.sidebarSprite()
-	s.SetLoading(false, 2, 2) // clears pending -> no ring, new sprite
+	s.SetLoading(false, 2, 2) // clears pending + the fetch strip
 	s.layout()
+	if list.FetchingBottom || list.BottomLabel != "" {
+		t.Fatal("clearing loading should idle the CardList fetch strip")
+	}
 	sp2 := s.sidebarSprite()
 	if bufDiff(sp1.Pix, sp2.Pix) == 0 {
 		t.Fatal("pending sidebar marker did not change the sidebar rendering")
 	}
-}
-
-// TestLoadStripScrolledOffscreen exercises the strip's scroll-clip branch: a
-// tall feed scrolled far down pushes the strip above the feed top so it is
-// skipped (the y+loadStripH < feedTop clip).
-func TestLoadStripScrolledOffscreen(t *testing.T) {
-	tall := New(600, 360, ThemeFor(OSMac, false))
-	many := make([]source.Item, 30)
-	for i := range many {
-		many[i] = source.Item{ID: string(rune('a' + i)), Source: source.HackerNews, Title: "x", Score: -1, Comments: -1}
-	}
-	tall.SetItems(many)
-	tall.SetLoading(true, 0, 1)
-	tall.Scroll(100000) // clamp to bottom; strip scrolls above the viewport
-	renderPNG(t, tall, "loading-strip-scrolled")
 }

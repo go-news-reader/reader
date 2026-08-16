@@ -186,7 +186,7 @@ func TestSelectAndFinishPreview(t *testing.T) {
 	if _, ok := s.PreviewItem(); ok {
 		t.Fatal("nothing should be selected initially")
 	}
-	s.SelectPreview(s.rows[0].item)
+	s.SelectPreview(s.Items[0])
 	it, ok := s.PreviewItem()
 	if !ok || it.ID != "1" {
 		t.Fatalf("preview item = %+v ok=%v", it, ok)
@@ -234,7 +234,7 @@ func TestPreviewDrawStates(t *testing.T) {
 	// Empty state (no selection): draws the prompt without panicking.
 	s.Draw(buf)
 	// Selected, pending image → spinner path.
-	s.SelectPreview(s.rows[0].item)
+	s.SelectPreview(s.Items[0])
 	s.SetPreviewLoading(true)
 	s.Draw(buf)
 	// Selected, no thumb, not pending → media-kind label path.
@@ -244,14 +244,14 @@ func TestPreviewDrawStates(t *testing.T) {
 	s.SetThumb("1", synthRGBA(200, 120))
 	s.Draw(buf)
 	// A HackerNews item (no media) → no image box, body path only.
-	s.SelectPreview(s.rows[1].item)
+	s.SelectPreview(s.Items[1])
 	s.Draw(buf)
 }
 
 func TestPreviewHitTest(t *testing.T) {
 	s := previewScene()
 	s.layout()
-	s.SelectPreview(s.rows[0].item)
+	s.SelectPreview(s.Items[0])
 	s.layoutPreview()
 	// The Open button (via the exported accessor) resolves to HitOpenPreview.
 	oc, shown := s.PreviewOpenButton()
@@ -296,20 +296,20 @@ func TestPreviewScroll(t *testing.T) {
 	}
 }
 
-func TestGroupHeaderPreviewVsChevron(t *testing.T) {
+// TestGroupSummaryClickPreviews proves a click on a Usenet multipart post's
+// summary card resolves to HitItem carrying the group summary item (ID = release
+// base, Source = Usenet); the app routes that to PreviewGroup. Inline
+// expand/download is deferred to a follow-up GroupCard.
+func TestGroupSummaryClickPreviews(t *testing.T) {
 	s := groupScene()
-	r, feedX, feedW := groupRow(s)
-	// The chevron toggles (click its centre, in screen coords).
-	chev := s.chevronRect(feedX, r.top)
-	chevY := s.m.topbarH + chev.Y + chev.H/2
-	if h := s.HitTest(chev.X+chev.W/2, chevY); h.Kind != HitToggleGroup {
-		t.Fatalf("chevron hit = %+v, want HitToggleGroup", h)
+	gi := groupDisplayIndex(s)
+	if gi < 0 {
+		t.Fatal("no group summary row in the feed")
 	}
-	// The header body (right of the chevron, left of the pill) previews.
-	rr := s.reconstructRect(feedX, r.top, feedW)
-	bx := (chev.X + chev.W + rr.X) / 2
-	if h := s.HitTest(bx, s.m.topbarH+r.top+s.m.groupHeadH/2); h.Kind != HitPreviewGroup || h.Value != "release" {
-		t.Fatalf("header body hit = %+v, want HitPreviewGroup release", h)
+	lr := s.feed.list.Bounds()
+	h := s.HitTest(lr.X+lr.W/2, feedRowScreenY(s, gi))
+	if h.Kind != HitItem || h.Item.Source != source.Usenet || h.Item.ID != "release" {
+		t.Fatalf("group summary hit = %+v, want HitItem usenet release", h)
 	}
 }
 

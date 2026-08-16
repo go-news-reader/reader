@@ -326,6 +326,7 @@ func New(cfg Config) *App {
 	scene.SetMediaCacheMB(set.MediaCacheMB)
 	scene.SetCacheBackend(set.CacheBackend)
 	scene.SetProfiles(set.Profiles, set.Active)
+	scene.SetSidebarFolders(set.SidebarFolders)
 	scene.SetAccounts(set.Accounts)
 	if rec := cfg.Recorder; rec != nil {
 		// Feed the Network-log view live, converting httplog entries into the
@@ -352,6 +353,16 @@ func New(cfg Config) *App {
 		osName:       cfg.OS, dark: cfg.Dark, lastRev: -1,
 		webDebounceFrames: 9, // ~150ms at 60fps: fetch only after arrowing settles
 	}
+	// The feed CardList drives the preview through this hook: a card selection
+	// (click or keyboard cursor move) previews the post — a Usenet multipart post
+	// reconstructs its image, everything else takes the standalone-item path. The
+	// keyboard flag debounces the web-page render for held-arrow navigation.
+	scene.SetFeedSelectHook(func(it source.Item, viaKeyboard bool) {
+		if it.Source == source.Usenet && a.previewGroupIfShown(it.ID) {
+			return
+		}
+		a.selectPreview(it, viaKeyboard)
+	})
 	a.refresh = func() { go a.Refresh(context.Background()) }
 	a.reconstruct = func(base string) { go a.doReconstruct(context.Background(), base) }
 	a.loadGroups = func(force bool) { go a.doLoadGroups(context.Background(), force) }
@@ -542,6 +553,12 @@ func (a *App) SetPullRefreshHook(f func()) { a.pullRefreshFetch = f }
 // SetRegistryBuilder overrides how ApplyAccounts rebuilds the provider registry
 // (a seam so tests inject a fake registry instead of real providers).
 func (a *App) SetRegistryBuilder(f func(feeds.Options) *source.Registry) { a.newRegistry = f }
+
+// PersistSettings snapshots the scene's settings and writes them through the
+// store, WITHOUT re-aggregating the feed. It is the persistence path for
+// pure-display preference changes such as editing the sidebar's virtual folders
+// (which regroup the sidebar but never change what the feed fetches).
+func (a *App) PersistSettings() { a.persistSettings() }
 
 // persistSettings snapshots the scene's settings and writes them through the
 // store (a no-op when persistence is disabled, e.g. the CLI paths). Used for
@@ -1070,6 +1087,13 @@ func (a *App) Frame() (buf []byte, changed bool) {
 	s := a.scene
 	if s.Animating() {
 		s.AdvanceAnim()
+	}
+	// Spin the feed CardList's pull-to-fetch strip in step: it is a toolkit
+	// Animator the scene's damage clock does not reach, so tick its tree while it
+	// is fetching. AdvanceAnim above already marked the frame dirty (a feed fetch
+	// implies Animating), so the advanced spinner is picked up by this frame.
+	if s.FeedAnimating() {
+		s.FeedTick(1.0 / 60.0)
 	}
 	// Tell a gated present loop whether to keep ticking on its own: an animating
 	// scene advances every frame, and an armed web-preview debounce must be given

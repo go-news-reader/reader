@@ -27,19 +27,21 @@ func TestRouteFeedArrowKeys(t *testing.T) {
 	h := feedApp(t)
 	s := h.a.Scene()
 
-	// Down selects the first card, then advances.
+	// The feed is chat-style: newest at the bottom, so the display order is
+	// oldest→newest. Items [0,1,2] (newest-first) become rows [2,1,0]; Down from no
+	// selection lands on the top (oldest) row, item "2", then advances downward.
 	h.Key("Down", 0)
-	if it, ok := s.PreviewItem(); !ok || it.ID != "0" {
-		t.Fatalf("after Down = %+v ok=%v, want 0", it, ok)
+	if it, ok := s.PreviewItem(); !ok || it.ID != "2" {
+		t.Fatalf("after Down = %+v ok=%v, want 2 (top row)", it, ok)
 	}
 	h.Key("Down", 0)
 	if it, _ := s.PreviewItem(); it.ID != "1" {
 		t.Fatalf("after 2x Down = %q, want 1", it.ID)
 	}
-	// Up returns to the previous card.
+	// Up returns to the previous (top) card.
 	h.Key("Up", 0)
-	if it, _ := s.PreviewItem(); it.ID != "0" {
-		t.Fatalf("after Up = %q, want 0", it.ID)
+	if it, _ := s.PreviewItem(); it.ID != "2" {
+		t.Fatalf("after Up = %q, want 2", it.ID)
 	}
 
 	// Enter opens the selected post's reading view.

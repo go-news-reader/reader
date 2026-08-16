@@ -106,13 +106,3 @@ func TestDownloadPanelHitTest(t *testing.T) {
 		t.Fatalf("panel body hit = %v, want HitNone", h.Kind)
 	}
 }
-
-func TestGroupDownloadCheckboxHit(t *testing.T) {
-	s := groupScene() // a complete 3-part post, base "release"
-	r, feedX, feedW := groupRow(s)
-	cb := s.downloadCheckRect(feedX, r.top, feedW)
-	// cb is in content coords; screen y = topbarH + contentY (ScrollY 0).
-	if h := s.HitTest(cb.X+cb.W/2, s.m.topbarH+cb.Y+cb.H/2); h.Kind != HitToggleDownload || h.Value != "release" {
-		t.Fatalf("checkbox hit = %+v, want HitToggleDownload release", h)
-	}
-}

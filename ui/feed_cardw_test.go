@@ -1,23 +1,36 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/go-news-reader/reader/source"
+)
 
 // TestFeedCardW checks the feed content width reserves a gutter for the
-// scrollbar only when it is shown, and that the gutter tracks the bar's grip
-// state: wider (a scrollGripGap clear of the preview divider) when the preview
-// pane is open, else flush against the feed's right edge.
+// scrollbar only when the CardList content overflows, and that the gutter tracks
+// the bar's grip state: wider (a scrollGripGap clear of the preview divider) when
+// the preview pane is open, else flush against the feed's right edge.
 func TestFeedCardW(t *testing.T) {
 	s := New(1200, 700, ThemeFor(OSMac, false))
 	const feedW = 800
 
-	// No overflow → no scrollbar → full width, whatever the preview state.
-	s.feedScroll.contentH = 0
+	// No items → no overflow → no scrollbar → full width, whatever the preview state.
+	s.SetItems(nil)
+	s.layout()
 	if got := s.feedCardW(feedW); got != feedW {
 		t.Fatalf("no scrollbar: cardW=%d, want full %d", got, feedW)
 	}
 
-	// Force overflow so the scrollbar shows.
-	s.feedScroll.contentH = s.feedBottom() - s.m.topbarH + 10000
+	// Many items so the CardList content overflows its viewport → the scrollbar shows.
+	many := make([]source.Item, 60)
+	for i := range many {
+		many[i] = source.Item{ID: string(rune('a'+i%26)) + itoa(i), Source: source.Reddit, Title: "a headline", Score: -1, Comments: -1}
+	}
+	s.SetItems(many)
+	s.layout()
+	if !s.feedScrollbarShown() {
+		t.Fatal("precondition: feed should overflow so the scrollbar shows")
+	}
 
 	// Preview closed (no grip): cards stop before a right-flush bar.
 	s.previewR.W = 0

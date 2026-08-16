@@ -16,7 +16,6 @@ package ui
 // Scene.AdvanceAnim) ONLY while loading, so an idle scene never animates.
 
 import (
-	"fmt"
 	"image"
 
 	"github.com/go-widgets/painter"
@@ -59,29 +58,4 @@ func (s *Scene) drawLoadingPlaceholder(p *painter.PixelPainter, img *image.RGBA,
 	d := rpxOf(s, 52)
 	r := toolkit.Rect{X: feedX + (feedW-d)/2, Y: cy + m.title.height + m.pad, W: d, H: d}
 	s.spinnerAt(r, toolkit.SpinnerRing).Draw(p, s.theme)
-}
-
-// drawLoadStrip paints the slim progress strip at the top of the feed content
-// (scrolls with it): a "Loading N/M sources…" label with a small trailing
-// spinner above a determinate ProgressBar (done/total). x/y are the strip's
-// top-left in screen coordinates; w its width.
-func (s *Scene) drawLoadStrip(p *painter.PixelPainter, img *image.RGBA, x, y, w int, muteS toolkit.RGBA) {
-	m := s.m
-	lbl := fmt.Sprintf("Loading %d/%d sources…", s.loadDone, s.loadTotal)
-	m.side.draw(img, x, y, lbl, muteS)
-
-	// Small spinner at the label row's trailing edge keeps the strip visibly
-	// alive while sources stream in.
-	sd := m.side.height
-	s.spinnerAt(toolkit.Rect{X: x + w - sd, Y: y, W: sd, H: sd}, toolkit.SpinnerDots).Draw(p, s.theme)
-
-	// Determinate ProgressBar (completed/total sources) below the label.
-	pb := toolkit.NewProgressBar()
-	if s.loadTotal > 0 {
-		pb.SetFraction(float64(s.loadDone) / float64(s.loadTotal))
-	}
-	trackH := rpxOf(s, 6)
-	ty := y + m.side.height + rpxOf(s, 4)
-	pb.SetBounds(toolkit.Rect{X: x, Y: ty, W: w, H: trackH})
-	pb.Draw(p, s.theme)
 }

@@ -200,24 +200,22 @@ func TestBadgeInkContrast(t *testing.T) {
 }
 
 // B1: two items sharing a non-unique ID but differing in Source/Title must NOT
-// collide in the card sprite cache.
-func TestCardCacheNoCollision(t *testing.T) {
-	s := New(900, 600, ThemeFor(OSMac, false))
-	s.SetSubs(nil)
-	s.layout() // build metrics/fonts before rasterising a card
-	th := s.theme
-	onAccent := themeOnAccent(th)
-	muteS := mute(th.OnSurface, th.Surface)
+// be treated as the same post — sameItem keys identity on Source+ID+headline, so
+// feed selection and web-prefetch never confuse them.
+func TestSameItemDistinguishesSharedID(t *testing.T) {
 	a := source.Item{ID: "1", Source: source.HackerNews, Title: "AAAA"}
 	b := source.Item{ID: "1", Source: source.Lemmy, Title: "BBBB"}
-	spA := s.cardSprite(a, 600, onAccent, muteS).img
-	spB := s.cardSprite(b, 600, onAccent, muteS).img
-	if spA == spB {
-		t.Fatal("distinct items with the same ID shared one cached sprite")
+	if sameItem(a, b) {
+		t.Fatal("distinct items with the same ID must not compare equal")
 	}
-	// And an identical re-request hits the cache (same pointer).
-	if s.cardSprite(a, 600, onAccent, muteS).img != spA {
-		t.Fatal("identical item re-request missed the cache")
+	// Same source+id but a different headline (an untitled social post) stays
+	// distinct too.
+	c := source.Item{ID: "1", Source: source.HackerNews, Title: "CCCC"}
+	if sameItem(a, c) {
+		t.Fatal("same source+id but a different headline must differ")
+	}
+	if !sameItem(a, a) {
+		t.Fatal("an item must compare equal to itself")
 	}
 }
 
@@ -233,34 +231,40 @@ func TestSidebarOverflowScrollAndClip(t *testing.T) {
 	}
 	s.SetSubs(subs)
 	s.layout()
-	if s.sideMaxScroll <= 0 {
-		t.Fatal("expected overflow (sideMaxScroll > 0)")
+	if !s.sidebarListOverflows() {
+		t.Fatal("expected the sidebar list to overflow its band")
 	}
 	// From a fresh (top) state, a wheel with the pointer over the sidebar scrolls
-	// the sub list, not the feed.
+	// the sub list (the TreeView's top-row index), not the feed.
 	s.MouseMove(10, 150)
-	before := s.sideScrollY
+	before := s.sideTree.ScrollRow
 	s.Scroll(120)
-	if s.sideScrollY <= before {
-		t.Fatalf("sidebar did not scroll: %d -> %d", before, s.sideScrollY)
+	if s.sideTree.ScrollRow <= before {
+		t.Fatalf("sidebar did not scroll: %d -> %d", before, s.sideTree.ScrollRow)
 	}
 	// Clicking inside the pinned footer resolves to a pinned entry, never a
 	// scrolled sub row bleeding into it.
 	if h := s.HitTest(2, s.accountsR.Y+s.m.sideItemH/2); h.Kind != HitAccounts {
 		t.Fatalf("click in footer band resolved to %v, want HitAccounts", h.Kind)
 	}
+	// A click just below the last visible band row resolves to no node (the
+	// TreeView never reports a row the window did not paint).
+	if h := s.HitTest(2, s.sideBandBot-1); h.Kind != HitNone && h.Kind != HitSub && h.Kind != HitSearchReddit {
+		t.Fatalf("click at band bottom = %v", h.Kind)
+	}
 	// Render so the sidebar sprite draws (and clips) the overflowing rows.
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
-	// An over-scroll is clamped back to the max on the next layout.
-	s.sideScrollY = s.sideMaxScroll + 10_000
-	s.layout()
-	if s.sideScrollY != s.sideMaxScroll {
-		t.Fatalf("over-scroll not clamped: %d != %d", s.sideScrollY, s.sideMaxScroll)
+	// An over-scroll is clamped back to the maximum by the TreeView.
+	s.sideTree.ScrollTo(1_000_000)
+	max := s.sideTree.ScrollRow
+	s.Scroll(120) // a further wheel down cannot advance past the clamped maximum
+	if s.sideTree.ScrollRow != max {
+		t.Fatalf("over-scroll not clamped: %d != %d", s.sideTree.ScrollRow, max)
 	}
 	// At a high zoom on a minimum-height window the pinned footer's top falls above
 	// the sub-list top, so the band is negative before the guard clamps it to 0 —
-	// the scroll range must still be non-negative (band<0 guard).
+	// overflow detection must still be safe (band<=0 guard) and report no overflow.
 	tiny := New(MinW, MinH, ThemeFor(OSMac, false))
 	tiny.SetScale(3.0) // metrics scale past the min height
 	tiny.SetProfiles([]settings.Profile{{Name: "P"}}, 0)
@@ -269,7 +273,7 @@ func TestSidebarOverflowScrollAndClip(t *testing.T) {
 	if tiny.sideBandBot-tiny.sideBandTop >= 0 {
 		t.Fatalf("expected a negative raw band at high zoom, got %d..%d", tiny.sideBandTop, tiny.sideBandBot)
 	}
-	if tiny.sideMaxScroll < 0 {
-		t.Fatalf("tiny window sideMaxScroll = %d, want >= 0", tiny.sideMaxScroll)
+	if tiny.sidebarListOverflows() {
+		t.Fatal("a non-positive band must report no overflow")
 	}
 }

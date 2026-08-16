@@ -268,6 +268,8 @@ func keyName(code string) string {
 		return "Right"
 	case "Backspace", "Escape", "Enter":
 		return code
+	case "PageUp", "PageDown", "Home", "End":
+		return code // feed paging keys, routed to the CardList in windowapp
 	}
 	return ""
 }

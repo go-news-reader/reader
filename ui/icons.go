@@ -33,27 +33,71 @@ func iconInset(r toolkit.Rect, frac int) toolkit.Rect {
 	return toolkit.Rect{X: r.X + (r.W-d)/2, Y: r.Y + (r.H-d)/2, W: d, H: d}
 }
 
+// drawChevron paints a filled disclosure triangle inside r: down-pointing (▾)
+// when expanded, right-pointing (▸) when collapsed. It is built from 1px
+// FillRects since the painter offers no polygon primitive. Used by the newsgroup
+// browser tree rows.
+func drawChevron(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, expanded bool) {
+	// iconInset returns a square d×d box, so each successive row/column width
+	// (b.W*(b.H-i)/b.H) stays ≥1 down to the apex — no degenerate-size guard is
+	// needed (a zero box simply skips both loops).
+	b := iconInset(r, 66)
+	if expanded {
+		// Base at the top, apex at the bottom: width shrinks top→bottom.
+		for i := 0; i < b.H; i++ {
+			rowW := b.W * (b.H - i) / b.H
+			p.FillRect(toolkit.Rect{X: b.X + (b.W-rowW)/2, Y: b.Y + i, W: rowW, H: 1}, col)
+		}
+		return
+	}
+	// Base at the left, apex at the right: height shrinks left→right.
+	for i := 0; i < b.W; i++ {
+		colH := b.H * (b.W - i) / b.W
+		p.FillRect(toolkit.Rect{X: b.X + i, Y: b.Y + (b.H-colH)/2, W: 1, H: colH}, col)
+	}
+}
+
 // Cached Iconoir icon lookups. Get is cheap, but caching avoids a registry
 // lookup per frame. Names verified present in iconoir v0.1.0.
 var (
-	iconMenu      = iconoir.MustGet("menu")            // burger / open-sidebar
-	iconLock      = iconoir.MustGet("lock")            // auth-banner padlock
-	iconUser      = iconoir.MustGet("user")            // sidebar Accounts
-	iconList      = iconoir.MustGet("list")            // sidebar Network log
-	iconSettings  = iconoir.MustGet("settings")        // sidebar Settings (gear)
-	iconSearch    = iconoir.MustGet("search")          // topbar SearchEntry magnifier
-	iconPlus      = iconoir.MustGet("plus")            // sidebar "Browse newsgroups" + subscribe
-	iconRefresh   = iconoir.MustGet("refresh-double")  // browse view Refresh control + web preview Reload
-	iconCheck     = iconoir.MustGet("check")           // subscribed / complete marker
-	iconNavLeft   = iconoir.MustGet("nav-arrow-left")  // web preview Back
-	iconNavRight  = iconoir.MustGet("nav-arrow-right") // web preview Forward
-	iconZoomIn    = iconoir.MustGet("zoom-in")         // web preview zoom in
-	iconZoomOut   = iconoir.MustGet("zoom-out")        // web preview zoom out
-	iconFit       = iconoir.MustGet("expand")          // web preview best-fit zoom
-	iconLockSlash = iconoir.MustGet("lock-slash")      // address bar: insecure (non-https)
-	iconStar      = iconoir.MustGet("star")            // address bar: bookmark toggle (star)
-	iconBin       = iconoir.MustGet("bin")             // sidebar context menu: unsubscribe (delete)
+	iconMenu       = iconoir.MustGet("menu")            // burger / open-sidebar
+	iconLock       = iconoir.MustGet("lock")            // auth-banner padlock
+	iconUser       = iconoir.MustGet("user")            // sidebar Accounts
+	iconList       = iconoir.MustGet("list")            // sidebar Network log
+	iconSettings   = iconoir.MustGet("settings")        // sidebar Settings (gear)
+	iconSearch     = iconoir.MustGet("search")          // topbar SearchEntry magnifier
+	iconPlus       = iconoir.MustGet("plus")            // sidebar "Browse newsgroups" + subscribe
+	iconRefresh    = iconoir.MustGet("refresh-double")  // browse view Refresh control + web preview Reload
+	iconCheck      = iconoir.MustGet("check")           // subscribed / complete marker
+	iconNavLeft    = iconoir.MustGet("nav-arrow-left")  // web preview Back
+	iconNavRight   = iconoir.MustGet("nav-arrow-right") // web preview Forward
+	iconZoomIn     = iconoir.MustGet("zoom-in")         // web preview zoom in
+	iconZoomOut    = iconoir.MustGet("zoom-out")        // web preview zoom out
+	iconFit        = iconoir.MustGet("expand")          // web preview best-fit zoom
+	iconLockSlash  = iconoir.MustGet("lock-slash")      // address bar: insecure (non-https)
+	iconStar       = iconoir.MustGet("star")            // address bar: bookmark toggle (star)
+	iconBin        = iconoir.MustGet("bin")             // sidebar context menu: unsubscribe (delete)
+	iconFolder     = iconoir.MustGet("folder")          // sidebar virtual folder
+	iconFolderPlus = iconoir.MustGet("folder-plus")     // sidebar context menu: new folder
 )
+
+// MenuIconNewFolder and MenuIconFolder paint the sidebar folder context-menu
+// glyphs into the cell the toolkit Menu hands them, in the row's own ink (so
+// they invert on hover). They match toolkit.MenuItem.Icon so the Handler can
+// hand them straight to the menu without this package's private icon handles
+// leaking out.
+func MenuIconNewFolder(p painter.Painter, cell toolkit.Rect, ink toolkit.RGBA) {
+	drawIcon(p, cell, iconFolderPlus, ink)
+}
+
+func MenuIconFolder(p painter.Painter, cell toolkit.Rect, ink toolkit.RGBA) {
+	drawIcon(p, cell, iconFolder, ink)
+}
+
+// drawFolderIcon paints the Iconoir "folder" glyph (a sidebar virtual folder).
+func drawFolderIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA) {
+	drawIcon(p, r, iconFolder, col)
+}
 
 // bookmarkGold is the fill for a saved (bookmarked) star — a warm gold that
 // stays clearly visible on the light address field, unlike the washed-out

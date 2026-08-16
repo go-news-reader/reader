@@ -21,7 +21,6 @@ func (s *Scene) SidebarCollapsed() bool { return s.sidebarCollapsed }
 // persisted).
 func (s *Scene) ToggleSidebar() {
 	s.sidebarCollapsed = !s.sidebarCollapsed
-	s.invalidateCards()
 	s.touch()
 }
 
@@ -52,7 +51,6 @@ func (s *Scene) MouseMove(x, y int) {
 	default:
 		return
 	}
-	s.invalidateCards()
 	s.touch()
 }
 

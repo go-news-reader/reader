@@ -1,0 +1,366 @@
+package ui
+
+// The sidebar's middle list — "All Sources", the virtual folders, the
+// subscriptions and the "Browse newsgroups" / "Search Reddit" discovery entries
+// — is a toolkit.TreeView. The reader keeps the profile band (above) and the
+// pinned Accounts/Log/Settings footer (below) hand-drawn; only the scrollable
+// list in between is the widget, so the TreeView owns row layout, the scroll
+// window, the scrollbar gutter and hit-testing while the reader supplies each
+// row's rich content (source dot, elided label, count chip, pending spinner)
+// through its RowRenderer.
+//
+// TreeView renders its children indented one level under the Root. To keep
+// "All Sources", the folders and the unclassified subscriptions flush at the
+// same indent (rather than one level deep under a visible root), the Root is a
+// synthetic hidden container (HideRoot) and its children ARE the top-level rows:
+// an "All Sources" row first, then the folders, the unclassified subscriptions
+// and the discovery entries; a folder's own subscriptions nest one level under
+// it. Selecting a row maps its TreeNode.Data (a sideNode identity) back to the
+// existing filter/navigation actions.
+
+import (
+	"strconv"
+
+	"github.com/go-widgets/painter"
+	"github.com/go-widgets/toolkit"
+)
+
+// sideKind classifies a sidebar TreeView node.
+type sideKind int
+
+const (
+	sideAll          sideKind = iota // the "All Sources" filter (the tree root)
+	sideSub                          // one subscription; Sub indexes s.Subs
+	sideFolder                       // a virtual folder; Folder is its name
+	sideBrowse                       // the "Browse newsgroups" discovery entry
+	sideSearchReddit                 // the "Search Reddit" discovery entry
+)
+
+// sideNode is the identity a sidebar TreeNode carries in its Data, mapping a
+// selected/clicked row back to an action.
+type sideNode struct {
+	Kind   sideKind
+	Sub    int    // sideSub: index into s.Subs
+	Folder string // sideFolder: folder name
+}
+
+// ensureSideTree lazily builds the sidebar TreeView (RowRenderer wired to the
+// scene's rich-row painter).
+func (s *Scene) ensureSideTree() {
+	if s.sideTree != nil {
+		return
+	}
+	s.sideTree = toolkit.NewTreeView(nil)
+	s.sideTree.RowRenderer = s.drawSideRow
+	// The Root is a synthetic hidden container: its children (the "All Sources"
+	// row, the folders, the unclassified subscriptions and the discovery entries)
+	// are the top-level rows, flush at depth 0 with no root indentation.
+	s.sideTree.HideRoot = true
+}
+
+// buildSideTree (re)builds the TreeView's node set from the current
+// subscriptions + folders and sets Selected to the node matching the active
+// filter. It runs each layout: cheap (a few dozen nodes) and keeps the folder
+// grouping, unseen counts and selection in lock-step with the model.
+func (s *Scene) buildSideTree() {
+	s.ensureSideTree()
+	// The Root is hidden (HideRoot); its children are the visible top-level rows.
+	root := &toolkit.TreeNode{}
+	// "All Sources" is the first child (depth 0), so clicking it still selects the
+	// AllFilter. It — not the hidden root — is the Selected node for AllFilter,
+	// overridden below when a real subscription is the active filter.
+	allNode := &toolkit.TreeNode{Label: "All Sources", Data: sideNode{Kind: sideAll}}
+	root.Children = append(root.Children, allNode)
+	s.sideTree.Selected = allNode
+
+	// Index the active profile's subscriptions by their stable key so a folder can
+	// claim the ones it lists that are actually present in this profile.
+	present := make(map[string]int, len(s.Subs))
+	for i, sub := range s.Subs {
+		present[subKey(sub.Source, sub.Channel)] = i
+	}
+	foldered := make(map[string]bool, len(s.Subs))
+
+	// Folders first (a folder empty in this profile is hidden but still persisted,
+	// so a subscription can be moved into it from any profile).
+	for _, f := range s.folders {
+		var kids []*toolkit.TreeNode
+		for _, key := range f.Subs {
+			if foldered[key] {
+				continue // a subscription lives in the first folder that lists it
+			}
+			if idx, ok := present[key]; ok {
+				foldered[key] = true
+				kids = append(kids, s.sideSubNode(idx))
+			}
+		}
+		if len(kids) == 0 {
+			continue
+		}
+		root.Children = append(root.Children, &toolkit.TreeNode{
+			Label:    f.Name,
+			Expanded: !s.folderCollapsed[f.Name],
+			Data:     sideNode{Kind: sideFolder, Folder: f.Name},
+			Children: kids,
+		})
+	}
+
+	// Unclassified subscriptions at the root, in profile order.
+	for i, sub := range s.Subs {
+		if foldered[subKey(sub.Source, sub.Channel)] {
+			continue
+		}
+		root.Children = append(root.Children, s.sideSubNode(i))
+	}
+
+	// Discovery entries last: Browse (only with a Usenet server) then Search Reddit.
+	if s.usenetAddr != "" {
+		root.Children = append(root.Children, &toolkit.TreeNode{Data: sideNode{Kind: sideBrowse}})
+	}
+	root.Children = append(root.Children, &toolkit.TreeNode{Data: sideNode{Kind: sideSearchReddit}})
+
+	s.sideTree.Root = root
+}
+
+// flattenSide walks the sidebar tree in visible (expand-aware) order, returning
+// each node so the reader can build the accessibility tree with per-row rects.
+func (s *Scene) flattenSide() []*toolkit.TreeNode {
+	var out []*toolkit.TreeNode
+	if s.sideTree == nil || s.sideTree.Root == nil {
+		return out
+	}
+	var walk func(n *toolkit.TreeNode)
+	walk = func(n *toolkit.TreeNode) {
+		out = append(out, n)
+		if !n.Expanded {
+			return
+		}
+		for _, c := range n.Children {
+			walk(c)
+		}
+	}
+	// The root is hidden (HideRoot): it is never a visible row, so its children
+	// (always shown, regardless of the root's Expanded flag) are the top-level
+	// rows, matching the TreeView's own flattening.
+	for _, c := range s.sideTree.Root.Children {
+		walk(c)
+	}
+	return out
+}
+
+// sidebarA11yNodes describes the sidebar list for the accessibility tree: a
+// "Sources" list header, then one node per visible row with the same rect its
+// TreeView row occupies on screen (so "you can click it" and "a reader can find
+// it" stay the same statement). Rows scrolled out of the band carry a rect above
+// or below it, exactly like the feed's off-screen cards.
+func (s *Scene) sidebarA11yNodes() []A11yNode {
+	m := s.m
+	out := []A11yNode{node(toolkit.RoleList, "Sources", strconv.Itoa(len(s.Subs))+" subscriptions", toolkit.Rect{})}
+	rows := s.flattenSide()
+	for i, n := range rows {
+		r := toolkit.Rect{X: 0, Y: s.sideBandTop + (i-s.sideTree.ScrollRow)*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
+		name, value := "", ""
+		switch d := sideData(n); d.Kind {
+		case sideAll:
+			name = "All Sources"
+		case sideSub:
+			sub := s.Subs[d.Sub]
+			name = sub.name()
+			total, unseen := s.subCounts(sub)
+			value = strconv.Itoa(unseen) + "/" + strconv.Itoa(total)
+		case sideFolder:
+			name = d.Folder
+			if s.folderCollapsed[d.Folder] {
+				value = "collapsed"
+			} else {
+				value = "expanded"
+			}
+		case sideBrowse:
+			name = "Browse newsgroups"
+		case sideSearchReddit:
+			name = "Search Reddit"
+		}
+		out = append(out, node(toolkit.RoleButton, name, value, r))
+	}
+	return out
+}
+
+// sideSubNode builds a subscription leaf node, recording it as Selected when it
+// is the active filter.
+func (s *Scene) sideSubNode(i int) *toolkit.TreeNode {
+	n := &toolkit.TreeNode{Data: sideNode{Kind: sideSub, Sub: i}}
+	if s.Active == i {
+		s.sideTree.Selected = n
+	}
+	return n
+}
+
+// sideData returns a node's sideNode identity.
+func sideData(n *toolkit.TreeNode) sideNode { d, _ := n.Data.(sideNode); return d }
+
+// sidebarListOverflows reports whether the sidebar list is taller than its band
+// (so the TreeView shows a scrollbar and a wheel scrolls it). It counts the
+// visible (expand-aware) rows via flattenSide, which honours HideRoot.
+func (s *Scene) sidebarListOverflows() bool {
+	if s.sideTree == nil || s.sideTree.Root == nil {
+		return false
+	}
+	rh := s.m.sideItemH
+	band := s.sideBandBot - s.sideBandTop
+	if rh <= 0 || band <= 0 {
+		return false
+	}
+	return len(s.flattenSide()) > band/rh
+}
+
+// drawSideRow is the TreeView RowRenderer: it paints one sidebar row's content
+// in the content rect the widget hands it (already past the chevron + indent and
+// inset for the scrollbar gutter), in the resolved ink (theme.Background on the
+// selected row's accent fill, else theme.OnSurface). The source dot keeps its
+// brand colour on every row.
+func (s *Scene) drawSideRow(p painter.Painter, th *toolkit.Theme, cr toolkit.Rect, node *toolkit.TreeNode, selected bool, ink toolkit.RGBA) {
+	sideF := ttFont(false, rpxOf(s, 13))
+	switch d := sideData(node); d.Kind {
+	case sideAll:
+		s.drawSideLabel(p, cr, sideF, "All Sources", ink)
+	case sideBrowse:
+		s.drawSideIconLabel(p, cr, node, "Browse newsgroups")
+	case sideSearchReddit:
+		s.drawSideIconLabel(p, cr, node, "Search Reddit")
+	case sideFolder:
+		s.drawSideFolderRow(p, cr, d.Folder, ink, selected)
+	case sideSub:
+		s.drawSideSubRow(p, cr, d.Sub, sideF, ink, selected)
+	}
+}
+
+// drawSideLabel draws a single elided label filling the content rect.
+func (s *Scene) drawSideLabel(p painter.Painter, cr toolkit.Rect, f toolkit.Font, text string, ink toolkit.RGBA) {
+	lbl := toolkit.NewLabel(truncateFont(f, text, cr.W))
+	lbl.Font, lbl.Ink = f, ink
+	lbl.SetBounds(cr)
+	lbl.Draw(p, s.theme)
+}
+
+// drawSideIconLabel draws a discovery entry (Browse newsgroups / Search Reddit):
+// a leading accent icon then its accent label, matching the old hand-drawn
+// discovery rows. These entries are never the selected filter, so they always
+// paint in the accent colour.
+func (s *Scene) drawSideIconLabel(p painter.Painter, cr toolkit.Rect, node *toolkit.TreeNode, text string) {
+	m := s.m
+	col := s.theme.Accent
+	icD := m.navIcon
+	ir := toolkit.Rect{X: cr.X, Y: cr.Y + (cr.H-icD)/2, W: icD, H: icD}
+	if sideData(node).Kind == sideBrowse {
+		drawPlusIcon(p, ir, col, s.iconStroke())
+	} else {
+		drawSearchIcon(p, ir, col)
+	}
+	gap := rpxOf(s, 6)
+	f := ttFont(false, rpxOf(s, 13))
+	tx := cr.X + icD + gap
+	labelW := cr.X + cr.W - tx
+	lbl := toolkit.NewLabel(truncateFont(f, text, labelW))
+	lbl.Font, lbl.Ink = f, col
+	lbl.SetBounds(toolkit.Rect{X: tx, Y: cr.Y, W: labelW, H: cr.H})
+	lbl.Draw(p, s.theme)
+}
+
+// drawSideFolderRow draws a folder row: a folder icon, its name, and an
+// aggregate count chip over the subscriptions it holds in this profile.
+func (s *Scene) drawSideFolderRow(p painter.Painter, cr toolkit.Rect, name string, ink toolkit.RGBA, selected bool) {
+	gap := rpxOf(s, 4)
+	icD := rpxOf(s, 14)
+	ir := toolkit.Rect{X: cr.X, Y: cr.Y + (cr.H-icD)/2, W: icD, H: icD}
+	drawFolderIcon(p, ir, ink)
+	// While this folder is being renamed inline, draw the focused text Entry (its
+	// buffer) in place of the label + count chip, filling the row past the icon.
+	if name == s.renamingFolder && s.renameFolderEntry != nil {
+		e := s.renameFolderEntry
+		e.Font = ttFont(false, rpxOf(s, 13))
+		e.SetBounds(toolkit.Rect{X: cr.X + icD + gap, Y: cr.Y, W: cr.W - icD - gap, H: cr.H})
+		e.Draw(p, s.theme)
+		return
+	}
+	total, unseen := s.folderCounts(name)
+	var chip *countChip
+	rightW := 0
+	if total > 0 {
+		chip = &countChip{s: s, unseen: unseen, total: total, selected: selected, ink: ink}
+		rightW = chip.width()
+	}
+	labelW := cr.W - icD - gap
+	if rightW > 0 {
+		labelW -= rightW + gap
+	}
+	f := ttFont(false, rpxOf(s, 13))
+	lbl := toolkit.NewLabel(truncateFont(f, name, labelW))
+	lbl.Font, lbl.Ink = f, ink
+	lbl.SetBounds(toolkit.Rect{X: cr.X + icD + gap, Y: cr.Y, W: labelW, H: cr.H})
+	lbl.Draw(p, s.theme)
+	if chip != nil {
+		chip.SetBounds(toolkit.Rect{X: cr.X + cr.W - rightW, Y: cr.Y, W: rightW, H: cr.H})
+		chip.Draw(p, s.theme)
+	}
+}
+
+// drawSideSubRow draws a subscription row: the source dot, the elided channel
+// label, and either the post-count chip or a pending spinner.
+func (s *Scene) drawSideSubRow(p painter.Painter, cr toolkit.Rect, idx int, f toolkit.Font, ink toolkit.RGBA, selected bool) {
+	sub := s.Subs[idx]
+	gap := rpxOf(s, 4)
+	dotSlot := rpxOf(s, 14)
+	pending := s.IsPendingSub(sub.Source, sub.Channel)
+	var chip *countChip
+	rightW := 0
+	if pending {
+		rightW = rpxOf(s, 14) // reserved for the spinner
+	} else if t, u := s.subCounts(sub); t > 0 {
+		chip = &countChip{s: s, unseen: u, total: t, selected: selected, ink: ink}
+		rightW = chip.width()
+	}
+	labelW := cr.W - dotSlot - gap
+	if rightW > 0 {
+		labelW -= rightW + gap
+	}
+	// Source dot, vertically centred in the row.
+	dot := &sideDot{s: s, col: sourceColor(sub.Source)}
+	dot.SetBounds(toolkit.Rect{X: cr.X, Y: cr.Y, W: dotSlot, H: cr.H})
+	dot.Draw(p, s.theme)
+	lbl := toolkit.NewLabel(truncateFont(f, sub.name(), labelW))
+	lbl.Font, lbl.Ink = f, ink
+	lbl.SetBounds(toolkit.Rect{X: cr.X + dotSlot + gap, Y: cr.Y, W: labelW, H: cr.H})
+	lbl.Draw(p, s.theme)
+	switch {
+	case pending:
+		d := rpxOf(s, 14)
+		s.spinnerAt(toolkit.Rect{X: cr.X + cr.W - d, Y: cr.Y + (cr.H-d)/2, W: d, H: d}, toolkit.SpinnerDots).Draw(p, s.theme)
+	case chip != nil:
+		chip.SetBounds(toolkit.Rect{X: cr.X + cr.W - rightW, Y: cr.Y, W: rightW, H: cr.H})
+		chip.Draw(p, s.theme)
+	}
+}
+
+// folderCounts sums the total + unseen post counts over the subscriptions a
+// folder holds in the active profile.
+func (s *Scene) folderCounts(name string) (total, unseen int) {
+	present := make(map[string]Subscription, len(s.Subs))
+	for _, sub := range s.Subs {
+		present[subKey(sub.Source, sub.Channel)] = sub
+	}
+	for _, f := range s.folders {
+		if f.Name != name {
+			continue
+		}
+		for _, key := range f.Subs {
+			sub, ok := present[key]
+			if !ok {
+				continue
+			}
+			t, u := s.subCounts(sub)
+			total += t
+			unseen += u
+		}
+	}
+	return total, unseen
+}

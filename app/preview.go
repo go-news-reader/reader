@@ -13,6 +13,8 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 
+	"github.com/go-widgets/toolkit"
+
 	"github.com/go-news-reader/reader/provider/usenet"
 	"github.com/go-news-reader/reader/source"
 )
@@ -71,16 +73,29 @@ func (a *App) tickWebDebounce() {
 }
 
 // SelectAdjacent moves the feed selection one card up (dir<0) or down (dir>0)
-// and previews the newly selected post — the keyboard equivalent of clicking it,
-// so its image is fetched and it scrolls into view. A no-op when the feed has no
-// selectable cards. The web-page render is debounced so holding an arrow key
-// through the feed does not fire a render for every item it passes over.
+// through the virtual.CardList and previews the newly selected post — the
+// keyboard equivalent of clicking it, so its image is fetched and it scrolls
+// into view. The preview itself is driven by the feed select hook (installed in
+// New), which the CardList fires on the cursor move; the web-page render is
+// debounced there so holding an arrow key does not render every item passed over.
 func (a *App) SelectAdjacent(dir int) {
-	it, ok := a.scene.NavItem(dir)
-	if !ok {
-		return
+	code := "ArrowDown"
+	if dir < 0 {
+		code = "ArrowUp"
 	}
-	a.selectPreview(it, true)
+	a.scene.FeedEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: code})
+}
+
+// previewGroupIfShown previews the Usenet multipart post whose release base is
+// `base` — reconstructing its image into the pane — when that group is currently
+// shown in the feed, and reports whether it did. A base that is not a shown group
+// is left to the standalone-item preview path.
+func (a *App) previewGroupIfShown(base string) bool {
+	if _, ok := a.scene.GroupPreviewItem(base); !ok {
+		return false
+	}
+	a.PreviewGroup(base)
+	return true
 }
 
 // OpenSelected opens the currently previewed post in the full reading view (the

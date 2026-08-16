@@ -64,6 +64,27 @@ var (
 	keyringAvailable = keyring.Available
 )
 
+// defaultSecretStore, when non-nil, is the SecretStore a [Store] with no explicit
+// Secrets seam uses in place of the production keyring backend. It is a
+// process-wide test seam: a downstream package (app, windowapp) installs one
+// in-memory vault through [SetDefaultSecretStore] in its TestMain so that every
+// Store it builds — including the ones it constructs internally and cannot reach
+// to set Secrets on — routes secret I/O through that vault rather than the host's
+// real credential store. A fresh test binary must never touch the real vault (on
+// macOS it would make Keychain prompt a human). nil selects the production backend.
+var defaultSecretStore SecretStore
+
+// SetDefaultSecretStore installs store as the process-wide default [SecretStore]
+// for Stores built without an explicit Secrets seam, and returns a function that
+// restores the previous default. Passing nil restores the production keyring
+// backend. It exists for test isolation (see defaultSecretStore) and is not for
+// production code paths.
+func SetDefaultSecretStore(store SecretStore) (restore func()) {
+	prev := defaultSecretStore
+	defaultSecretStore = store
+	return func() { defaultSecretStore = prev }
+}
+
 // keyringSecrets is the production [SecretStore]: the go-keyring/keyring façade
 // keyed by (secretService, account). keyring.ErrNotFound is remapped to the
 // package-local [ErrSecretNotFound].
@@ -179,10 +200,10 @@ func (s *Store) pushSecrets(v *Settings) (*Settings, error) {
 // [Store.Load] can purge the plaintext from disk. When no vault is reachable it
 // is a no-op (false, nil): the plaintext already in out is the fallback and is
 // left in place. out is modified in place.
-func (s *Store) hydrateSecrets(out *Settings) (migrated bool, err error) {
+func (s *Store) hydrateSecrets(out *Settings) (migrated bool) {
 	store := s.secrets()
 	if !store.Available() {
-		return false, nil
+		return false
 	}
 	for i := range out.Accounts {
 		for key := range secretKeysFor(out.Accounts[i].Kind) {
@@ -191,20 +212,23 @@ func (s *Store) hydrateSecrets(out *Settings) (migrated bool, err error) {
 			if ok && val != "" {
 				// Plaintext on disk: move it into the vault, keeping the value in
 				// memory so the running app is unaffected. The purge of the disk
-				// copy happens in Load via a follow-up Save.
+				// copy happens in Load via a follow-up Save. If the vault write fails
+				// (e.g. the user declined the keychain prompt), leave the plaintext on
+				// disk as the fallback rather than failing the whole load — the reader
+				// must still start.
 				if err := store.Set(ref, []byte(val)); err != nil {
-					return false, err
+					continue
 				}
 				migrated = true
 				continue
 			}
-			// Absent from disk: read it back from the vault.
+			// Absent from disk: read it back from the vault. A missing secret, or an
+			// unreadable vault (the user declined the prompt → userCanceled, or a
+			// transient vault error), leaves this account unauthenticated rather than
+			// failing the load: a keychain hiccup must never stop the reader starting.
 			b, gErr := store.Get(ref)
-			if errors.Is(gErr, ErrSecretNotFound) {
-				continue
-			}
 			if gErr != nil {
-				return false, gErr
+				continue
 			}
 			if out.Accounts[i].Fields == nil {
 				out.Accounts[i].Fields = map[string]string{}
@@ -212,5 +236,5 @@ func (s *Store) hydrateSecrets(out *Settings) (migrated bool, err error) {
 			out.Accounts[i].Fields[key] = string(b)
 		}
 	}
-	return migrated, nil
+	return migrated
 }

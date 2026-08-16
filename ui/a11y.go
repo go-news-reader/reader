@@ -41,11 +41,6 @@ func mediaAlt(it source.Item) string {
 	return ""
 }
 
-// A11y reports the feed card's thumbnail as an img described by its alt text.
-func (c *cardThumb) A11y() toolkit.A11yInfo {
-	return toolkit.A11yInfo{Role: toolkit.RoleImg, Name: mediaAlt(c.it)}
-}
-
 // A11y reports the preview pane's picture as an img described by its alt text.
 func (w *previewImage) A11y() toolkit.A11yInfo {
 	return toolkit.A11yInfo{Role: toolkit.RoleImg, Name: mediaAlt(w.it)}

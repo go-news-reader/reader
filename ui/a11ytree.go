@@ -98,46 +98,61 @@ func (s *Scene) a11yFeed() []A11yNode {
 		out = append(out, node(toolkit.RoleButton, s.Profiles[t.index].Name, v, t.rect))
 	}
 
-	// Sidebar: the filter list. Each row carries its unseen/total count, which is
-	// otherwise only conveyed by colour.
+	// Sidebar: the filter list (a TreeView). Each row carries its unseen/total
+	// count, which is otherwise only conveyed by colour; a folder row carries its
+	// collapsed/expanded state.
 	if m.sidebarW > 0 {
-		out = append(out, node(toolkit.RoleList, "Sources", strconv.Itoa(len(s.Subs))+" subscriptions", toolkit.Rect{}))
-		for _, e := range s.subs {
-			name, value := "All Sources", ""
-			if e.index != AllFilter {
-				sub := s.Subs[e.index]
-				name = sub.name()
-				total, unseen := s.subCounts(sub)
-				value = strconv.Itoa(unseen) + "/" + strconv.Itoa(total)
-			}
-			out = append(out, node(toolkit.RoleButton, name, value, e.rect))
-		}
-		if s.usenetAddr != "" && s.browseR.W > 0 {
-			out = append(out, node(toolkit.RoleButton, "Browse newsgroups", "", s.browseR))
-		}
+		out = append(out, s.sidebarA11yNodes()...)
 	}
 
-	// In-feed sign-in banners are alerts: they are the reason a source is empty.
-	for _, a := range s.authRows {
-		p := s.authPrompts[a.idx]
+	// Pinned in-feed sign-in banners are alerts: they are the reason a source is
+	// empty. They sit above the feed list, one per prompt, and do not scroll.
+	feedX, feedW := s.feedGeom()
+	cardW := s.feedCardW(feedW)
+	for i, p := range s.authPrompts {
+		by := m.topbarH + i*(m.bannerH+m.cardGap)
 		out = append(out, node(toolkit.RoleAlert, string(p.Kind)+" needs sign-in", p.Reason,
-			s.feedRect(a.top, m.bannerH)))
+			toolkit.Rect{X: feedX, Y: by, W: cardW, H: m.bannerH}))
 	}
 
-	// The feed. A card is a group rather than a button: it is an article you can
-	// open, and the toolkit's role set has nothing closer. Name is the headline
-	// the card actually renders (title, or the body for a post with none), so a
-	// reader hears what the screen shows.
-	rows := s.rows
-	out = append(out, node(toolkit.RoleList, "Feed", strconv.Itoa(len(rows))+" posts", toolkit.Rect{}))
-	for _, r := range rows {
-		if r.group != nil {
-			out = append(out, node(toolkit.RoleGroup, r.group.Base,
-				strconv.Itoa(len(r.group.Members))+" parts", s.feedRect(r.top, r.height)))
+	// The feed, described from the CardList's display entries in reading order
+	// (oldest→newest, newest at the bottom). A card is a group rather than a
+	// button: it is an article you can open, and the toolkit's role set has
+	// nothing closer. Name is the headline the card actually renders (title, or
+	// the body for a post with none). A scrolled-off card still appears, with a
+	// rect above or below the viewport — a reader walks the whole list, not only
+	// the painted part.
+	disp := s.feed.display
+	out = append(out, node(toolkit.RoleList, "Feed", strconv.Itoa(len(disp))+" posts", toolkit.Rect{}))
+	lr := s.feed.list.Bounds()
+	off := s.FeedScrollOffset()
+	acc := 0
+	for i, e := range disp {
+		h := s.feedRowHeight(i)
+		rect := toolkit.Rect{X: lr.X, Y: lr.Y - off + acc, W: lr.W, H: h}
+		acc += h
+		if e.group != nil {
+			// The group card announces its part count and its collapsed/expanded
+			// state (the chevron's meaning is otherwise conveyed only by the glyph).
+			// When expanded, each listed member part follows as its own node so a
+			// reader can walk the parts the sighted user sees — the same rows
+			// feedGroupMemberAt hit-tests, at their on-screen rects.
+			state := "collapsed"
+			if s.GroupExpanded(e.group.Base) {
+				state = "expanded"
+			}
+			out = append(out, node(toolkit.RoleGroup, e.group.Base,
+				strconv.Itoa(len(e.group.Members))+" parts, "+state, rect))
+			if s.GroupExpanded(e.group.Base) {
+				gc := s.feedGroupCard(e.group)
+				gc.SetBounds(rect)
+				for mi, mem := range e.group.Members {
+					out = append(out, node(toolkit.RoleText, memberLine(mem), "", gc.MemberRect(mi)))
+				}
+			}
 			continue
 		}
-		out = append(out, node(toolkit.RoleGroup, cardText(r.item), metaLine(r.item),
-			s.feedRect(r.top, r.height)))
+		out = append(out, node(toolkit.RoleGroup, cardText(e.item), metaLine(e.item), rect))
 	}
 
 	out = append(out,
@@ -146,18 +161,6 @@ func (s *Scene) a11yFeed() []A11yNode {
 		node(toolkit.RoleButton, "Settings", "", s.settingsR),
 	)
 	return out
-}
-
-// feedRect maps a feed row's content-space position to screen coordinates,
-// through the same scroll offset and topbar inset HitTest uses.
-func (s *Scene) feedRect(top, height int) toolkit.Rect {
-	feedX, feedW := s.feedGeom()
-	return toolkit.Rect{
-		X: feedX,
-		Y: top - s.feedScroll.offset + s.m.topbarH,
-		W: s.feedCardW(feedW),
-		H: height,
-	}
 }
 
 // a11yDetail describes the reading view: its controls, then the article.

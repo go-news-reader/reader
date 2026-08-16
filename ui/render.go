@@ -17,12 +17,10 @@ import (
 type metrics struct {
 	sidebarW, topbarH, pad    int
 	rowH, cardGap             int
-	thumbW, thumbH, badgeH    int
+	thumbH, badgeH            int
 	sideItemH, searchH        int
 	profileTabH, tabPad, btnH int
 	bannerH, navIcon          int
-	loadStripH                int
-	groupHeadH, memberH       int
 	title, meta, badge, side  textFace
 	search, tab               textFace
 }
@@ -35,7 +33,6 @@ func (s *Scene) computeMetrics() metrics {
 		pad:       rpx(12),
 		rowH:      rpx(84),
 		cardGap:   rpx(8),
-		thumbW:    rpx(104),
 		thumbH:    rpx(60),
 		badgeH:    rpx(18),
 		sideItemH: rpx(34),
@@ -52,40 +49,13 @@ func (s *Scene) computeMetrics() metrics {
 	m.btnH = m.tab.height + rpx(8)
 	m.bannerH = m.side.height + rpx(16)
 	m.navIcon = m.side.height + rpx(4)
-	m.loadStripH = m.side.height + rpx(4) + rpx(5) + rpx(6)
-	m.groupHeadH = m.badgeH + m.title.height + m.meta.height + rpx(24)
-	m.memberH = m.meta.height + rpx(16)
 	return m
-}
-
-// subHit maps a sidebar entry rect to its subscription index (AllFilter = All).
-type subHit struct {
-	index int
-	rect  toolkit.Rect
 }
 
 // profTabHit maps a sidebar profile tab rect to its profile index.
 type profTabHit struct {
 	index int
 	rect  toolkit.Rect
-}
-
-// feedRow positions one feed row within the scrollable content: a standalone
-// item card (group nil) or a collapsed/expanded Usenet group card. height is the
-// row's laid-out height (a group's grows when expanded), so scroll math and the
-// offscreen-skip work with variable row heights.
-type feedRow struct {
-	top    int
-	height int
-	item   source.Item // valid when group == nil
-	group  *itemGroup  // non-nil for a Usenet post group
-}
-
-// authRowLayout positions one "needs sign-in" banner row by its top offset
-// within the scrollable feed content, carrying the prompt index it renders.
-type authRowLayout struct {
-	idx int
-	top int
 }
 
 // layout recomputes metrics, sidebar entries, the search rect and feed rows.
@@ -111,52 +81,28 @@ func (s *Scene) layout() {
 	s.logR = toolkit.Rect{X: 0, Y: s.H - 2*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
 	s.accountsR = toolkit.Rect{X: 0, Y: s.H - 3*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
 
-	// Sidebar entries: "All", one per subscription, then "＋ Browse newsgroups"
-	// (shown only when a Usenet server is configured, else it is a discovery
-	// dead-end). This block scrolls as a unit inside the band between the tab
-	// strip and the pinned footer; sideScrollY offsets every row and is clamped to
-	// the overflow so the rows never invade the footer.
+	// Sidebar middle list: the "All Sources" root, the virtual folders, the
+	// subscriptions and the "Browse newsgroups" (Usenet only) / "Search Reddit"
+	// discovery entries, all rendered by a toolkit.TreeView inside the band
+	// between the tab strip and the pinned footer. The TreeView owns the scroll
+	// window, the scrollbar gutter and hit-testing; buildSideTree derives its
+	// nodes (folder grouping + selection) from the current model.
 	sideTop := m.topbarH
 	if len(s.Profiles) > 0 {
 		sideTop += m.profileTabH
 	}
-	nRows := 1 + len(s.Subs) // "All" + subscriptions
-	if s.usenetAddr != "" {
-		nRows++ // Browse entry
-	}
-	nRows++ // "Search Reddit" entry (always shown — Reddit needs no configuration)
 	s.sideBandTop = sideTop
 	s.sideBandBot = s.accountsR.Y // the pinned footer begins here
 	band := s.sideBandBot - s.sideBandTop
 	if band < 0 {
 		band = 0
 	}
-	s.sideMaxScroll = nRows*m.sideItemH - band
-	if s.sideMaxScroll < 0 {
-		s.sideMaxScroll = 0
-	}
-	if s.sideScrollY > s.sideMaxScroll {
-		s.sideScrollY = s.sideMaxScroll
-	}
-
-	s.subs = s.subs[:0]
-	y := sideTop - s.sideScrollY
-	s.subs = append(s.subs, subHit{index: AllFilter, rect: toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}})
-	y += m.sideItemH
-	for i := range s.Subs {
-		s.subs = append(s.subs, subHit{index: i, rect: toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}})
-		y += m.sideItemH
-	}
-	if s.usenetAddr != "" {
-		s.browseR = toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}
-		y += m.sideItemH
-	} else {
-		s.browseR = toolkit.Rect{}
-	}
-	// "🔍 Search Reddit" entry, below the subscriptions (and the Browse entry when
-	// shown). Reddit works anonymously, so this is always offered.
-	s.searchRedditR = toolkit.Rect{X: 0, Y: y, W: m.sidebarW, H: m.sideItemH}
-	y += m.sideItemH
+	s.buildSideTree()
+	s.sideTree.RowHeight = m.sideItemH
+	// Bounds are sprite-local (the sidebar is blitted at (0, topbarH)): Draw uses
+	// them, while NodeAt/OnEvent take band-local coordinates. H drives the scroll
+	// window + gutter.
+	s.sideTree.SetBounds(toolkit.Rect{X: 0, Y: s.sideBandTop - m.topbarH, W: m.sidebarW, H: band})
 
 	// Burger button (left of the topbar) toggles the sidebar. Always present in
 	// the feed view so a collapsed sidebar can be reopened.
@@ -170,53 +116,16 @@ func (s *Scene) layout() {
 	}
 	s.searchR = toolkit.Rect{X: headerW + m.pad, Y: (m.topbarH - m.searchH) / 2, W: s.W - headerW - 2*m.pad, H: m.searchH}
 
-	top := m.pad
-
-	// While a refresh streams in and some items are already showing, a slim
-	// progress strip sits at the very top of the scrollable feed content (above
-	// the banners and cards). With no items yet, the centred placeholder is drawn
-	// instead (in Draw), so the strip is reserved only when there is content.
-	fil := s.filtered()
-	s.showStrip = false
-	if s.loading && s.loadTotal > 0 && len(fil) > 0 {
-		s.loadStripTop = top
-		s.showStrip = true
-		top += m.loadStripH + m.cardGap
-	}
-
-	// "Needs sign-in" banner rows sit at the top of the scrollable feed content,
-	// above the cards, so they scroll with the feed and compose with the card
-	// hit-testing through the same offset.
-	s.authRows = s.authRows[:0]
-	for i := range s.authPrompts {
-		s.authRows = append(s.authRows, authRowLayout{idx: i, top: top})
-		top += m.bannerH + m.cardGap
-	}
-
-	// Feed rows: consecutive Usenet parts of one post collapse into a single
-	// group card; everything else is a standalone card. A group's height grows
-	// when expanded so scrolling accounts for the listed members.
-	s.rows = s.rows[:0]
-	// Cards wrap their title to the width they are drawn at, so measure row
-	// heights with the same card width the draw loop blits at (feedGeom → the
-	// scrollbar-gutter clamp). previewR/contentH are this frame's prior values —
-	// the one-frame scrollbar-gutter lag already inherent in feedCardW, and fine.
-	_, feedW := s.feedGeom()
-	cardW := s.feedCardW(feedW)
-	for _, e := range groupItems(fil) {
-		r := feedRow{top: top, item: e.item, group: e.group}
-		r.height = s.rowHeight(e, cardW)
-		s.rows = append(s.rows, r)
-		top += r.height + m.cardGap
-	}
-	// The feed measures its content height here (its "refresh" point), so refresh the
-	// scroller here — a resize can't leave a stale offset, and the wheel handler only
-	// nudges it. Viewport is feedBottom()-topbarH (content stops above the bar).
-	s.feedScroll.refresh(top, s.feedBottom()-s.m.topbarH)
-
 	// Per-newsgroup post counts for the bottom status bar (computed here so the
 	// feed geometry, which subtracts the bar, is consistent this frame).
-	s.statusSegs = groupCountSegs(fil)
+	s.statusSegs = groupCountSegs(s.filtered())
+
+	// Drive the feed: the virtual.CardList model + geometry are reconciled to the
+	// current filter here (the feed's per-layout refresh point, which also places
+	// the list rect below the pinned banners and opens at the bottom on a filter
+	// change). The pinned sign-in banners are laid out in Draw / HitTest directly
+	// from authPrompts.
+	s.syncFeed()
 }
 
 // Draw paints the whole scene into buf (s.W*s.H*4 RGBA bytes).
@@ -269,53 +178,26 @@ func (s *Scene) Draw(buf []byte) {
 	feedTop := m.topbarH
 	feedX, feedW := s.feedGeom()
 	cardW := s.feedCardW(feedW) // narrower than feedW when the scrollbar shows
-	// Progress strip (loading + some items): drawn above the banners, scrolling
-	// with the feed content.
-	feedBot := s.feedBottom() // content stops above the download panel
-	if s.showStrip {
-		y := feedTop + s.loadStripTop - s.feedScroll.offset
-		if y+m.loadStripH >= feedTop && y < feedBot {
-			s.drawLoadStrip(p, img, feedX, y, cardW, muteS)
-		}
+	// "Needs sign-in" banners, pinned above the feed list (they do not scroll with
+	// the cards).
+	for i, ap := range s.authPrompts {
+		by := feedTop + i*(m.bannerH+m.cardGap)
+		s.drawAuthBanner(p, img, ap, feedX, by, cardW, onAccent)
 	}
-	// "Needs sign-in" banners (drawn above the cards, scrolling with the feed).
-	for _, a := range s.authRows {
-		y := feedTop + a.top - s.feedScroll.offset
-		if y+m.bannerH < feedTop || y >= feedBot {
-			continue
-		}
-		s.drawAuthBanner(p, img, s.authPrompts[a.idx], feedX, y, cardW, onAccent)
-	}
-	for _, r := range s.rows {
-		y := feedTop + r.top - s.feedScroll.offset
-		if y+r.height < feedTop || y >= feedBot {
-			continue
-		}
-		if r.group != nil {
-			s.drawGroup(p, img, r.group, feedX, y, cardW, onAccent, muteS)
-			continue
-		}
-		entry := s.cardSprite(r.item, cardW, onAccent, muteS)
-		blitAt(img, entry.img, feedX, y)
-		// Card text is selectable: translate the card's local-space runs to their
-		// on-screen position (the blit offset) and add them to this frame's
-		// accumulator, so a drag spans the sidebar, the cards and the preview text.
-		s.addSelectableRuns(entry.runs, feedX, y)
-		if s.previewHas && sameItem(r.item, s.previewItem) {
-			// Selected card: an accent outline so the current post is visibly
-			// picked out, mirroring the sidebar's selected-group affordance.
-			p.StrokeRoundRect(painter.Rect{X: feedX, Y: y, W: cardW, H: r.height}, rpxOf(s, 6), th.Accent, rpxOf(s, 2))
-		}
-	}
-	// Scrollbar down the feed's right edge when the content overflows. When the
-	// preview pane is open, its divider carries a resize grip, so position the bar
-	// the standard gap from that grip (else there is no grip → flush right edge).
+	// The unified feed itself: the virtual.CardList, laid out (in syncFeed) in the
+	// column below the banners. It realises only the visible cards, paints its own
+	// selection ring + read veil, and clips to its bounds.
+	lr := s.feed.list.Bounds()
+	s.feed.list.Draw(p, th)
+	// Scrollbar down the feed's right edge when the CardList content overflows its
+	// viewport. When the preview pane is open, its divider carries a resize grip,
+	// so position the bar the standard gap from that grip (else flush right edge).
 	feedGrip := 0
 	if s.previewR.W > 0 {
 		feedGrip = s.previewR.X
 	}
-	s.drawVScrollbar(p, toolkit.Rect{X: feedX, Y: feedTop, W: feedW, H: feedBot - feedTop}, feedGrip, s.feedScroll.contentH, s.feedScroll.offset)
-	if len(s.rows) == 0 {
+	s.drawVScrollbar(p, toolkit.Rect{X: feedX, Y: lr.Y, W: feedW, H: lr.H}, feedGrip, s.feedContentH(), s.FeedScrollOffset())
+	if s.feed.model.Len() == 0 {
 		if s.loading {
 			// A refresh is running but nothing has arrived yet: show the animated
 			// placeholder rather than a bare "No items." that looks broken.
@@ -330,10 +212,6 @@ func (s *Scene) Draw(buf []byte) {
 	// --- chrome (cached sprites; static across scroll like Evas smart objects) ---
 	if m.sidebarW > 0 {
 		blitAt(img, s.sidebarSprite(), 0, m.topbarH)
-		// The sidebar's text labels are selectable: its cached runs are in
-		// sprite-local coords, so translate them by the sprite's screen origin
-		// (0, topbarH) into the frame's accumulator.
-		s.addSelectableRuns(s.sidebarRuns, 0, m.topbarH)
 		// A 1px divider at the sidebar's right edge plus a centred grab handle so
 		// the resize affordance is visible and easy to hit.
 		p.FillRect(painter.Rect{X: m.sidebarW - 1, Y: m.topbarH, W: 1, H: s.H - m.topbarH}, th.Border)
@@ -375,7 +253,8 @@ type sidebarKey struct {
 	profRev    int
 	pendRev    int
 	anim       int // animation frame, but only while a source is pending
-	sideScroll int // subscription-list scroll offset
+	sideScroll int // TreeView top-row scroll index
+	fold       int // folder/collapse revision (folder set + expand state)
 }
 type topbarKey struct {
 	w        int
@@ -400,7 +279,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	if s.PendingCount() > 0 {
 		anim = s.animFrame
 	}
-	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim, sideScroll: s.sideScrollY}
+	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim, sideScroll: s.sideTree.ScrollRow, fold: s.foldRev}
 	if s.sidebarSpr != nil && s.sidebarKey == k {
 		return s.sidebarSpr
 	}
@@ -409,12 +288,6 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	p := painter.NewPixelPainter(buf, m.sidebarW, h)
 	img := &image.RGBA{Pix: buf, Stride: m.sidebarW * 4, Rect: image.Rect(0, 0, m.sidebarW, h)}
 	p.FillRect(painter.Rect{X: 0, Y: 0, W: m.sidebarW, H: h}, th.SurfaceAlt)
-
-	// Accumulate the selectable text-label runs (in this sprite's local coords)
-	// as the rows are laid out, so the feed can offer them for drag-selection
-	// without re-laying-out the sidebar every frame. Only the text labels are
-	// collected — the icons, dots, counts and spinner slots are not selectable.
-	var runs []toolkit.TextRun
 
 	// Profile tabs (sidebar-local coords).
 	for _, t := range s.profTabs {
@@ -427,93 +300,18 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 		m.tab.draw(img, t.rect.X+m.tabPad, ly+(t.rect.H-m.tab.height)/2, s.Profiles[t.index].Name, col)
 	}
 
-	// Subscription rows. When the list overflows it scrolls; skip any row that is
-	// not fully within the band between the tab strip and the pinned footer so a
-	// scrolled row never paints over the footer or up into the tabs.
-	for _, e := range s.subs {
-		if e.rect.Y < s.sideBandTop || e.rect.Y+m.sideItemH > s.sideBandBot {
-			continue
-		}
-		ly := e.rect.Y - m.topbarH // sidebar-local Y
-		label := "All Sources"
-		if e.index >= 0 {
-			label = s.Subs[e.index].name()
-		}
-		col := th.OnSurface
-		if e.index == s.Active {
-			p.FillRect(painter.Rect{X: 0, Y: ly, W: m.sidebarW, H: m.sideItemH}, th.Surface)
-			p.FillRect(painter.Rect{X: 0, Y: ly, W: rpxOf(s, 3), H: m.sideItemH}, th.Accent)
-			col = th.Accent
-		}
-		sideF := ttFont(false, rpxOf(s, 13))
-		if e.index < 0 {
-			// "All Sources": a single label filling the row.
-			lbl := toolkit.NewLabel(label)
-			lbl.Font, lbl.Ink = sideF, col
-			lbl.SetBounds(toolkit.Rect{X: m.pad, Y: ly, W: m.sidebarW - 2*m.pad, H: m.sideItemH})
-			lbl.Draw(p, th)
-			runs = append(runs, lbl.TextRuns()...)
-			continue
-		}
-		// A subscription row, composed as an HBox: source dot | channel label |
-		// (post count, or a spinner while the source is still fetching). The label
-		// renders through ttFont so non-Latin channel names (e.g. CJK) show.
-		sub := s.Subs[e.index]
-		gap := rpxOf(s, 4)
-		dotSlot := rpxOf(s, 14)
-		innerW := m.sidebarW - 2*m.pad
-		pending := s.IsPendingSub(sub.Source, sub.Channel)
-		var chip *countChip
-		rightW := 0
-		if pending {
-			rightW = rpxOf(s, 14) // reserved for the spinner
-		} else if total, unseen := s.subCounts(sub); total > 0 {
-			chip = &countChip{s: s, unseen: unseen, total: total}
-			rightW = chip.width()
-		}
-		labelW := innerW - dotSlot - gap
-		if rightW > 0 {
-			labelW -= rightW + gap
-		}
-		lbl := toolkit.NewLabel(truncateFont(sideF, label, labelW))
-		lbl.Font, lbl.Ink = sideF, col
-		row := toolkit.NewHBox()
-		row.Spacing = gap
-		row.AddFixed(&sideDot{s: s, col: sourceColor(sub.Source)}, dotSlot)
-		row.AddFlex(lbl, 1)
-		switch {
-		case chip != nil:
-			row.AddFixed(chip, rightW)
-		case pending:
-			row.AddFixed(toolkit.NewLabel(""), rightW) // reserve the spinner slot
-		}
-		row.SetBounds(toolkit.Rect{X: m.pad, Y: ly, W: innerW, H: m.sideItemH})
-		row.Draw(p, th)
-		runs = append(runs, lbl.TextRuns()...)
-		if pending {
-			d := rpxOf(s, 14)
-			s.spinnerAt(toolkit.Rect{X: m.sidebarW - m.pad - d, Y: ly + (m.sideItemH-d)/2, W: d, H: d}, toolkit.SpinnerDots).Draw(p, th)
-		}
-	}
-
-	// "＋ Browse newsgroups" entry (sidebar-local coords), shown below the subs
-	// when a Usenet server is configured.
-	if s.usenetAddr != "" && s.browseR.W > 0 &&
-		s.browseR.Y >= s.sideBandTop && s.browseR.Y+m.sideItemH <= s.sideBandBot {
-		ly := s.browseR.Y - m.topbarH
-		ir := toolkit.Rect{X: m.pad, Y: ly + (m.sideItemH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
-		drawPlusIcon(p, ir, th.Accent, s.iconStroke())
-		m.side.draw(img, m.pad+rpxOf(s, 14), ly+(m.sideItemH-m.side.height)/2, "Browse newsgroups", th.Accent)
-	}
-
-	// "Search Reddit" entry (sidebar-local coords), below the subs / Browse entry.
-	if s.searchRedditR.W > 0 &&
-		s.searchRedditR.Y >= s.sideBandTop && s.searchRedditR.Y+m.sideItemH <= s.sideBandBot {
-		ly := s.searchRedditR.Y - m.topbarH
-		ir := toolkit.Rect{X: m.pad, Y: ly + (m.sideItemH-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
-		drawSearchIcon(p, ir, th.Accent)
-		m.side.draw(img, m.pad+rpxOf(s, 14), ly+(m.sideItemH-m.side.height)/2, "Search Reddit", th.Accent)
-	}
+	// The scrollable middle list is a toolkit.TreeView (its bounds were set in
+	// layout to sprite-local coordinates): it paints the "All Sources" root, the
+	// folders, the subscriptions and the discovery entries through drawSideRow,
+	// clips them to the band, and draws its own scrollbar gutter when the list
+	// overflows. Its selection background (theme.Accent) marks the active filter.
+	// The TreeView fills unselected rows with theme.Surface; the reader's sidebar
+	// is SurfaceAlt, so it draws with a theme copy whose Surface is SurfaceAlt to
+	// keep the list flush with the surrounding sidebar (the accent selection fill
+	// and the Background-on-accent ink are unaffected).
+	sideTheme := *th
+	sideTheme.Surface = th.SurfaceAlt
+	s.sideTree.Draw(p, &sideTheme)
 
 	// Pinned entries at the bottom: Accounts, Network log, Settings. Each icon is
 	// drawn (not a font glyph) so nothing renders as a tofu box.
@@ -529,18 +327,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	drawNavRow(s.logR.Y-m.topbarH, drawListIcon, "Network log")
 	drawNavRow(s.settingsR.Y-m.topbarH, drawSlidersIcon, "Settings")
 
-	// Scrollbar down the sub-list's right edge when it overflows the band between
-	// the profile tabs and the pinned footer (sprite-local coords; the sprite key
-	// includes sideScrollY so it re-rasterises as the list scrolls).
-	if s.sideMaxScroll > 0 {
-		band := s.sideBandBot - s.sideBandTop
-		// The resize grip sits on the divider at the sidebar's right edge (x = sidebarW),
-		// so pass it as gripX: drawVScrollbar backs the bar off by the one standard
-		// scrollGripGap, identical to the feed's gap against the preview divider.
-		s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: s.sideBandTop - m.topbarH, W: m.sidebarW, H: band}, m.sidebarW, band+s.sideMaxScroll, s.sideScrollY)
-	}
-
-	s.sidebarKey, s.sidebarSpr, s.sidebarRuns = k, img, runs
+	s.sidebarKey, s.sidebarSpr = k, img
 	return img
 }
 
@@ -590,109 +377,6 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	return img
 }
 
-// cardThumb is a toolkit.Widget wrapping a feed card's thumbnail so the card's
-// box layout positions it like any other child; its Draw blits the cached image
-// (or a placeholder) into the box-computed rect via drawThumb.
-type cardThumb struct {
-	toolkit.Base
-	s    *Scene
-	it   source.Item
-	p    *painter.PixelPainter
-	img  *image.RGBA
-	mute toolkit.RGBA
-}
-
-func (c *cardThumb) Draw(_ painter.Painter, _ *toolkit.Theme) {
-	c.s.drawThumb(c.p, c.img, c.it, c.Bounds(), c.mute)
-}
-
-// drawCard paints one feed card. Its interior is composed with toolkit box
-// layouts rather than hand-positioned draws: an outer HBox splits
-// the content column from the thumbnail, and the column is a VBox of a badge row,
-// the title, a flexible spacer, and the meta line — each a real widget (Badge /
-// Label / cardThumb) the boxes lay out and draw.
-func (s *Scene) drawCard(p *painter.PixelPainter, img *image.RGBA, it source.Item, x, y, w int, onAccent, muteS toolkit.RGBA) []toolkit.TextRun {
-	m := s.m
-	th := s.theme
-	h := s.cardHeight(it, w)
-	p.FillRoundRect(painter.Rect{X: x, Y: y, W: w, H: h}, rpxOf(s, 6), th.Surface)
-	p.StrokeRoundRect(painter.Rect{X: x, Y: y, W: w, H: h}, rpxOf(s, 6), th.Border, 1)
-
-	pad := m.pad
-	hasThumb := len(it.Media) > 0
-	textW := w - 2*pad
-	if hasThumb {
-		textW -= m.thumbW + pad // pad = the HBox gap the thumbnail column reserves
-	}
-
-	// Badge row: the source pill (fixed to its label width) then the channel.
-	label := sourceLabel(it.Source)
-	badge := &toolkit.Badge{Text: label, Fill: sourceColor(it.Source), Ink: onAccentFor(sourceColor(it.Source))}
-	badge.Font = ttFont(true, rpxOf(s, 10))
-	badgeRow := toolkit.NewHBox()
-	badgeRow.Spacing = rpxOf(s, 4)
-	badgeRow.AddFixed(badge, m.badge.width(label)+pad)
-	channel := toolkit.NewLabel(it.Channel)
-	channel.Font = ttFont(false, rpxOf(s, 12))
-	channel.Ink = muteS
-	badgeRow.AddFlex(channel, 1)
-
-	meta := toolkit.NewLabel(truncate(m.meta, metaLine(it), textW))
-	meta.Font = ttFont(false, rpxOf(s, 12))
-	meta.Ink = muteS
-
-	// Content column: badge row, then one title Label per wrapped line (so a long
-	// title reads across several lines instead of being clipped), a flexible gap
-	// that pushes the meta to the bottom, and the meta line. Each title line is
-	// titleLineH tall — the same slot the single-line card used — so a one-line
-	// card lays out byte-for-byte as before.
-	titleFont := ttFont(true, rpxOf(s, 15))
-	col := toolkit.NewVBox()
-	col.Spacing = -1
-	col.AddFixed(badgeRow, m.badgeH)
-	for _, ln := range s.cardTitleLines(it, w) {
-		tl := toolkit.NewLabel(ln)
-		tl.Font = titleFont
-		tl.Ink = th.OnSurface
-		col.AddFixed(tl, s.titleLineH())
-	}
-	col.AddFlex(toolkit.NewLabel(""), 1)
-	col.AddFixed(meta, m.meta.height+rpxOf(s, 8))
-
-	// Card row: content column (flex) then the optional thumbnail (fixed). The
-	// thumbnail is pinned to its natural thumbW×thumbH at the top of a flexible
-	// column, so a taller (multi-line) card leaves blank space below the thumb
-	// rather than stretching the image to the whole card height.
-	row := toolkit.NewHBox()
-	row.Spacing = pad
-	row.AddFlex(col, 1)
-	if hasThumb {
-		thumbCol := toolkit.NewVBox()
-		thumbCol.AddFixed(&cardThumb{s: s, it: it, p: p, img: img, mute: muteS}, m.thumbH)
-		thumbCol.AddFlex(toolkit.NewLabel(""), 1)
-		row.AddFixed(thumbCol, m.thumbW)
-	}
-	row.SetBounds(toolkit.Rect{X: x + pad, Y: y + pad, W: w - 2*pad, H: h - 2*pad})
-	row.Draw(p, th)
-	_ = onAccent
-	// Return the card's selectable text runs (channel, wrapped title lines, meta)
-	// in the coordinates row was laid out at, so a sprite built at local origin
-	// (x=y=0) yields local-space runs the feed can translate to the card's blit
-	// offset each frame.
-	return toolkit.CollectRuns(row)
-}
-
-// cardTitleMaxLines caps how many lines a wrapped card title occupies; beyond
-// it the last shown line is ellipsised, so a pathologically long title can only
-// grow a card so far.
-const cardTitleMaxLines = 3
-
-// cardBodyMaxLines is the same cap for a card whose headline is its body (see
-// cardText). It is higher than cardTitleMaxLines because a short post's whole
-// text IS the card: a tweet or a toot should read in full rather than stop at an
-// ellipsis three lines in.
-const cardBodyMaxLines = 5
-
 // cardText is the headline a feed card renders. Most sources title every post,
 // but the social ones — Twitter/X, Mastodon, Bluesky — have no title at all and
 // carry the entire post in Body, so a Title-only card rendered *blank* for them.
@@ -710,59 +394,6 @@ func cardText(it source.Item) string {
 // collapseSpace flattens every run of whitespace — including the newlines a
 // tweet or toot embeds — into single spaces.
 func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
-
-// cardMaxLines is how many wrapped headline lines a card may show: titled items
-// keep the historical three, a body fallback gets cardBodyMaxLines.
-func cardMaxLines(it source.Item) int {
-	if strings.TrimSpace(it.Title) != "" {
-		return cardTitleMaxLines
-	}
-	return cardBodyMaxLines
-}
-
-// titleLineH is the vertical slot one card-title line occupies — the same slot
-// the former single-line title used, so a one-line card is unchanged.
-func (s *Scene) titleLineH() int { return s.m.title.height + rpxOf(s, 4) }
-
-// cardTitleLines word-wraps cardText(it) to the card's text width (the card width w
-// less the horizontal padding, and the thumbnail column when the item has
-// media). It wraps with the exact toolkit font the title Labels render with (the
-// embedded Go bold face at rpx(15) via ttFont), measured through that font's own
-// Measure — NOT the getFace textFace — so the wrap decision matches the glyphs
-// that draw. A width mismatch between the two rasterisers would otherwise let a
-// line "fit" the wrap yet overflow the (ellipsis-less) Label and clip mid-word.
-// It never returns zero lines, and caps at cardMaxLines(it), ellipsising the
-// last shown line so the cut is visible.
-func (s *Scene) cardTitleLines(it source.Item, w int) []string {
-	m := s.m
-	textW := w - 2*m.pad
-	if len(it.Media) > 0 {
-		textW -= m.thumbW + m.pad
-	}
-	text := cardText(it)
-	titleFont := ttFont(true, rpxOf(s, 15))
-	lines := wrapMeasured(titleFont.Measure, text, textW)
-	if len(lines) == 0 {
-		return []string{text} // an item with neither title nor body still occupies one line
-	}
-	if max := cardMaxLines(it); len(lines) > max {
-		last := lines[max-1]
-		lines = lines[:max]
-		lines[max-1] = truncateFont(titleFont, last+"…", textW)
-	}
-	return lines
-}
-
-// cardHeight is THE height of a standard feed card at width w: one title line
-// fits the fixed rowH, and each extra wrapped line grows the card by one line's
-// height. cardSprite, drawCard and rowHeight all derive from it, so the laid-out
-// height, the rasterised sprite and the drawn card never diverge. cardTitleLines
-// never returns fewer than one line, so this is always ≥ rowH — a one-line card
-// is exactly the old fixed-height card.
-func (s *Scene) cardHeight(it source.Item, w int) int {
-	n := len(s.cardTitleLines(it, w))
-	return s.m.rowH + (n-1)*s.titleLineH()
-}
 
 // truncateFont clips s with a trailing ellipsis to fit maxW pixels in the
 // toolkit font f — the box-layout analogue of truncate (which measures a
@@ -798,11 +429,15 @@ func (d *sideDot) Draw(p painter.Painter, _ *toolkit.Theme) {
 
 // countChip renders a sidebar row's post count right-aligned in its bounds: the
 // group total muted, and — when non-zero — the unseen/new count in accent before
-// it ("<unseen>/<total>"). Both are toolkit Labels (via ttFont).
+// it ("<unseen>/<total>"). Both are toolkit Labels (via ttFont). On the selected
+// TreeView row (accent fill) both use the row ink instead, so the numbers stay
+// legible against the accent background.
 type countChip struct {
 	toolkit.Base
 	s             *Scene
 	unseen, total int
+	selected      bool
+	ink           toolkit.RGBA
 }
 
 // width is the chip's rendered pixel width, so the row's HBox can reserve it.
@@ -818,17 +453,22 @@ func (c *countChip) width() int {
 func (c *countChip) Draw(p painter.Painter, th *toolkit.Theme) {
 	b := c.Bounds()
 	f := ttFont(false, rpxOf(c.s, 12))
+	totalCol := mute(th.OnSurface, th.SurfaceAlt)
+	unseenCol := th.Accent
+	if c.selected {
+		totalCol, unseenCol = c.ink, c.ink
+	}
 	totalStr := strconv.Itoa(c.total)
 	tw := f.Measure(totalStr)
 	tot := toolkit.NewLabel(totalStr)
-	tot.Font, tot.Ink = f, mute(th.OnSurface, th.SurfaceAlt)
+	tot.Font, tot.Ink = f, totalCol
 	tot.SetBounds(toolkit.Rect{X: b.X + b.W - tw, Y: b.Y, W: tw, H: b.H})
 	tot.Draw(p, th)
 	if c.unseen > 0 {
 		us := strconv.Itoa(c.unseen) + "/"
 		uw := f.Measure(us)
 		un := toolkit.NewLabel(us)
-		un.Font, un.Ink = f, th.Accent
+		un.Font, un.Ink = f, unseenCol
 		un.SetBounds(toolkit.Rect{X: b.X + b.W - tw - uw, Y: b.Y, W: uw, H: b.H})
 		un.Draw(p, th)
 	}
@@ -860,70 +500,12 @@ func (s *Scene) drawAuthBanner(p *painter.PixelPainter, img *image.RGBA, ap Auth
 	m.side.draw(img, tx, ty, truncate(m.side, lbl, x+w-tx-m.pad), onAccent)
 }
 
-// cardKey identifies a cached card sprite. A card only re-renders when its
-// content, width, scale, theme or thumbnail changes.
-// cardKey must capture enough of the item's identity that two different items
-// never share a sprite. it.ID is only stable *within* a Source (and is "" for
-// some feeds), so a HackerNews and a Lemmy post both keyed "1" — or two empty-ID
-// RSS items — would collide and blit the wrong card. Including Source + Title
-// disambiguates without hashing the whole item.
 // sameItem reports whether two items are the same post. it.ID is only unique
-// within a Source (and empty for some feeds), so identity is Source+ID+headline
-// — exactly what cardKey uses to avoid sprite collisions. The headline is
-// cardText, not Title, so untitled posts (tweets, toots) stay distinguishable.
+// within a Source (and empty for some feeds), so identity is Source+ID+headline.
+// The headline is cardText, not Title, so untitled posts (tweets, toots) stay
+// distinguishable.
 func sameItem(a, b source.Item) bool {
 	return a.Source == b.Source && a.ID == b.ID && cardText(a) == cardText(b)
-}
-
-type cardKey struct {
-	id    string
-	src   source.Kind
-	title string
-	w     int
-	scale float64
-	theme *toolkit.Theme
-	thumb *image.RGBA
-}
-
-// cardSpriteEntry caches a rendered card together with its selectable text runs
-// in card-LOCAL coordinates (the sprite is rasterised at origin 0,0). The feed
-// draw loop blits img and translates runs by the card's on-screen blit offset,
-// so scrolling reuses both the pixels and the run geometry without re-layout.
-type cardSpriteEntry struct {
-	img  *image.RGBA
-	runs []toolkit.TextRun
-}
-
-// cardSprite returns a cached bitmap of the card for it at width w, rendering it
-// once on a cache miss. Scrolling then reuses the sprite via a memcpy blit
-// instead of re-rasterising every glyph each frame.
-func (s *Scene) cardSprite(it source.Item, w int, onAccent, muteS toolkit.RGBA) cardSpriteEntry {
-	var thumb *image.RGBA
-	if s.Thumbs != nil {
-		thumb = s.Thumbs[it.ID]
-	}
-	k := cardKey{id: it.ID, src: it.Source, title: cardText(it), w: w, scale: s.Scale, theme: s.theme, thumb: thumb}
-	if s.cardCache == nil {
-		s.cardCache = map[cardKey]cardSpriteEntry{}
-	}
-	if sp, ok := s.cardCache[k]; ok {
-		return sp
-	}
-	// Height is a pure function of the fields the key already carries: the title
-	// (its wrapped line count), the width w, the scale, and — via the item's
-	// Media, fixed per id+src — whether a thumbnail column is reserved. So the
-	// existing key needs no height field; two keys never disagree on height.
-	h := s.cardHeight(it, w)
-	buf := make([]byte, w*h*4)
-	p := painter.NewPixelPainter(buf, w, h)
-	img := &image.RGBA{Pix: buf, Stride: w * 4, Rect: image.Rect(0, 0, w, h)}
-	// Fill with the feed background so the card's rounded corners composite
-	// correctly when the opaque sprite is blitted onto the scene.
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: w, H: h}, s.theme.Background)
-	runs := s.drawCard(p, img, it, 0, 0, w, onAccent, muteS)
-	entry := cardSpriteEntry{img: img, runs: runs}
-	s.cardCache[k] = entry
-	return entry
 }
 
 // blitAt copies src into dst at (x, y) with a per-row memcpy, clamped to dst's
@@ -953,18 +535,6 @@ func blitAt(dst, src *image.RGBA, x, y int) {
 	}
 }
 
-func (s *Scene) drawThumb(p *painter.PixelPainter, img *image.RGBA, it source.Item, r toolkit.Rect, muteS toolkit.RGBA) {
-	p.FillRect(painter.Rect(r), s.theme.SurfaceAlt)
-	if s.Thumbs != nil {
-		if t, ok := s.Thumbs[it.ID]; ok && t != nil {
-			blit(img, t, r.X, r.Y, r.W, r.H)
-			return
-		}
-	}
-	lbl := string(it.Media[0].Kind)
-	s.m.meta.draw(img, r.X+(r.W-s.m.meta.width(lbl))/2, r.Y+(r.H-s.m.meta.height)/2, lbl, muteS)
-}
-
 // drawGripHandle paints a short, centred vertical pill on a resizable divider at
 // column cx, so the drag affordance is visible and easy to grab.
 func (s *Scene) drawGripHandle(p *painter.PixelPainter, cx int) {
@@ -980,20 +550,6 @@ func (s *Scene) drawGripHandle(p *painter.PixelPainter, cx int) {
 func (s *Scene) drawDot(p *painter.PixelPainter, x, cy int, col toolkit.RGBA) {
 	d := rpxOf(s, 8)
 	p.FillRoundRect(painter.Rect{X: x, Y: cy - d/2, W: d, H: d}, d/2, col)
-}
-
-// drawSourceBadge paints a source-coloured pill at r via toolkit.Badge (using
-// its per-source Fill colour). Text is left empty so the widget renders the
-// rounded pill only; the caller draws the label on top in the reader's
-// TrueType face. Shared by the item card and the Usenet group header.
-func (s *Scene) drawSourceBadge(p *painter.PixelPainter, r toolkit.Rect, k source.Kind) {
-	// Ink is derived from the fill's luminance, not hard white: bright source
-	// colours (TikTok cyan 0x25F4EE, Lemmy 0x00BC8C) render white text almost
-	// illegibly; onAccentFor picks black on those and white on the dark fills.
-	b := &toolkit.Badge{Text: sourceLabel(k), Fill: sourceColor(k), Ink: onAccentFor(sourceColor(k))}
-	b.Font = ttFont(true, rpxOf(s, 10)) // render its own AA label (no text-on-top)
-	b.SetBounds(r)
-	b.Draw(p, s.theme)
 }
 
 // HitTest maps a click at (x, y) to an action.
@@ -1060,21 +616,12 @@ func (s *Scene) HitTest(x, y int) Hit {
 		if inRect(s.accountsR, x, y) {
 			return Hit{Kind: HitAccounts}
 		}
-		// The scrollable sub-list rows (subs + Browse) are only hittable inside the
-		// band; a row scrolled under the tabs or the footer must not be clickable
-		// through that chrome (which is drawn on top of it).
-		inBand := func(r toolkit.Rect) bool {
-			return r.Y >= s.sideBandTop && r.Y+m.sideItemH <= s.sideBandBot
-		}
-		if s.usenetAddr != "" && s.browseR.W > 0 && inBand(s.browseR) && inRect(s.browseR, x, y) {
-			return Hit{Kind: HitBrowse}
-		}
-		if s.searchRedditR.W > 0 && inBand(s.searchRedditR) && inRect(s.searchRedditR, x, y) {
-			return Hit{Kind: HitSearchReddit}
-		}
-		for _, e := range s.subs {
-			if inBand(e.rect) && inRect(e.rect, x, y) {
-				return Hit{Kind: HitSub, Sub: e.index}
+		// The scrollable middle list is the TreeView: map the click to the node
+		// under it (band-local coordinates). A row scrolled out of the band, or a
+		// click on empty space, resolves to no node.
+		if y >= s.sideBandTop && y < s.sideBandBot {
+			if node := s.sideTree.NodeAt(x, y-s.sideBandTop); node != nil {
+				return s.sideNodeHit(node)
 			}
 		}
 		return Hit{Kind: HitNone}
@@ -1087,58 +634,51 @@ func (s *Scene) HitTest(x, y int) Hit {
 		}
 		return Hit{Kind: HitNone}
 	}
-	// Feed.
+	// Feed. The pinned "needs sign-in" banners sit above the CardList, one per
+	// prompt; a click on one opens the Accounts editor for that provider.
 	feedX, feedW := s.feedGeom()
-	cardW := s.feedCardW(feedW) // match the draw's scrollbar gutter
-	contentY := y - m.topbarH + s.feedScroll.offset
-	for _, a := range s.authRows {
-		if contentY >= a.top && contentY < a.top+m.bannerH {
-			return Hit{Kind: HitFixAuth, Value: string(s.authPrompts[a.idx].Kind)}
+	cardW := s.feedCardW(feedW)
+	for i := range s.authPrompts {
+		by := m.topbarH + i*(m.bannerH+m.cardGap)
+		if inRect(toolkit.Rect{X: feedX, Y: by, W: cardW, H: m.bannerH}, x, y) {
+			return Hit{Kind: HitFixAuth, Value: string(s.authPrompts[i].Kind)}
 		}
 	}
-	for _, r := range s.rows {
-		if contentY < r.top || contentY >= r.top+r.height {
-			continue
-		}
-		if r.group == nil {
-			return Hit{Kind: HitItem, Item: r.item}
-		}
-		return s.hitGroup(r, feedX, cardW, x, contentY)
+	// A Usenet group card's affordances resolve first: the disclosure chevron
+	// (toggle expand/collapse) and — when the post is complete — the download
+	// checkbox and the "Reconstruct" pill. These act immediately (they are not
+	// text-selectable), so they never defer to the CardList selection.
+	if h, ok := s.feedGroupHit(x, y); ok {
+		return h
+	}
+	// A card under the pointer resolves to HitItem (open it in the preview pane).
+	// The selection itself is driven through the CardList (FeedClickAt), so a
+	// standalone card — or a group card's header/body — previews like any other;
+	// a click on an expanded group's member row previews that part (FeedClickAt).
+	if it, ok := s.feedItemAtPoint(x, y); ok {
+		return Hit{Kind: HitItem, Item: it}
 	}
 	return Hit{Kind: HitNone}
 }
 
-// hitGroup resolves a click landing inside a group row (feed content coords):
-// the Reconstruct affordance, the header (toggle expand/collapse), or — when
-// expanded — one of the listed member parts (open its detail, like a card).
-func (s *Scene) hitGroup(r feedRow, feedX, feedW, x, contentY int) Hit {
-	g := r.group
-	// A complete post offers a download checkbox (queue) and the Reconstruct pill,
-	// both in the header's right slot; the checkbox takes precedence where drawn.
-	if g.Complete() {
-		if inRect(s.downloadCheckRect(feedX, r.top, feedW), x, contentY) {
-			return Hit{Kind: HitToggleDownload, Value: g.Base}
-		}
-		if inRect(s.reconstructRect(feedX, r.top, feedW), x, contentY) {
-			return Hit{Kind: HitReconstruct, Value: g.Base}
-		}
+// sideNodeHit maps a clicked sidebar TreeView node to a scene Hit: the "All
+// Sources" root and the subscriptions filter the feed (HitSub), the discovery
+// entries open their views, and a folder row toggles its collapse state.
+func (s *Scene) sideNodeHit(node *toolkit.TreeNode) Hit {
+	switch d := sideData(node); d.Kind {
+	case sideAll:
+		return Hit{Kind: HitSub, Sub: AllFilter}
+	case sideSub:
+		return Hit{Kind: HitSub, Sub: d.Sub}
+	case sideBrowse:
+		return Hit{Kind: HitBrowse}
+	case sideSearchReddit:
+		return Hit{Kind: HitSearchReddit}
+	case sideFolder:
+		return Hit{Kind: HitToggleFolder, Value: d.Folder}
+	default:
+		return Hit{Kind: HitNone}
 	}
-	if contentY < r.top+s.m.groupHeadH {
-		// The chevron toggles expand/collapse; the rest of the header previews the
-		// post (reconstructs its image into the pane), like clicking a card.
-		if inRect(s.chevronRect(feedX, r.top), x, contentY) {
-			return Hit{Kind: HitToggleGroup, Value: g.Base}
-		}
-		return Hit{Kind: HitPreviewGroup, Value: g.Base}
-	}
-	if s.GroupExpanded(g.Base) {
-		for i, mem := range g.Members {
-			if inRect(s.memberRect(feedX, r.top, feedW, i), x, contentY) {
-				return Hit{Kind: HitItem, Item: mem.Item}
-			}
-		}
-	}
-	return Hit{Kind: HitNone}
 }
 
 // --- helpers ---

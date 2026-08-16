@@ -96,6 +96,7 @@ const (
 	HitPreviewTextLarger          // the preview toolbar's "A+" pill (grow the reader text)
 	HitToggleDownload             // a complete post's download checkbox — Value = release base
 	HitClearDownloads             // the download panel's "Clear" button
+	HitToggleFolder               // a sidebar virtual-folder row (collapse/expand) — Value = folder name
 
 	// Newsgroup browser (Mode == ModeBrowse):
 	HitBrowse           // the sidebar "＋ Browse newsgroups" entry (open the browser)
@@ -184,22 +185,34 @@ type Scene struct {
 
 	// authPrompts drive the in-feed "needs sign-in" banner (one row each).
 	authPrompts []AuthPrompt
-	feedScroll  panelScroll // the feed card list's scroll position (see panelScroll)
-	Scale       float64     // display scale (zoom × devicePixelRatio); 0 => 1
+	Scale       float64 // display scale (zoom × devicePixelRatio); 0 => 1
 
-	// Feed-loading triggers. OnReachBottom fires (when infiniteScroll is on) on an
-	// insistent downward overscroll while already at the bottom, so the app can
-	// fetch and append the next page — the mirror of OnPullRefresh, which fires on
-	// an insistent upward overscroll while already at the top so the app can
-	// re-aggregate. Both are nil-safe (only called when installed). pullAccum /
-	// loadMoreAccum accumulate the top / bottom overscroll; each crosses
-	// pullRefreshThreshold to fire once, and resets whenever the feed scrolls away
-	// from that end so only a deliberate pull triggers.
+	// feed migration (step 1): the unified feed rendered by a virtual.CardList
+	// over a live mvvm.ObservableList (see feedcards.go). feedBottomPending arms a
+	// scroll-to-bottom (newest post) for the next sync after a filter/tab change;
+	// onSelectItem is the app hook fired on a card selection (its bool is true for
+	// a keyboard cursor move); feedSelectViaKeyboard carries that flag through the
+	// CardList's OnSelect callback for the current event.
+	feed                  *feedCards
+	onSelectItem          func(it source.Item, viaKeyboard bool)
+	feedSelectViaKeyboard bool
+	feedBottomPending     bool
+
+	// groupExpanded records which Usenet post groups (keyed by release base) have
+	// their member parts listed beneath the header. A collapsed group (the zero
+	// value) shows only its summary header; toggling re-measures its feed row so
+	// the CardList accounts for the members appearing/disappearing.
+	groupExpanded map[string]bool
+
+	// Feed-loading triggers, driven by the CardList's own edge accumulators.
+	// OnReachBottom is wired to the list's OnReachTop (a pull toward the top loads
+	// OLDER posts, since the newest sits at the bottom); OnPullRefresh is wired to
+	// the list's OnReachBottom (a pull past the newest re-aggregates). Both are
+	// nil-safe (only called when installed). infiniteScroll gates whether the
+	// next-page trigger is offered.
 	OnReachBottom  func()
 	OnPullRefresh  func()
 	infiniteScroll bool
-	pullAccum      int
-	loadMoreAccum  int
 
 	// Live-loading feedback (streaming aggregation). loading is set while a
 	// refresh is in progress; loadDone/loadTotal track how many sources have
@@ -212,8 +225,6 @@ type Scene struct {
 	pending             map[string]bool
 	pendRev             int
 	animFrame           int
-	loadStripTop        int  // feed-content Y of the progress strip (loading + items)
-	showStrip           bool // whether the top-of-feed progress strip is laid out
 
 	// Profiles are the named sidebar tabs; the active one supplies Subs.
 	Profiles     []settings.Profile
@@ -424,30 +435,36 @@ type Scene struct {
 	sidebarUserW     int // device px; 0 => default width
 	draggingSidebar  bool
 
-	// Sidebar subscription-list scroll. When the "All Sources" + subscription +
-	// "Browse" rows are taller than the band between the tab strip and the pinned
-	// footer (Accounts/Log/Settings), that band scrolls independently of the feed
-	// so overflowing subscriptions stay reachable and never draw over the footer.
-	// sideMaxScroll is 0 (and everything is a no-op) whenever the rows fit.
-	// lastMouseX/Y is the most recent pointer position, used to route wheel
-	// scrolling to the sidebar when the pointer is over it.
-	sideScrollY   int
-	sideMaxScroll int
-	sideBandTop   int
-	sideBandBot   int
-	lastMouseX    int
-	lastMouseY    int
+	// Sidebar middle list. The "All Sources" root, the virtual folders, the
+	// subscriptions and the "Browse newsgroups" / "Search Reddit" discovery
+	// entries are a toolkit.TreeView (sideTree) laid out inside the band between
+	// the profile tab strip and the pinned footer (Accounts/Log/Settings). The
+	// TreeView owns the scroll window, the scrollbar gutter and hit-testing; the
+	// reader supplies each row's rich content through its RowRenderer. folders is
+	// the persisted set of virtual folders; folderCollapsed keeps their (session)
+	// collapse state keyed by name; foldRev bumps on any folder/collapse change so
+	// the cached sidebar sprite re-rasterises. lastMouseX/Y is the most recent
+	// pointer position, used to route wheel scrolling to the sidebar when the
+	// pointer is over it.
+	sideTree        *toolkit.TreeView
+	folders         []settings.Folder
+	folderCollapsed map[string]bool
+	foldRev         int
+	// renamingFolder is the folder currently being renamed inline in the sidebar
+	// (empty = none); renameFolderEntry is the focused toolkit.Entry that holds the
+	// edit buffer (its Text) and owns caret/Backspace/Arrows/Home/End behaviour.
+	renamingFolder    string
+	renameFolderEntry *toolkit.Entry
+	sideBandTop       int
+	sideBandBot       int
+	lastMouseX        int
+	lastMouseY        int
 
 	// ctxMenu is the toolkit ContextMenu currently popped up over the scene (a
 	// sidebar right-click), or nil. The scene only holds, draws and forwards
 	// events to it; the menu widget owns all its own layout, hit-testing, hover,
 	// keyboard nav and dismissal, and the Handler owns the items' actions.
 	ctxMenu *toolkit.ContextMenu
-
-	// groupExpanded records which Usenet post groups (keyed by release base) are
-	// expanded in the feed; it survives re-renders and scrolling. Absent/false =
-	// collapsed (the default).
-	groupExpanded map[string]bool
 
 	// Newsgroup browser (ModeBrowse) state. browseGroups is the server's full
 	// active group list (set by the app after a fetch); browseServer names the
@@ -493,39 +510,28 @@ type Scene struct {
 
 	// Reddit search (ModeSearch) view state. The bulk of it — the query/regex
 	// widgets, the active tab, the result slices and the laid-out rects — lives in
-	// searchState (defined in search_view.go) so this struct stays lean; searchRedditR
-	// is the sidebar "Search Reddit" entry, laid out alongside the Browse entry.
-	search        searchState
-	searchRedditR toolkit.Rect
+	// searchState (defined in search_view.go) so this struct stays lean. The
+	// sidebar "Search Reddit" and "Browse newsgroups" entries are now nodes of the
+	// sidebar TreeView (sideTree), not separate rects.
+	search searchState
 
 	m         metrics
-	subs      []subHit
 	profTabs  []profTabHit
 	settingsR toolkit.Rect
 	logR      toolkit.Rect // sidebar Network-log entry
 	accountsR toolkit.Rect // sidebar Accounts entry
 	burgerR   toolkit.Rect // topbar burger button (feed view)
 	searchR   toolkit.Rect
-	rows      []feedRow
-	authRows  []authRowLayout // in-feed sign-in banner rows (above the cards)
 
-	// cardCache holds rendered card sprites so scrolling is a memcpy-blit
-	// rather than a re-rasterisation of every glyph. Invalidated whenever the
-	// content, width, scale or theme changes. The chrome (sidebar/topbar) is
-	// cached the same way in single slots — like Evas smart-object surfaces —
-	// so scrolling never re-rasterises any text.
-	cardCache  map[cardKey]cardSpriteEntry
+	// The chrome (sidebar/topbar) is cached in single sprite slots — like Evas
+	// smart-object surfaces — so scrolling never re-rasterises any text. The
+	// sidebar's middle list is a live toolkit.TreeView drawn into the sprite.
 	sidebarSpr *image.RGBA
 	sidebarKey sidebarKey
-	// sidebarRuns are the sidebar's selectable text-label runs in sidebar-LOCAL
-	// coordinates (origin at the sprite, i.e. screen (0, topbarH)), cached
-	// alongside the sprite so the feed's per-frame selection accumulator can
-	// translate them to screen space without re-laying-out the sidebar.
-	sidebarRuns []toolkit.TextRun
-	topbarSpr   *image.RGBA
-	topbarKey   topbarKey
-	subsRev     int
-	profRev     int
+	topbarSpr  *image.RGBA
+	topbarKey  topbarKey
+	subsRev    int
+	profRev    int
 
 	// rev is a monotonically increasing damage/commit sequence bumped on every
 	// state change (the Wayland commit-seq / Evas dirty model). A present layer
@@ -539,9 +545,6 @@ type Scene struct {
 	a11yCache []A11yNode
 	a11yRev   int
 }
-
-// invalidateCards drops the sprite cache after an appearance/content change.
-func (s *Scene) invalidateCards() { s.cardCache = nil }
 
 // Rev returns the current damage/commit sequence. It advances whenever any
 // state that affects the rendered frame changes, so a double-buffered present
@@ -671,17 +674,6 @@ func (s *Scene) SetInfiniteScroll(v bool) { s.infiniteScroll = v; s.touch() }
 // InfiniteScroll reports whether the bottom-of-feed next-page trigger is enabled.
 func (s *Scene) InfiniteScroll() bool { return s.infiniteScroll }
 
-// pullRefreshThreshold is how much insistent upward overscroll (in device pixels,
-// accumulated at the very top of the feed) fires a pull-to-refresh. It is roughly
-// two-to-three wheel lines, so a single small nudge past the top does not refresh
-// but a deliberate pull does.
-const pullRefreshThreshold = 48
-
-// navPrefetchLead is how many posts before the end an arrow-DOWN keypress starts
-// the next infinite-scroll page: reaching the post that far from the last one
-// fires OnReachBottom, so content loads ahead of the keyboard.
-const navPrefetchLead = 2
-
 // SetBrowserChromeHidden hides (v=true) or shows the embedded browser's toolbar
 // + tab strip, so a page can render chrome-free in the preview.
 func (s *Scene) SetBrowserChromeHidden(v bool) { s.browser.HideChrome = v; s.touch() }
@@ -758,7 +750,6 @@ func (s *Scene) ptPx(base int) int {
 func (s *Scene) SetTheme(t *toolkit.Theme) {
 	if t != nil {
 		s.theme = t
-		s.invalidateCards()
 		s.touch()
 	}
 }
@@ -766,9 +757,8 @@ func (s *Scene) SetTheme(t *toolkit.Theme) {
 // SetItems replaces the feed (caller merges/sorts newest-first).
 func (s *Scene) SetItems(items []source.Item) {
 	s.Items = items
-	s.feedScroll.offset = 0
-	s.subsRev++ // the sidebar shows per-group post counts derived from the items
-	s.invalidateCards()
+	s.feedBottomPending = true // open the refreshed feed at its newest (bottom) post
+	s.subsRev++                // the sidebar shows per-group post counts derived from the items
 	s.touch()
 }
 
@@ -876,8 +866,9 @@ func (s *Scene) PendingCount() int { return len(s.pending) }
 // SetSubs replaces the sidebar subscriptions.
 func (s *Scene) SetSubs(subs []Subscription) { s.Subs = subs; s.subsRev++; s.touch() }
 
-// SetActive selects the sidebar filter (a subscription index, or AllFilter).
-func (s *Scene) SetActive(i int) { s.Active = i; s.touch() }
+// SetActive selects the sidebar filter (a subscription index, or AllFilter). A
+// filter switch opens the (re-filtered) feed at its newest post.
+func (s *Scene) SetActive(i int) { s.Active = i; s.feedBottomPending = true; s.touch() }
 
 // ActiveFilter returns the selected sidebar filter — a subscription index, or
 // [AllFilter] when no single subscription is selected. Pull-to-refresh reads it
@@ -993,17 +984,22 @@ func (s *Scene) Settings() *settings.Settings {
 		ZoomOutKey:        s.BrowserZoomOutKey(),
 		Bookmarks:         s.BookmarkedURLs(),
 		PreviewTextScale:  s.previewTextScale,
+		SidebarFolders:    s.SidebarFolders(),
 	}
 }
 
-// SetThumb attaches a decoded thumbnail for an item and invalidates its sprite
-// so the next Draw picks it up.
+// SetThumb attaches a decoded thumbnail for an item so the next Draw picks it up
+// (the CardList re-renders the card from the live thumbnail cache each frame).
 func (s *Scene) SetThumb(id string, img *image.RGBA) {
 	if s.Thumbs == nil {
 		s.Thumbs = map[string]*image.RGBA{}
 	}
 	s.Thumbs[id] = img
-	s.invalidateCards()
+	// A card reserves its thumbnail column from the moment its item declares media,
+	// but its rows were measured while the decoded image was still absent; re-measure
+	// + re-lay-out them now so the card mounts the freshly-arrived thumbnail at the
+	// right height rather than clipping it.
+	s.invalidateFeedThumb(id)
 	s.touch()
 }
 
@@ -1057,7 +1053,7 @@ func (s *Scene) PreviewComments(id string) ([]source.Comment, bool) { return s.c
 func (s *Scene) CommentsLoading(id string) bool { return s.commentsPending(id) }
 
 // Resize updates the surface size, clamped to the minimum.
-func (s *Scene) Resize(w, h int) { s.W, s.H = w, h; s.clampSize(); s.invalidateCards(); s.touch() }
+func (s *Scene) Resize(w, h int) { s.W, s.H = w, h; s.clampSize(); s.touch() }
 
 // SetScale sets the display scale, clamped to [MinZoom, MaxZoom].
 func (s *Scene) SetScale(f float64) {
@@ -1068,10 +1064,15 @@ func (s *Scene) SetScale(f float64) {
 		f = MaxZoom
 	}
 	if f != s.Scale {
-		s.invalidateCards()
 		s.touch()
 	}
 	s.Scale = f
+	// Pin the toolkit's global metric scale to the reader's device scale so every
+	// scale-aware toolkit widget (the feed's PostCard padding/gaps/radius/thumbnail
+	// column, badges, …) lays out and paints at the same resolution as the reader's
+	// own rpx-scaled fonts. This is the density-change entry point too: a window
+	// dragged onto a denser display re-enters here via Handler.Resize (#165).
+	toolkit.SetMetricScale(s.Scale)
 }
 
 func (s *Scene) clampSize() {
@@ -1149,6 +1150,14 @@ func (s *Scene) TypeRune(r rune) {
 		s.search.typeRune(s, r)
 		return
 	}
+	// An inline folder rename (feed view) captures printable runes into its Entry
+	// ahead of the topbar search, mirroring how the browse filter captures them.
+	if s.renamingFolder != "" {
+		s.renameFolderEntry.OnEvent(toolkit.Event{Kind: toolkit.EventChar, Code: string(r)})
+		s.foldRev++
+		s.touch()
+		return
+	}
 	if s.searchFocused {
 		// Feed the printable rune through the SearchEntry widget itself, so the
 		// widget's OnChange (bound to vm.Search) fires exactly as a real widget
@@ -1185,6 +1194,14 @@ func (s *Scene) Backspace() {
 	}
 	if s.mode == ModeSearch {
 		s.search.backspace(s)
+		return
+	}
+	// An inline folder rename captures Backspace into its Entry (which deletes at
+	// the caret), ahead of the topbar search.
+	if s.renamingFolder != "" {
+		s.renameFolderEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
+		s.foldRev++
+		s.touch()
 		return
 	}
 	if s.searchFocused && s.searchEntry.Text != "" {
@@ -1265,20 +1282,6 @@ func (s *Scene) CloseDetail() {
 	s.touch()
 }
 
-// ToggleGroup expands or collapses the Usenet post group with the given release
-// base. The expanded set is keyed by base so the state survives re-layout and
-// scrolling; expanding grows the card to list its member parts.
-func (s *Scene) ToggleGroup(base string) {
-	if s.groupExpanded == nil {
-		s.groupExpanded = map[string]bool{}
-	}
-	s.groupExpanded[base] = !s.groupExpanded[base]
-	s.touch()
-}
-
-// GroupExpanded reports whether the group with the given base is expanded.
-func (s *Scene) GroupExpanded(base string) bool { return s.groupExpanded[base] }
-
 // Scroll adjusts the vertical scroll of whichever view is showing, clamped to
 // its content height.
 func (s *Scene) Scroll(dy int) {
@@ -1324,130 +1327,23 @@ func (s *Scene) Scroll(dy int) {
 		s.touch()
 		return
 	}
-	// A wheel over the sidebar scrolls its (overflowing) subscription list; anywhere
-	// else scrolls the feed. sideMaxScroll is 0 when the sub list fits, so this only
-	// diverts the wheel when there is actually overflow.
-	if !s.sidebarCollapsed && s.lastMouseX < s.m.sidebarW && s.sideMaxScroll > 0 {
-		s.sideScrollY = clampScroll(s.sideScrollY+dy, s.sideMaxScroll)
-		s.layout()
-		s.touch()
-		return
-	}
-	// Nudge the offset, then relayout: layout() measures the feed's content height
-	// and calls feedScroll.refresh, which clamps against the fresh sizes (so the dy
-	// must be added before, not clamped against stale sizes).
-	atTopBefore := s.feedScroll.offset <= 0
-	atBottomBefore := s.feedScroll.needsBar() && s.feedScroll.offset >= s.feedScroll.max()
-	s.feedScroll.offset += dy
-	s.layout()
-	s.feedTriggers(dy, atTopBefore, atBottomBefore)
-	s.touch()
-}
-
-// feedTriggers fires the infinite-scroll (OnReachBottom) and pull-to-refresh
-// (OnPullRefresh) seams from a feed wheel event. dy is the raw wheel delta
-// (positive = toward the bottom); atTopBefore / atBottomBefore report whether the
-// feed sat at the very top / bottom before this nudge. It runs after layout() has
-// re-clamped feedScroll against fresh sizes, so the at-bottom/at-top tests read
-// settled geometry.
-func (s *Scene) feedTriggers(dy int, atTopBefore, atBottomBefore bool) {
-	// Infinite scroll: an insistent DOWNWARD overscroll while already pinned to the
-	// bottom asks for the next page — the mirror of pull-to-refresh at the top. A
-	// single nudge past the end does not fire; only a deliberate pull does. The
-	// app's loadingMore guard throttles repeats; a non-overflowing list never fires
-	// (atBottomBefore already requires needsBar()).
-	switch {
-	case s.infiniteScroll && dy > 0 && atBottomBefore && len(s.rows) > 0:
-		s.loadMoreAccum += dy
-		if s.loadMoreAccum >= pullRefreshThreshold {
-			s.loadMoreAccum = 0
-			if s.OnReachBottom != nil {
-				s.OnReachBottom()
-			}
-		}
-	case s.feedScroll.needsBar() && s.feedScroll.offset < s.feedScroll.max():
-		s.loadMoreAccum = 0
-	}
-	// Pull-to-refresh: an insistent upward overscroll while already at the top
-	// accumulates; crossing the threshold refreshes once and resets. Any scroll
-	// that moves off the top clears the accumulator, so only a deliberate pull —
-	// not a single small nudge past the top — triggers.
-	switch {
-	case dy < 0 && atTopBefore:
-		s.pullAccum += -dy
-		if s.pullAccum >= pullRefreshThreshold {
-			s.pullAccum = 0
-			if s.OnPullRefresh != nil {
-				s.OnPullRefresh()
-			}
-		}
-	case s.feedScroll.offset > 0:
-		s.pullAccum = 0
-	}
-}
-
-// NavItem moves the feed selection by dir card rows (dir<0 up, dir>0 down),
-// skipping Usenet post groups, scrolls the chosen row into view, and returns the
-// newly selected item. With no current selection it picks the first card (down)
-// or the last (up). ok is false when the feed has no selectable cards.
-func (s *Scene) NavItem(dir int) (it source.Item, ok bool) {
-	cards := make([]int, 0, len(s.rows))
-	for i, r := range s.rows {
-		if r.group == nil {
-			cards = append(cards, i)
+	// A wheel over the sidebar scrolls its (overflowing) list through the TreeView;
+	// anywhere else scrolls the feed. The list only diverts the wheel when it
+	// actually overflows the band, so a wheel over a short list still reaches the
+	// feed. The device-pixel delta is converted to whole rows (at least one in the
+	// wheel direction) since the TreeView scrolls by row.
+	if !s.sidebarCollapsed && s.lastMouseX < s.m.sidebarW {
+		s.layout() // refresh the tree, band + TreeView bounds before scrolling it
+		if s.sidebarListOverflows() {
+			s.sideTree.ScrollBy(wheelRows(dy, s.m.sideItemH))
+			s.touch()
+			return
 		}
 	}
-	if len(cards) == 0 {
-		return source.Item{}, false
-	}
-	cur := -1
-	if s.previewHas {
-		for ci, ri := range cards {
-			if sameItem(s.rows[ri].item, s.previewItem) {
-				cur = ci
-				break
-			}
-		}
-	}
-	var next int
-	switch {
-	case cur < 0 && dir < 0:
-		next = len(cards) - 1
-	case cur < 0:
-		next = 0
-	default:
-		next = cur + dir
-	}
-	if next < 0 {
-		next = 0
-	}
-	if next >= len(cards) {
-		next = len(cards) - 1
-	}
-	row := s.rows[cards[next]]
-	// Proactive infinite-scroll prefetch: arrowing DOWN to within navPrefetchLead
-	// posts of the end kicks off the next page early (via OnReachBottom), so the
-	// list keeps growing ahead of the keyboard instead of stalling at the last
-	// card. The app's loadingMore / cursor guards make a redundant fire a no-op.
-	if dir > 0 && s.infiniteScroll && s.OnReachBottom != nil && next >= len(cards)-1-navPrefetchLead {
-		s.OnReachBottom()
-	}
-	s.ensureRowVisible(row)
-	return row.item, true
-}
-
-// ensureRowVisible scrolls the feed the minimum amount so row is fully inside the
-// feed viewport (between the topbar and the download panel/status bar).
-func (s *Scene) ensureRowVisible(row feedRow) {
-	viewH := s.feedBottom() - s.m.topbarH
-	switch {
-	case row.top < s.feedScroll.offset:
-		s.feedScroll.offset = row.top
-	case row.top+row.height > s.feedScroll.offset+viewH:
-		s.feedScroll.offset = row.top + row.height - viewH
-	}
-	s.feedScroll.offset = clampScroll(s.feedScroll.offset, s.feedScroll.contentH-viewH)
-	s.touch()
+	// Feed cards: the virtual.CardList owns the scroll anchor and the
+	// infinite-scroll / pull-to-refresh edge accumulators, so route the wheel to it
+	// (FeedWheel converts the device-pixel delta to a whole-row scroll).
+	s.FeedWheel(dy)
 }
 
 // panelScroll owns one scrollable panel's vertical position — the reader's analog
@@ -1480,8 +1376,28 @@ func (ps *panelScroll) scrollBy(dy int) { ps.offset = clampScroll(ps.offset+dy, 
 // needsBar reports whether the content overflows the viewport (a scrollbar shows).
 func (ps *panelScroll) needsBar() bool { return ps.viewport > 0 && ps.contentH > ps.viewport }
 
-// ScrollY exposes the feed's current scroll offset (used by the window app layer).
-func (s *Scene) ScrollY() int { return s.feedScroll.offset }
+// ScrollY exposes the feed's current scroll offset (used by the window app
+// layer). It reads the virtual.CardList's pixel scroll offset.
+func (s *Scene) ScrollY() int { return s.FeedScrollOffset() }
+
+// wheelRows converts a device-pixel wheel delta to a whole-row scroll amount at
+// row height rowH, moving at least one row in the wheel's direction so a small
+// notch still scrolls. rowH ≤ 0 (an unlaid-out scene) yields a single row.
+func wheelRows(dy, rowH int) int {
+	if rowH <= 0 {
+		rowH = 1
+	}
+	rows := dy / rowH
+	if rows == 0 {
+		switch {
+		case dy > 0:
+			return 1
+		case dy < 0:
+			return -1
+		}
+	}
+	return rows
+}
 
 // clampScroll bounds v to [0, max] (max<0 => 0).
 func clampScroll(v, max int) int {

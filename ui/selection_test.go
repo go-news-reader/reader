@@ -112,13 +112,13 @@ func TestSelectableAt(t *testing.T) {
 	if !s.SelectableAt(pr.X-5, pr.Y+pr.H/2) {
 		t.Fatal("the feed list of cards should be selectable")
 	}
-	// The sidebar's label band is selectable (a drag over a subscription label).
-	sb := s.sidebarTextRegion()
-	if !s.SelectableAt(sb.X+sb.W/2, sb.Y+sb.H/2) {
-		t.Fatal("the sidebar label band should be selectable")
+	// The sidebar's middle list is a TreeView whose rows resolve to actions, not
+	// selectable text, so a press over it is not one of ours.
+	if s.SelectableAt(s.m.sidebarW/2, s.sideBandTop+s.m.sideItemH/2) {
+		t.Fatal("the sidebar TreeView band must not text-select")
 	}
 	// The topbar (above the feed/sidebar) is chrome, not a reading surface.
-	if s.SelectableAt(sb.X+sb.W/2, 5) {
+	if s.SelectableAt(s.m.sidebarW/2, 5) {
 		t.Fatal("the topbar must not text-select")
 	}
 

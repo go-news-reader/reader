@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/gif"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/go-news-reader/reader/internal/settings"
@@ -13,6 +14,46 @@ import (
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
+
+// memVault is an in-memory settings.SecretStore. The app test package installs it
+// as the process-wide default secret store in TestMain so that every settings.Store
+// it builds — the ones passed to New and the throwaway ones tests reload through —
+// routes secret I/O through it instead of the host credential vault. Available()
+// is always true, so the tests exercise the real off-disk push/hydrate path a
+// production run takes on macOS/Windows rather than the plaintext fallback, yet a
+// fresh test binary never makes the real Keychain prompt a human.
+type memVault struct {
+	mu sync.Mutex
+	m  map[string][]byte
+}
+
+func newMemVault() *memVault { return &memVault{m: map[string][]byte{}} }
+
+func (v *memVault) Set(account string, secret []byte) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.m[account] = append([]byte(nil), secret...)
+	return nil
+}
+
+func (v *memVault) Get(account string) ([]byte, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	b, ok := v.m[account]
+	if !ok {
+		return nil, settings.ErrSecretNotFound
+	}
+	return append([]byte(nil), b...), nil
+}
+
+func (v *memVault) Delete(account string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	delete(v.m, account)
+	return nil
+}
+
+func (v *memVault) Available() bool { return true }
 
 // gifBytes returns a real (single-frame) GIF, so http.DetectContentType reports
 // image/gif and the bytes survive a cache round-trip as a browsable .gif.
@@ -34,7 +75,12 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	mediaCacheDir = func() (string, error) { return tmp, nil }
+	// Route every settings.Store's secret I/O through one in-memory vault so a test
+	// binary never touches the host credential vault (a fresh binary would make
+	// macOS Keychain prompt a human).
+	restoreSecrets := settings.SetDefaultSecretStore(newMemVault())
 	code := m.Run()
+	restoreSecrets()
 	_ = os.RemoveAll(tmp)
 	os.Exit(code)
 }

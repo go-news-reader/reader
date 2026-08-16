@@ -110,6 +110,8 @@ type Handler struct {
 	a          *app.App
 	pending    ui.Hit
 	pendingHit bool
+	pendingX   int // press coordinates for a deferred feed-card click (routed to
+	pendingY   int // the CardList on release, so the click selects the card under it)
 }
 
 // New wraps a to be driven by a native window. It installs the platform browser
@@ -145,6 +147,12 @@ func (h *Handler) Resize(w, height int, scale float64) {
 // item, follow a link, switch a filter or profile, or drive the settings editor.
 func (h *Handler) MouseDown(x, y int) {
 	s := h.a.Scene()
+	// An in-progress inline folder rename commits on blur: any press elsewhere
+	// ends the edit cleanly (keeping the typed name) before the click acts.
+	if s.FolderRenaming() {
+		s.CommitFolderRename()
+		h.a.PersistSettings()
+	}
 	// A click inside the embedded web-preview browser is forwarded to it (a link,
 	// a toolbar button, the address field, a tab) and consumes the event; a click
 	// anywhere else blurs the browser's keyboard focus and falls through to the
@@ -160,6 +168,7 @@ func (h *Handler) MouseDown(x, y int) {
 	if h.textSelectableHit(hit, x, y) {
 		s.SelectionBegin(x, y)
 		h.pending, h.pendingHit = hit, true
+		h.pendingX, h.pendingY = x, y
 		return
 	}
 	h.runHit(hit)
@@ -171,11 +180,13 @@ func (h *Handler) MouseDown(x, y int) {
 // preview text pane, the feed list, or the sidebar labels).
 func (h *Handler) textSelectableHit(hit ui.Hit, x, y int) bool {
 	switch hit.Kind {
-	case ui.HitItem, ui.HitSub:
+	case ui.HitItem:
 		return true
 	case ui.HitNone:
 		return h.a.Scene().SelectableAt(x, y)
 	default:
+		// A sidebar row (HitSub / HitToggleFolder) resolves through the TreeView to
+		// an action, not selectable text, so it acts immediately on press.
 		return false
 	}
 }
@@ -188,8 +199,6 @@ func (h *Handler) runHit(hit ui.Hit) {
 	switch hit.Kind {
 	case ui.HitItem:
 		h.a.SelectPreview(hit.Item) // show it in the right preview pane (fetch image if any)
-	case ui.HitPreviewGroup:
-		h.a.PreviewGroup(hit.Value) // preview a Usenet post: reconstruct its image into the pane
 	case ui.HitOpenPreview:
 		vm.OpenDetail(hit.Item) // the pane's "Open" button → full-screen reading view
 	case ui.HitBack:
@@ -229,13 +238,15 @@ func (h *Handler) runHit(hit ui.Hit) {
 		// pre-selected on the provider that needs fixing.
 		vm.FixAuth(source.Kind(hit.Value))
 	case ui.HitToggleGroup:
-		s.ToggleGroup(hit.Value) // expand/collapse a Usenet post group
+		s.ToggleGroup(hit.Value) // expand/collapse a Usenet post group's member list
 	case ui.HitReconstruct:
 		h.a.ReconstructGroup(hit.Value) // download parts + reassemble + PAR2 verify/repair
 	case ui.HitToggleDownload:
 		h.a.ToggleDownload(hit.Value) // queue/cancel a complete post in the download panel
 	case ui.HitClearDownloads:
 		h.a.ClearDownloads() // drop finished rows from the download panel
+	case ui.HitToggleFolder:
+		s.ToggleSidebarFolder(hit.Value) // collapse/expand a sidebar virtual folder
 	case ui.HitBrowse:
 		vm.OpenBrowse.Execute() // open the newsgroup browser
 		h.a.LoadGroups()        // fetch the server's full group list (cached)
@@ -399,7 +410,14 @@ func (h *Handler) MouseUp(x, y int) {
 	if h.pendingHit {
 		h.pendingHit = false
 		if !s.HasSelection() {
-			h.runHit(h.pending)
+			// A feed-card click selects the card THROUGH the CardList (so the
+			// selection ring + keyboard cursor track it), which fires the feed select
+			// hook → preview. Every other deferred hit acts as before.
+			if h.pending.Kind == ui.HitItem {
+				s.FeedClickAt(h.pendingX, h.pendingY)
+			} else {
+				h.runHit(h.pending)
+			}
 		}
 	}
 }
@@ -415,37 +433,77 @@ func (h *Handler) Scroll(dy int) {
 }
 
 // SecondaryClick opens a context menu when the secondary press landed on a
-// sidebar subscription (a real source, not the All filter). The menu is the
-// toolkit's own ContextMenu widget — this only builds its items and their
-// actions, which reuse the same scene/app operations the rest of the UI uses,
-// and hands it to the scene to present. A press anywhere else is ignored.
+// sidebar subscription (a real source, not the All filter) or a virtual folder.
+// The menu is the toolkit's own ContextMenu widget — this only builds its items
+// and their actions, which reuse the same scene/app operations the rest of the
+// UI uses, and hands it to the scene to present. A press anywhere else is
+// ignored.
 func (h *Handler) SecondaryClick(x, y int) {
 	s := h.a.Scene()
-	hit := s.HitTest(x, y)
-	if hit.Kind != ui.HitSub {
-		return
+	ctx := s.SidebarContextAt(x, y)
+	switch ctx.Kind {
+	case ui.SidebarCtxSub:
+		s.OpenContextMenu(h.subContextMenu(ctx.Sub, ctx.Source, ctx.Channel), x, y)
+	case ui.SidebarCtxFolder:
+		s.OpenContextMenu(h.folderContextMenu(ctx.Folder), x, y)
 	}
-	sub, ok := s.SubAt(hit.Sub)
-	if !ok {
-		return
-	}
-	s.OpenContextMenu(h.subContextMenu(hit.Sub, sub.Source, sub.Channel), x, y)
 }
 
 // subContextMenu builds the sidebar-subscription context menu for the source at
-// index. Each item's action reuses an operation the rest of the UI already
-// exposes: a full refresh, marking the group's unseen count to zero, and
-// unsubscribing (persisted + re-aggregated) — so the menu adds a surface, not new
-// behaviour.
+// index. The first group reuses operations the rest of the UI already exposes (a
+// full refresh, marking the group's unseen count to zero, unsubscribing); the
+// second group manages the subscription's virtual-folder membership (move into a
+// new or existing folder, or take it back out to the sidebar root). Folder edits
+// are a pure-display preference, so they persist without re-aggregating.
 func (h *Handler) subContextMenu(index int, kind source.Kind, channel string) *toolkit.ContextMenu {
-	return toolkit.NewContextMenu(toolkit.NewMenu([]toolkit.MenuItem{
+	s := h.a.Scene()
+	items := []toolkit.MenuItem{
 		{Label: "Refresh", Icon: ui.MenuIconRefresh, Action: func() { go h.a.Refresh(context.Background()) }},
 		{Label: "Mark as read", Icon: ui.MenuIconMarkRead, Action: func() { h.a.MarkSubSeen(index) }},
 		{Separator: true},
-		{Label: "Unsubscribe", Icon: ui.MenuIconUnsubscribe, Action: func() {
-			if h.a.Scene().UnsubscribeActive(kind, channel) {
+		{Label: "New folder", Icon: ui.MenuIconNewFolder, Action: func() {
+			s.MoveSubToFolder(index, s.NewSidebarFolder(""))
+			h.a.PersistSettings()
+		}},
+	}
+	if names := s.FolderNames(); len(names) > 0 {
+		sub := make([]toolkit.MenuItem, 0, len(names))
+		for _, name := range names {
+			name := name
+			sub = append(sub, toolkit.MenuItem{Label: name, Icon: ui.MenuIconFolder, Action: func() {
+				s.MoveSubToFolder(index, name)
+				h.a.PersistSettings()
+			}})
+		}
+		items = append(items, toolkit.MenuItem{Label: "Move to folder", Icon: ui.MenuIconFolder, Submenu: toolkit.NewMenu(sub)})
+	}
+	items = append(items,
+		toolkit.MenuItem{Label: "Remove from folder", Action: func() {
+			s.RemoveSubFromFolder(index)
+			h.a.PersistSettings()
+		}},
+		toolkit.MenuItem{Separator: true},
+		toolkit.MenuItem{Label: "Unsubscribe", Icon: ui.MenuIconUnsubscribe, Action: func() {
+			if s.UnsubscribeActive(kind, channel) {
 				h.a.ApplySceneSettings()
 			}
+		}},
+	)
+	return toolkit.NewContextMenu(toolkit.NewMenu(items))
+}
+
+// folderContextMenu builds the context menu for a virtual folder row: rename it
+// inline (BeginFolderRename opens a focused text Entry on the row) or delete it
+// (its subscriptions return to the sidebar root).
+func (h *Handler) folderContextMenu(name string) *toolkit.ContextMenu {
+	s := h.a.Scene()
+	return toolkit.NewContextMenu(toolkit.NewMenu([]toolkit.MenuItem{
+		{Label: "Rename", Icon: ui.MenuIconFolder, Action: func() {
+			s.BeginFolderRename(name)
+		}},
+		{Label: "Delete folder", Icon: ui.MenuIconUnsubscribe, Action: func() {
+			s.DeleteFolder(name)
+			h.a.PersistSettings()
 		}},
 	}))
 }
@@ -515,6 +573,13 @@ var _ window.ClipboardController = (*Handler)(nil)
 // focused (topbar search in the feed, or the settings text fields).
 func (h *Handler) Key(name string, r rune) {
 	s, vm := h.a.Scene(), h.a.VM()
+	// An in-progress inline folder rename (feed view) captures editing keys ahead
+	// of the feed: Enter commits, Escape cancels, Backspace + printable runes edit
+	// the buffer. Non-editing keys (arrows, paging) fall through to feed nav,
+	// exactly as the browse filter lets arrows drive its list while focused.
+	if h.folderRenameKey(name, r) {
+		return
+	}
 	// In the feed view, an active + focused embedded browser captures editing keys
 	// and printable runes for its address field (Enter commits/navigates).
 	if s.Mode() == ui.ModeFeed && s.ForwardBrowserKey(name, r) {
@@ -581,11 +646,46 @@ func (h *Handler) Key(name string, r rune) {
 			s.NavBrowse(1) // move the newsgroup-tree selection down
 			h.a.ScanBrowseGroup()
 		}
+	case "PageUp", "PageDown", "Home", "End":
+		// Feed paging / jump keys route straight into the CardList (its selection
+		// cursor moves a viewport or to an end, firing the feed select hook →
+		// preview). The toolkit's selectMove codes match these names verbatim.
+		if s.Mode() == ui.ModeFeed {
+			s.FocusSearch(false)
+			s.FeedEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: name})
+		}
 	default:
 		if r != 0 {
 			s.TypeRune(r)
 		}
 	}
+}
+
+// folderRenameKey routes a key into an in-progress inline folder rename (feed
+// view only), returning whether it consumed the event. Enter commits (and
+// persists), Escape cancels, Backspace + printable runes edit the buffer through
+// the scene's shared editing path; every other key (arrows, paging) is left for
+// the normal feed handling.
+func (h *Handler) folderRenameKey(name string, r rune) bool {
+	s := h.a.Scene()
+	if s.Mode() != ui.ModeFeed || !s.FolderRenaming() {
+		return false
+	}
+	switch name {
+	case "Enter":
+		s.CommitFolderRename()
+		h.a.PersistSettings()
+	case "Escape":
+		s.CancelFolderRename()
+	case "Backspace":
+		s.Backspace()
+	default:
+		if r == 0 {
+			return false // arrows / paging fall through to feed navigation
+		}
+		s.TypeRune(r)
+	}
+	return true
 }
 
 // activateBrowseSelection acts on the keyboard-selected newsgroup-tree node

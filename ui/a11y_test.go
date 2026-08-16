@@ -48,7 +48,6 @@ func TestMediaAltFallsBackToWhatIsThere(t *testing.T) {
 func TestImageWidgetsAreDescribed(t *testing.T) {
 	it := source.Item{Media: []source.Media{{Kind: source.MediaImage, AltText: "Total solar eclipse"}}}
 	for name, w := range map[string]toolkit.Accessible{
-		"cardThumb":    &cardThumb{it: it},
 		"previewImage": &previewImage{it: it},
 		"detailImage":  &detailImage{it: it},
 	} {
@@ -67,7 +66,7 @@ func TestImageWidgetsAreDescribed(t *testing.T) {
 // themselves, so a silent local widget would be the single hole in it.
 func TestEveryLocalWidgetIsAccessible(t *testing.T) {
 	locals := map[string]any{
-		"cardThumb": &cardThumb{}, "previewImage": &previewImage{}, "detailImage": &detailImage{},
+		"previewImage": &previewImage{}, "detailImage": &detailImage{},
 		"logRow": &logRow{}, "sideDot": &sideDot{}, "countChip": &countChip{},
 	}
 	for name, w := range locals {

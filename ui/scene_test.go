@@ -69,9 +69,10 @@ func TestNewClampAndScale(t *testing.T) {
 
 func TestSetters(t *testing.T) {
 	s := newScene()
-	s.feedScroll.offset = 50
-	s.SetItems(nil)
-	if s.feedScroll.offset != 0 {
+	s.SetItems(sampleItems())
+	s.Scroll(1 << 20) // scroll the feed away from the top
+	s.SetItems(nil)   // a fresh (empty) feed opens at the top
+	if s.FeedScrollOffset() != 0 {
 		t.Fatal("SetItems should reset scroll")
 	}
 	s.SetTheme(nil) // no-op
@@ -165,30 +166,32 @@ func TestSearchEntryWidget(t *testing.T) {
 
 func TestScrollClamp(t *testing.T) {
 	s := newScene()
-	// Short content: max < 0, scroll pinned to 0.
+	// Short content: nothing overflows, so the wheel is pinned at 0.
 	s.SetItems(sampleItems()[:1])
 	s.Scroll(100)
-	if s.feedScroll.offset != 0 {
-		t.Fatalf("short content scroll = %d", s.feedScroll.offset)
+	if s.FeedScrollOffset() != 0 {
+		t.Fatalf("short content scroll = %d", s.FeedScrollOffset())
 	}
-	// Tall content: many items so contentH exceeds viewport.
+	// Tall content overflows: a big wheel-down pins to the bottom (the max offset),
+	// a big wheel-up pins back to the top, and repeating the wheel-down settles at
+	// the same bottom — the CardList clamps at both ends.
 	many := make([]source.Item, 40)
 	for i := range many {
 		many[i] = source.Item{ID: string(rune('a' + i%26)), Source: source.Reddit, Title: "t", Score: -1, Comments: -1}
 	}
 	s.SetItems(many)
-	s.Scroll(100000) // clamp to max
-	if s.feedScroll.offset <= 0 {
-		t.Fatalf("expected positive clamped scroll, got %d", s.feedScroll.offset)
+	s.Scroll(1 << 20) // far down → pinned to the bottom
+	down := s.FeedScrollOffset()
+	if down <= 0 {
+		t.Fatalf("expected positive clamped scroll, got %d", down)
 	}
-	max := s.feedScroll.offset
-	s.Scroll(-100000) // clamp to 0
-	if s.feedScroll.offset != 0 {
-		t.Fatalf("neg clamp = %d", s.feedScroll.offset)
+	s.Scroll(-(1 << 20)) // far up → pinned to the top
+	if s.FeedScrollOffset() != 0 {
+		t.Fatalf("neg clamp = %d", s.FeedScrollOffset())
 	}
-	s.Scroll(max / 2) // within range
-	if s.feedScroll.offset != max/2 {
-		t.Fatalf("mid scroll = %d want %d", s.feedScroll.offset, max/2)
+	s.Scroll(1 << 20) // back down → the same bottom
+	if s.FeedScrollOffset() != down {
+		t.Fatalf("re-clamp bottom = %d want %d", s.FeedScrollOffset(), down)
 	}
 }
 
@@ -253,10 +256,13 @@ func TestDrawSmoke(t *testing.T) {
 	if got.R != acc.R || got.G != acc.G || got.B != acc.B {
 		t.Fatalf("topbar pixel = %v, want accent %v", got, acc)
 	}
-	// A hit on the first card returns its item.
-	h := s.HitTest(s.m.sidebarW+40, s.m.topbarH+s.m.pad+s.m.rowH/2)
-	if h.Kind != HitItem || h.Item.ID != "1" {
-		t.Fatalf("card hit = %+v", h)
+	// A hit on the top feed card returns that row's item (newest is at the
+	// bottom, so the top row is the oldest shown post).
+	s.layout()
+	want, _ := s.feedItemAt(0)
+	h := s.HitTest(s.m.sidebarW+40, feedRowScreenY(s, 0))
+	if h.Kind != HitItem || h.Item.ID != want.ID {
+		t.Fatalf("card hit = %+v, want item %q", h, want.ID)
 	}
 }
 
@@ -340,10 +346,9 @@ func TestHitTest(t *testing.T) {
 	if s.HitTest(10, m.topbarH+4*m.sideItemH).Kind != HitNone {
 		t.Fatal("sidebar gap miss")
 	}
-	// Feed gap between cards -> none.
-	gapY := m.topbarH + m.pad + m.rowH + m.cardGap/2
-	if s.HitTest(m.sidebarW+40, gapY).Kind != HitNone {
-		t.Fatal("feed gap none")
+	// Empty feed space below the last card (the short feed does not overflow) -> none.
+	if s.HitTest(m.sidebarW+40, s.feedBottom()-2).Kind != HitNone {
+		t.Fatal("feed empty space none")
 	}
 }
 
@@ -399,32 +404,21 @@ func TestChromeCacheReuse(t *testing.T) {
 func TestSetThumb(t *testing.T) {
 	s := newScene()
 	buf := make([]byte, s.W*s.H*4)
-	s.Draw(buf) // warm the cache
+	s.Draw(buf)
 	th := image.NewRGBA(image.Rect(0, 0, 10, 10))
-	s.SetThumb("1", th) // invalidates + attaches
+	r0 := s.Rev()
+	s.SetThumb("1", th) // attaches + bumps the damage sequence
 	if s.Thumbs["1"] != th {
 		t.Fatal("thumb not stored")
 	}
-	if s.cardCache != nil {
-		t.Fatal("cache not invalidated by SetThumb")
+	if s.Rev() == r0 {
+		t.Fatal("SetThumb should bump the damage sequence")
 	}
 	// SetThumb on a fresh scene allocates the map.
 	s2 := New(400, 300, nil)
 	s2.SetThumb("x", th)
 	if s2.Thumbs["x"] != th {
 		t.Fatal("thumb map not allocated")
-	}
-}
-
-func TestCardCacheReuse(t *testing.T) {
-	s := newScene()
-	buf := make([]byte, s.W*s.H*4)
-	s.Draw(buf)
-	n := len(s.cardCache)
-	s.Scroll(3)
-	s.Draw(buf) // same items -> cache hit, no new sprites
-	if len(s.cardCache) != n {
-		t.Fatalf("cache grew on scroll: %d -> %d", n, len(s.cardCache))
 	}
 }
 
@@ -462,7 +456,7 @@ func BenchmarkScrollCached(b *testing.B) {
 	s.Draw(buf) // warm cache
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		s.feedScroll.offset = i % 400
+		s.FeedCardList().ScrollTo(i % 400)
 		s.Draw(buf)
 	}
 }
@@ -477,8 +471,8 @@ func BenchmarkScrollUncached(b *testing.B) {
 	buf := make([]byte, s.W*s.H*4)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		s.invalidateCards() // force full re-rasterisation every frame
-		s.feedScroll.offset = i % 400
+		s.SetTheme(s.theme) // bump the damage sequence so Draw re-runs each frame
+		s.FeedCardList().ScrollTo(i % 400)
 		s.Draw(buf)
 	}
 }

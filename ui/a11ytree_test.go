@@ -268,7 +268,9 @@ func TestA11yTreeKeepsScrolledPostsInTheTree(t *testing.T) {
 	for _, n := range tree {
 		if strings.HasPrefix(n.Name, "Post number ") {
 			seen++
-			if n.Rect.Y >= s.H {
+			// The feed opens at the bottom (newest), so the older posts sit above the
+			// fold (Y+H <= 0); a taller-than-viewport feed could also push some below.
+			if n.Rect.Y+n.Rect.H <= 0 || n.Rect.Y >= s.H {
 				offscreen++
 			}
 		}
@@ -277,7 +279,7 @@ func TestA11yTreeKeepsScrolledPostsInTheTree(t *testing.T) {
 		t.Fatalf("described %d of %d posts", seen, len(items))
 	}
 	if offscreen == 0 {
-		t.Fatal("expected some posts below the fold in this viewport")
+		t.Fatal("expected some posts off-screen (above/below the fold) in this viewport")
 	}
 }
 

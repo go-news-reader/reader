@@ -23,24 +23,24 @@ func TestSidebarScrollbar(t *testing.T) {
 	// Few subs: fits, no overflow → no scrollbar.
 	s := overflowing(2)
 	s.Draw(make([]byte, s.W*s.H*4))
-	if s.sideMaxScroll != 0 {
-		t.Fatalf("2 subs should not overflow, maxScroll=%d", s.sideMaxScroll)
+	if s.sidebarListOverflows() {
+		t.Fatal("2 subs should not overflow the sidebar band")
 	}
 
-	// Many subs: overflows → the scrollbar thumb (theme Border) paints near the
-	// sidebar's right edge, inside the scrollable band.
+	// Many subs: overflows → the TreeView paints its own scrollbar (accent thumb
+	// over a SurfaceAlt track) near the sidebar's right edge, inside the band.
 	s = overflowing(40)
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
-	if s.sideMaxScroll <= 0 {
-		t.Fatalf("40 subs should overflow, maxScroll=%d", s.sideMaxScroll)
+	if !s.sidebarListOverflows() {
+		t.Fatal("40 subs should overflow the sidebar band")
 	}
 	// The sidebar background (and the scrollbar track) is SurfaceAlt, so the only
 	// thing that paints a different colour in the right-edge column is the thumb
-	// (toolkit v0.55 paints it in a visible muted grey).
+	// (the TreeView paints it in theme.Accent).
 	th := s.theme
 	found := false
-	for x := s.m.sidebarW - s.scrollbarW() - rpxOf(s, 16); x < s.m.sidebarW && !found; x++ {
+	for x := s.m.sidebarW - rpxOf(s, 16); x < s.m.sidebarW && !found; x++ {
 		for y := s.sideBandTop; y < s.sideBandBot; y++ {
 			c := px(buf, s.W, x, y)
 			if c.R != th.SurfaceAlt.R || c.G != th.SurfaceAlt.G || c.B != th.SurfaceAlt.B {

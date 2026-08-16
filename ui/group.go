@@ -239,6 +239,36 @@ func groupItems(items []source.Item) []feedEntry {
 	return out
 }
 
+// GroupExpanded reports whether the Usenet post group with the given release
+// base is currently expanded (its member parts listed beneath the header).
+func (s *Scene) GroupExpanded(base string) bool { return s.groupExpanded[base] }
+
+// ToggleGroup expands or collapses the Usenet post group with the given release
+// base, then re-measures and re-lays-out its feed row so the CardList accounts
+// for the members appearing or disappearing beneath the header. It is the action
+// a click on the group card's disclosure chevron runs.
+func (s *Scene) ToggleGroup(base string) {
+	if s.groupExpanded == nil {
+		s.groupExpanded = map[string]bool{}
+	}
+	s.groupExpanded[base] = !s.groupExpanded[base]
+	s.invalidateFeedGroup(base)
+	s.touch()
+}
+
+// memberLine renders one expanded member row's text: "filename (p/P) size", the
+// part counter and byte size appended only when the subject declared them.
+func memberLine(mem groupMember) string {
+	name := mem.Info.Filename
+	if mem.Info.PartTotal > 0 {
+		name += fmt.Sprintf("  (%d/%d)", mem.Info.Part, mem.Info.PartTotal)
+	}
+	if mem.Info.Size > 0 {
+		name += "  " + humanSize(mem.Info.Size)
+	}
+	return name
+}
+
 // groupMeta renders the "N parts · M files · SIZE" subtitle for a group card.
 func groupMeta(g *itemGroup) string {
 	parts := []string{fmt.Sprintf("%d parts", len(g.Members))}

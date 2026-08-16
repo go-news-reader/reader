@@ -973,7 +973,7 @@ func TestSubContextMenuActions(t *testing.T) {
 		}
 		labels = append(labels, it.Label)
 	}
-	want := []string{"Refresh", "Mark as read", "---", "Unsubscribe"}
+	want := []string{"Refresh", "Mark as read", "---", "New folder", "Remove from folder", "---", "Unsubscribe"}
 	if len(labels) != len(want) {
 		t.Fatalf("menu labels = %v, want %v", labels, want)
 	}
@@ -987,7 +987,7 @@ func TestSubContextMenuActions(t *testing.T) {
 	// Refresh action (which spawns a background aggregate) for last and assert
 	// nothing about the scene after it.
 	menu.Menu.Items[1].Action() // Mark as read
-	menu.Menu.Items[3].Action() // Unsubscribe
+	menu.Menu.Items[6].Action() // Unsubscribe
 	if _, ok := s.SubAt(0); ok {
 		t.Error("the Unsubscribe action should have removed the subscription")
 	}

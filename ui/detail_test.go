@@ -16,7 +16,6 @@ func TestOpenCloseDetail(t *testing.T) {
 		t.Fatal("default mode should be feed")
 	}
 	it := source.Item{ID: "x", Source: source.Reddit, Title: "Deep dive", Link: "https://x"}
-	s.feedScroll.offset = 40
 	s.OpenDetail(it)
 	if s.Mode() != ModeDetail || s.Detail().ID != "x" || s.detailScroll.offset != 0 {
 		t.Fatalf("open detail state: mode=%v item=%q", s.Mode(), s.Detail().ID)

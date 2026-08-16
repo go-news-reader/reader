@@ -1,7 +1,6 @@
 package windowapp
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/go-news-reader/reader/source"
@@ -14,39 +13,6 @@ func drawFrame(a interface{ Scene() *ui.Scene }) {
 	s := a.Scene()
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
-}
-
-// TestCardDragSelectsAndSuppressesClick proves the deferred routing: a drag
-// across a feed card's text selects the title AND suppresses the card's
-// click-to-preview action, while a plain click still previews (covered
-// elsewhere). Ctrl+C then copies the selection.
-func TestCardDragSelectsAndSuppressesClick(t *testing.T) {
-	a := newApp(t)
-	a.Scene().SetSubs(nil)
-	a.Scene().SetItems([]source.Item{{ID: "1", Source: source.Reddit, Channel: "chan",
-		Title: "DRAGME", Score: -1, Comments: -1}})
-	h := New(a)
-	var clip memClip
-	h.SetSystemClipboard(&clip)
-	drawFrame(a)
-	s := a.Scene()
-
-	// Press inside the card, drag diagonally across it (spanning the title row),
-	// release: the press deferred the preview, the drag turns it into a selection.
-	h.MouseDown(250, 52)
-	h.MouseMove(600, 128)
-	h.MouseUp(600, 128)
-
-	if _, ok := s.PreviewItem(); ok {
-		t.Fatal("a drag over the card must suppress the click-to-preview action")
-	}
-	if !s.HasSelection() {
-		t.Fatal("a drag over the card should produce a text selection")
-	}
-	h.Shortcut('c', true, false)
-	if !strings.Contains(clip.text, "DRAGME") {
-		t.Fatalf("card drag-selection copy = %q, want it to contain DRAGME", clip.text)
-	}
 }
 
 // TestCardClickStillPreviews confirms a plain click (press+release, no drag)
@@ -83,41 +49,13 @@ func subRowY(s *ui.Scene, want int) (int, bool) {
 	return 0, false
 }
 
-// TestSidebarDragSelectsAndSuppressesSwitch proves a drag across a sidebar row
-// selects its label and suppresses the filter switch, while a plain click still
-// switches (TestMouseDownSub covers the click).
-func TestSidebarDragSelectsAndSuppressesSwitch(t *testing.T) {
+// TestSidebarRowActsOnPress proves a sidebar row now resolves through the
+// TreeView to its action on press (no text-selection deferral): a click on the
+// "All Sources" row switches the filter to AllFilter and leaves no selection.
+func TestSidebarRowActsOnPress(t *testing.T) {
 	a := newApp(t)
-	a.Scene().SetSubs([]ui.Subscription{{Source: source.Reddit, Channel: "c", Label: "SUBDRAG"}})
-	a.Scene().SetActive(0) // start on the SUBDRAG subscription (index 0), not AllFilter
-	h := New(a)
-	drawFrame(a)
-	s := a.Scene()
-
-	// Locate the "All Sources" row (AllFilter). A plain click there would switch
-	// Active to AllFilter; the drag must suppress that and select the label.
-	y, ok := subRowY(s, ui.AllFilter)
-	if !ok {
-		t.Fatal("could not locate the All Sources row")
-	}
-	h.MouseDown(8, y)
-	h.MouseMove(150, y)
-	h.MouseUp(150, y)
-
-	if s.Active != 0 {
-		t.Fatalf("a drag over a sidebar row must suppress the filter switch; Active=%d", s.Active)
-	}
-	if !s.HasSelection() {
-		t.Fatal("a drag over the sidebar label should produce a selection")
-	}
-}
-
-// TestSidebarClickStillSwitches confirms a plain click (no drag) on a sidebar
-// row still runs the deferred filter switch.
-func TestSidebarClickStillSwitches(t *testing.T) {
-	a := newApp(t)
-	a.Scene().SetSubs([]ui.Subscription{{Source: source.Reddit, Channel: "c", Label: "SUBDRAG"}})
-	a.Scene().SetActive(0)
+	a.Scene().SetSubs([]ui.Subscription{{Source: source.Reddit, Channel: "c", Label: "SUBROW"}})
+	a.Scene().SetActive(0) // start on the SUBROW subscription (index 0), not AllFilter
 	h := New(a)
 	drawFrame(a)
 	s := a.Scene()
@@ -127,11 +65,11 @@ func TestSidebarClickStillSwitches(t *testing.T) {
 		t.Fatal("could not locate the All Sources row")
 	}
 	h.MouseDown(8, y)
-	h.MouseUp(8, y) // no drag: the deferred switch runs
 	if s.Active != ui.AllFilter {
-		t.Fatalf("a click on the All Sources row should switch to AllFilter; Active=%d", s.Active)
+		t.Fatalf("a press on the All Sources row should switch to AllFilter; Active=%d", s.Active)
 	}
+	h.MouseUp(8, y)
 	if s.HasSelection() {
-		t.Fatal("a click without a drag must not leave a selection")
+		t.Fatal("a sidebar row is not selectable text; it must leave no selection")
 	}
 }

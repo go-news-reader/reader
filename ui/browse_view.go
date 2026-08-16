@@ -108,7 +108,6 @@ func (s *Scene) SetUsenetServer(addr string) {
 	s.usenetAddr = addr
 	s.browseServer = addr
 	s.subsRev++ // the sidebar entry appears/disappears with the server
-	s.invalidateCards()
 	s.touch()
 }
 

@@ -269,7 +269,9 @@ func TestSaveVaultDeleteError(t *testing.T) {
 	}
 }
 
-// TestLoadHydrateGetError surfaces a vault read failure from Load.
+// TestLoadHydrateGetError: a vault READ failure (e.g. the user declines the
+// keychain prompt → userCanceled) must NOT fail Load — the reader still starts,
+// with that account simply left unhydrated (unauthenticated).
 func TestLoadHydrateGetError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
@@ -282,13 +284,21 @@ func TestLoadHydrateGetError(t *testing.T) {
 		t.Fatalf("seed save: %v", err)
 	}
 	sec.getErr = errors.New("read failed")
-	if _, err := st.Load(); err == nil || !strings.Contains(err.Error(), "read failed") {
-		t.Fatalf("Load err = %v, want read failed", err)
+	loaded, err := st.Load()
+	if err != nil {
+		t.Fatalf("Load err = %v, want nil (a vault read failure must not stop startup)", err)
+	}
+	if len(loaded.Accounts) != 1 {
+		t.Fatalf("accounts = %d, want 1", len(loaded.Accounts))
+	}
+	if v := loaded.Accounts[0].Fields["session_cookie"]; v != "" {
+		t.Fatalf("session_cookie hydrated despite read failure: %q", v)
 	}
 }
 
-// TestLoadMigrateSetError surfaces a vault write failure during Load-time
-// migration of a legacy plaintext secret.
+// TestLoadMigrateSetError: a vault WRITE failure while migrating a legacy
+// plaintext secret must NOT fail Load — the plaintext is left on disk as the
+// fallback and the reader still starts.
 func TestLoadMigrateSetError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
@@ -301,8 +311,12 @@ func TestLoadMigrateSetError(t *testing.T) {
 	sec := newMemSecrets()
 	sec.setErr = errors.New("migrate set failed")
 	st := &Store{Path: path, Secrets: sec}
-	if _, err := st.Load(); err == nil || !strings.Contains(err.Error(), "migrate set failed") {
-		t.Fatalf("Load err = %v, want migrate set failed", err)
+	loaded, err := st.Load()
+	if err != nil {
+		t.Fatalf("Load err = %v, want nil (a vault write failure must not stop startup)", err)
+	}
+	if v := loaded.Accounts[0].Fields["session_cookie"]; v != "legacy" {
+		t.Fatalf("plaintext fallback lost: session_cookie = %q, want \"legacy\"", v)
 	}
 }
 
@@ -331,9 +345,8 @@ func TestHydrateNilFieldsMap(t *testing.T) {
 	sec.m[secretRef(source.Reddit, "session_cookie")] = []byte("from-vault")
 	st := &Store{Secrets: sec}
 	out := &Settings{Accounts: []Account{{Kind: source.Reddit}}} // nil Fields
-	migrated, err := st.hydrateSecrets(out)
-	if err != nil || migrated {
-		t.Fatalf("hydrate = (%v, %v)", migrated, err)
+	if migrated := st.hydrateSecrets(out); migrated {
+		t.Fatalf("hydrate migrated = %v, want false", migrated)
 	}
 	if out.Accounts[0].Fields["session_cookie"] != "from-vault" {
 		t.Errorf("nil Fields not hydrated: %+v", out.Accounts[0])
@@ -349,15 +362,33 @@ func TestDefaultSecretStoreSelected(t *testing.T) {
 	}
 }
 
+// TestSetDefaultSecretStore checks the process-wide default seam: a Store with no
+// explicit Secrets uses the installed default, an explicit per-Store seam still
+// wins over it, and the returned restore reverts to the production keyring backend.
+func TestSetDefaultSecretStore(t *testing.T) {
+	sec := newMemSecrets()
+	restore := SetDefaultSecretStore(sec)
+	if got := (&Store{}).secrets(); got != sec {
+		t.Fatalf("seam-less secrets() = %T, want the installed default", got)
+	}
+	own := newMemSecrets()
+	if got := (&Store{Secrets: own}).secrets(); got != own {
+		t.Fatalf("explicit Secrets should win over the default, got %T", got)
+	}
+	restore()
+	if _, ok := (&Store{}).secrets().(keyringSecrets); !ok {
+		t.Fatalf("restore should revert to the keyring backend, got %T", (&Store{}).secrets())
+	}
+}
+
 // TestHydrateSecretAbsentEverywhere covers the not-found continue branch: an
 // account whose secret key is on neither disk nor vault leaves the field unset.
 func TestHydrateSecretAbsentEverywhere(t *testing.T) {
 	sec := newMemSecrets() // empty vault
 	st := &Store{Secrets: sec}
 	out := &Settings{Accounts: []Account{{Kind: source.Reddit, Fields: map[string]string{}}}}
-	migrated, err := st.hydrateSecrets(out)
-	if err != nil || migrated {
-		t.Fatalf("hydrate = (%v, %v)", migrated, err)
+	if migrated := st.hydrateSecrets(out); migrated {
+		t.Fatalf("hydrate migrated = %v, want false", migrated)
 	}
 	if _, ok := out.Accounts[0].Fields["session_cookie"]; ok {
 		t.Errorf("absent secret should stay unset, got %+v", out.Accounts[0].Fields)

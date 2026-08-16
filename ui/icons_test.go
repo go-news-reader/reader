@@ -153,6 +153,8 @@ func TestMenuRowIcons(t *testing.T) {
 		"refresh":     MenuIconRefresh,
 		"mark-read":   MenuIconMarkRead,
 		"unsubscribe": MenuIconUnsubscribe,
+		"new-folder":  MenuIconNewFolder,
+		"folder":      MenuIconFolder,
 	} {
 		p, _, buf := iconCanvas(44, 44)
 		fn(p, box, iconInk)

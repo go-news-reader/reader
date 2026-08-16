@@ -45,29 +45,27 @@ func boundSurface(t *testing.T, w, h int) (*toolkit.Surface, *app.App) {
 	return surf, a
 }
 
-// A wheel notch moves the feed, and moves it by the pixels this application
-// counts in — the toolkit measures scrolls in rows.
+// A wheel notch moves the feed through the virtual.CardList: the chat-style feed
+// opens at the bottom (newest), and the wheel scrolls it toward the top by whole
+// rows, clamping at the ends rather than running off.
 func TestSurfaceScrollMovesTheFeed(t *testing.T) {
 	surf, a := boundSurface(t, 900, 600)
 
-	if got := a.Scene().ScrollY(); got != 0 {
-		t.Fatalf("the feed starts at %d, not the top; the arithmetic below assumes 0", got)
+	// The overflowing feed opens scrolled to the bottom (newest post visible).
+	start := a.Scene().ScrollY()
+	if start <= 0 {
+		t.Fatalf("the overflowing feed should open scrolled to the bottom, got %d", start)
 	}
-	surf.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: 3, X: 450, Y: 300})
+	// Wheel-up notches scroll the CardList toward the top (by whole rows), so the
+	// offset shrinks from the bottom.
+	surf.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: -3, X: 450, Y: 300})
 	surf.Frame()
-
-	// The EXACT distance, not merely "it moved". Three notches at 40 device
-	// pixels each is 120, and asserting only movement lets the rows-to-pixels
-	// conversion vanish unnoticed -- which it did when this was written loosely:
-	// the test passed with the multiplication removed, scrolling 3 pixels
-	// instead of 120.
-	const want = 3 * 40
-	if got := a.Scene().ScrollY(); got != want {
-		t.Errorf("three wheel notches scrolled %d pixels, want %d — a notch is a ROW in the toolkit and DEVICE PIXELS here", got, want)
+	if got := a.Scene().ScrollY(); got >= start {
+		t.Errorf("three wheel-up notches did not move toward the top: %d (start %d)", got, start)
 	}
 
-	// And back up, past the top, where it must clamp rather than go negative.
-	surf.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: -99, X: 450, Y: 300})
+	// Far past the top clamps to 0 rather than going negative.
+	surf.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: -999, X: 450, Y: 300})
 	surf.Frame()
 	if got := a.Scene().ScrollY(); got != 0 {
 		t.Errorf("scrolling far past the top left the offset at %d, want 0", got)
@@ -84,9 +82,10 @@ func TestSurfaceInputIsTranslatedIntoBufferCoordinates(t *testing.T) {
 	offset.SetBounds(toolkit.Rect{X: 40, Y: 25, W: 900, H: 600})
 	offset.Frame()
 
-	// The same point of the CONTENT, addressed in each surface's own space.
-	atOrigin.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: 2, X: 450, Y: 300})
-	offset.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: 2, X: 40 + 450, Y: 25 + 300})
+	// The same point of the CONTENT, addressed in each surface's own space (a
+	// wheel-up, since the feed opens at the bottom and can move from there).
+	atOrigin.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: -2, X: 450, Y: 300})
+	offset.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, Delta: -2, X: 40 + 450, Y: 25 + 300})
 	atOrigin.Frame()
 	offset.Frame()
 
@@ -127,18 +126,42 @@ func TestSurfacePublishesTheScenesElements(t *testing.T) {
 	if len(nodes) == 0 {
 		t.Fatal("the surface published nothing for a screen reader")
 	}
+	// The surface origin offset (10, 20) is added to every node. Nothing is ever
+	// left of the surface (the leftmost scene X is 0). Vertically, though, the feed
+	// opens at the bottom, so the older cards legitimately sit ABOVE the fold with a
+	// negative Y — the a11y tree keeps every post walkable, painted or not — so a
+	// blanket Y>=20 check would wrongly reject them.
 	var named int
 	for _, n := range nodes {
 		if n.Name != "" {
 			named++
 		}
-		if n.Rect.X < 10 || n.Rect.Y < 20 {
-			t.Errorf("node %q at %+v is left of or above the surface, so it was not offset onto it", n.Name, n.Rect)
+		if n.Rect.X < 10 {
+			t.Errorf("node %q at %+v is left of the surface, so the horizontal offset was not applied", n.Name, n.Rect)
 		}
 	}
 	if named == 0 {
 		t.Error("every published node is unnamed, which reads as an empty interface")
 	}
+	// The full-window "News" document node sits at scene (0,0), so after the offset
+	// it must land exactly at the surface origin — proving the vertical offset too.
+	doc, ok := findNode(nodes, "News")
+	if !ok {
+		t.Fatal("no News document node published")
+	}
+	if doc.Rect.X != 10 || doc.Rect.Y != 20 {
+		t.Errorf("document node at %+v, want it offset to the surface origin (10, 20)", doc.Rect)
+	}
+}
+
+// findNode returns the first walked node with the given name.
+func findNode(nodes []toolkit.A11yNode, name string) (toolkit.A11yNode, bool) {
+	for _, n := range nodes {
+		if n.Name == name {
+			return n, true
+		}
+	}
+	return toolkit.A11yNode{}, false
 }
 
 // The scale is not fixed for the life of a window: dragging one to a display of

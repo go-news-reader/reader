@@ -49,6 +49,17 @@ type Profile struct {
 	Subs []source.Subscription `json:"subs"`
 }
 
+// Folder is a virtual sidebar folder: a named, collapsible group of
+// subscriptions identified by their stable subscription keys (the reader's
+// per-subscription key, source kind + channel). A subscription whose key is not
+// listed in any folder shows at the sidebar root. Folders are cross-profile
+// (keyed by subscription, not by profile index), so only the subscriptions the
+// active profile actually contains ever surface under a folder.
+type Folder struct {
+	Name string   `json:"name"`
+	Subs []string `json:"subs,omitempty"` // stable subscription keys
+}
+
 // Settings is the whole persisted preference set.
 type Settings struct {
 	Profiles  []Profile `json:"profiles"`
@@ -124,6 +135,11 @@ type Settings struct {
 	// 0 (a settings file predating the field) as unset and backfilling the
 	// default.
 	PreviewTextScale float64 `json:"previewTextScale,omitempty"`
+
+	// SidebarFolders are the virtual sidebar folders (named, collapsible groups
+	// of subscriptions). Empty (a fresh install or a settings file predating the
+	// field) means every subscription shows at the sidebar root. See [Folder].
+	SidebarFolders []Folder `json:"sidebarFolders,omitempty"`
 }
 
 // Preview-text scale defaults and bounds. The base preview font read too small,
@@ -534,6 +550,9 @@ func (s *Store) secrets() SecretStore {
 	if s.Secrets != nil {
 		return s.Secrets
 	}
+	if defaultSecretStore != nil {
+		return defaultSecretStore
+	}
 	return keyringSecrets{}
 }
 
@@ -559,11 +578,7 @@ func (s *Store) Load() (*Settings, error) {
 		return nil, err
 	}
 	out.Normalize()
-	migrated, err := s.hydrateSecrets(&out)
-	if err != nil {
-		return nil, err
-	}
-	if migrated {
+	if s.hydrateSecrets(&out) {
 		// Rewrite the file without the plaintext secrets now held in the vault.
 		if err := s.Save(&out); err != nil {
 			return nil, err

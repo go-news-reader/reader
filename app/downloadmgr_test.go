@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
@@ -122,11 +123,18 @@ func TestFileDownloadAsync(t *testing.T) {
 	a.scene.SetItems(usenetPost())
 	a.scene.SetCachePath(t.TempDir())
 	a.ToggleDownload("release") // default async: spawns a worker goroutine
+	// Poll with a yielding sleep (not a busy spin) so the download worker goroutine
+	// is actually scheduled under parallel test load — a tight spin starves it and
+	// makes this flake. A generous wall-clock deadline bounds a genuine hang.
 	done := false
-	for i := 0; i < 1_000_000 && !done; i++ {
+	deadline := time.Now().Add(10 * time.Second)
+	for !done && time.Now().Before(deadline) {
 		a.drainScene()
 		dls := a.scene.Downloads()
 		done = len(dls) == 1 && dls[0].Status == ui.DLDone
+		if !done {
+			time.Sleep(time.Millisecond)
+		}
 	}
 	if !done {
 		t.Fatal("async download did not reach DLDone")
