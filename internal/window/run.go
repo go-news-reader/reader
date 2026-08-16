@@ -16,6 +16,26 @@ import (
 // so the scroll feel does not change under the user.
 const wheelPixelsPerNotch = 40
 
+// visibleScreenHeight reports the usable primary-screen height in logical points
+// so a fresh window can open at the full height of the display. It is a seam:
+// the default asks go-widgets/window (which knows the screen, menu bar and Dock
+// excluded), tests substitute a fixed answer.
+var visibleScreenHeight = func() (int, bool) {
+	_, h, ok := gw.VisibleScreenSize()
+	return h, ok
+}
+
+// launchHeight is the window's initial height in logical points: the full
+// visible screen height when the backend can report it — so the reader opens as
+// tall as the screen, as asked — else the configured fallback (an unknown screen
+// on a headless build, or a backend with no screen query yet).
+func launchHeight(cfgHeight int) int {
+	if h, ok := visibleScreenHeight(); ok && h > 0 {
+		return h
+	}
+	return cfgHeight
+}
+
 // Run opens a native window through go-widgets/window and shows the handler's
 // framebuffer in it.
 //
@@ -37,7 +57,7 @@ func Run(cfg Config, h Handler) error {
 	win, err := gw.Open(gw.Config{
 		Title:       cfg.Title,
 		Width:       int(cfg.Width),
-		Height:      int(cfg.Height),
+		Height:      launchHeight(int(cfg.Height)),
 		RenderScale: gw.NativeScale,
 	})
 	if err != nil {
