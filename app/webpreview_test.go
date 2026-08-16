@@ -68,6 +68,69 @@ func TestSelectPreviewRendersWebPage(t *testing.T) {
 	}
 }
 
+// widthRecorder is a renderer that records the content width each render was
+// requested at, so a test can assert the FIRST open used the pane's real width
+// rather than the pre-layout zero width.
+type widthRecorder struct {
+	img    *image.RGBA
+	calls  int
+	widths []int
+}
+
+func (f *widthRecorder) Render(_ context.Context, url string, w int) (*image.RGBA, []webrender.Link, string, error) {
+	f.calls++
+	f.widths = append(f.widths, w)
+	return f.img, nil, url, nil
+}
+
+// TestFirstWebOpenUsesRealWidthSoRevisitHits proves the width-0 cache-key defect
+// is fixed. selectPreview now lays the pane out (so the embedded browser gets its
+// real content width) BEFORE it opens a page, so the very first render of a page
+// happens at the pane's real width — not the stale zero bounds left before any
+// draw. Because the first view caches the page under its real width, revisiting
+// it later (now also measured at that width) HITS the render cache and does not
+// re-fetch. Prefetch is disabled so the revisit can only hit the entry the first
+// view itself cached — this is exactly the case the old code re-rendered.
+func TestFirstWebOpenUsesRealWidthSoRevisitHits(t *testing.T) {
+	a := New(Config{Registry: newReg(), Width: 1000, Height: 800})
+	items := []source.Item{
+		webItem("a", "https://a/"), webItem("b", "https://b/"), webItem("c", "https://c/"),
+	}
+	a.Scene().SetItems(items)
+	fr := &widthRecorder{img: image.NewRGBA(image.Rect(0, 0, 40, 40))}
+	a.SetWebRenderer(fr)
+	syncFetch(a)
+	a.SetPrefetchHook(func(string, int) {}) // isolate: no neighbour warms the cache
+
+	a.SelectPreview(items[0]) // first open of A
+	if fr.calls != 1 {
+		t.Fatalf("first open renders = %d, want 1", fr.calls)
+	}
+	w0 := fr.widths[0]
+	if w0 <= 0 {
+		t.Fatalf("first open width = %d, want the pane's real content width (>0)", w0)
+	}
+	if _, ok := a.rcache.get(renderKey{"https://a/", w0}); !ok {
+		t.Fatalf("A was not cached at its render width %d", w0)
+	}
+
+	a.SelectPreview(items[1]) // open B
+	if fr.calls != 2 {
+		t.Fatalf("opening B renders = %d, want 2", fr.calls)
+	}
+	if fr.widths[1] != w0 {
+		t.Fatalf("B width %d != A width %d (the width must be stable across selections)", fr.widths[1], w0)
+	}
+
+	a.SelectPreview(items[0]) // REVISIT A — must be served from cache
+	if fr.calls != 2 {
+		t.Fatalf("revisiting A re-rendered (calls=%d), want a cache hit (still 2)", fr.calls)
+	}
+	if got := a.Scene().Browser().CurrentURL(); got != "https://a/" {
+		t.Fatalf("browser did not return to A: %q", got)
+	}
+}
+
 func TestSelectPreviewWebNoURL(t *testing.T) {
 	a := New(Config{Registry: newReg()})
 	fr := &fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 4, 4))}

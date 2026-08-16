@@ -41,6 +41,36 @@ func TestWebPreviewURL(t *testing.T) {
 	}
 }
 
+// TestLayoutPreviewGivesBrowserRealWidth proves LayoutPreview assigns the
+// embedded browser its real content bounds on demand — before any Draw — so a
+// caller (the app) can read the true render width before opening a page, instead
+// of the zero bounds a not-yet-drawn pane would report. It works even on a fresh
+// scene (no Draw yet): the wrapper computes metrics itself.
+func TestLayoutPreviewGivesBrowserRealWidth(t *testing.T) {
+	s := New(1000, 700, ThemeFor(OSMac, false))
+
+	// No selection: laying out the pane leaves the browser with empty bounds.
+	s.LayoutPreview()
+	if b := s.Browser().Bounds(); b.W != 0 {
+		t.Fatalf("no selection: browser bounds W=%d, want 0", b.W)
+	}
+
+	// Select a web item and lay out: the browser now has a positive content width.
+	s.SelectPreview(webTestItem())
+	s.LayoutPreview()
+	got := s.Browser().Bounds().W
+	if got <= 0 {
+		t.Fatalf("web selection: browser width = %d, want > 0", got)
+	}
+
+	// It is idempotent with the Draw path: a full Draw assigns the same width.
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	if drawn := s.Browser().Bounds().W; drawn != got {
+		t.Fatalf("LayoutPreview width %d != Draw width %d", got, drawn)
+	}
+}
+
 // deliverPage opens url in the scene's browser and delivers a canned page render
 // so the web preview shows a page (as the app would after a render lands).
 func deliverPage(s *Scene, url, title string, w, h int) {

@@ -648,6 +648,22 @@ func commentMetaLine(c source.Comment) string {
 	return strings.Join(parts, " · ")
 }
 
+// LayoutPreview lays out the preview pane on demand, outside a Draw. The app
+// calls it right after a selection changes so the embedded browser has its real
+// content bounds (and thus its real render width) BEFORE it fires a web-page
+// open: without it the first open reads the stale/empty bounds left by the prior
+// frame and renders — and caches — the page at width 0, so revisiting it later
+// (now measured at the real width) misses the render cache and re-fetches. It is
+// idempotent — the next Draw recomputes the same layout — so calling it early is
+// harmless.
+func (s *Scene) LayoutPreview() {
+	// Metrics (fonts, paddings) are normally recomputed at the top of Draw; when
+	// this runs before the first Draw they are still the zero value, so compute
+	// them here first — layoutPreview measures button labels through them.
+	s.m = s.computeMetrics()
+	s.layoutPreview()
+}
+
 // layoutPreview computes the pane rect, its Open button, image rect and the
 // scrollable content height. It is a no-op (empty previewR) when the pane hides.
 func (s *Scene) layoutPreview() {

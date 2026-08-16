@@ -33,6 +33,12 @@ func (a *App) SelectPreview(it source.Item) { a.selectPreview(it, false) }
 // item; a direct click passes false and fetches immediately.
 func (a *App) selectPreview(it source.Item, debounceWeb bool) {
 	a.scene.SelectPreview(it)
+	// Lay out the pane now so the embedded browser has its real content width
+	// before a web open reads it. Without this the first open of a page fires at
+	// the stale (often zero) bounds left by the prior frame, so the page is
+	// rendered and cached under width 0; revisiting it later — now measured at the
+	// real width — would miss that entry and re-fetch. See TestSelectFirstWebOpenRealWidth.
+	a.scene.LayoutPreview()
 	a.webArmed = false // a new selection cancels any pending debounced open
 	a.maybeFetchComments(it)
 	if a.wantsPreviewImage(it) {
