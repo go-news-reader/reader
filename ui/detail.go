@@ -84,27 +84,37 @@ func (s *Scene) detailContent() detailBody {
 	return d
 }
 
-// detailImage is the reading view's image cell as a toolkit widget so the box
-// layout positions it: it blits the decoded thumbnail (stretched to the box) or
-// draws a kind placeholder.
+// detailImage is the reading view's image cell as a composed toolkit widget so
+// the box layout positions it: a SurfaceAlt Backdrop ground carrying either the
+// decoded thumbnail or a kind Label placeholder.
 type detailImage struct {
 	toolkit.Base
 	s   *Scene
 	it  source.Item
-	p   *painter.PixelPainter
 	img *image.RGBA
 }
 
-func (w *detailImage) Draw(_ painter.Painter, th *toolkit.Theme) {
+// Draw composes the image cell — a solid toolkit.Backdrop ground, then either the
+// decoded thumbnail or a centred kind Label — with nothing hand-drawn. The
+// thumbnail is blitted at native size, top-left (the reading view crops it to the
+// box, unlike the feed card's aspect-fit), so it keeps the reader's own image
+// primitive rather than toolkit.Image's stretch/fit.
+func (w *detailImage) Draw(pt painter.Painter, th *toolkit.Theme) {
 	b := w.Bounds()
-	w.p.FillRect(painter.Rect(b), th.SurfaceAlt)
+	ground := &toolkit.Backdrop{Fill: th.SurfaceAlt}
+	ground.SetBounds(b)
+	ground.Draw(pt, th)
 	if t, ok := w.s.Thumbs[w.it.ID]; ok && t != nil {
 		blit(w.img, t, b.X, b.Y, b.W, b.H)
 		return
 	}
 	lbl := string(w.it.Media[0].Kind)
 	m := w.s.m
-	m.meta.draw(w.img, b.X+(b.W-m.meta.width(lbl))/2, b.Y+b.H/2-m.meta.height/2, lbl, mute(th.OnSurface, th.Surface))
+	tw := m.meta.width(lbl)
+	ph := toolkit.NewLabel(lbl)
+	ph.Font, ph.Ink, ph.VAlign = m.meta.font, mute(th.OnSurface, th.Surface), toolkit.VTop
+	ph.SetBounds(toolkit.Rect{X: b.X + (b.W-tw)/2, Y: b.Y + b.H/2 - m.meta.height/2, W: tw, H: m.meta.height})
+	ph.Draw(pt, th)
 }
 
 // drawDetail renders the in-app reading view for the open item.
@@ -119,7 +129,10 @@ func (s *Scene) drawDetail(buf []byte) {
 	it := s.detail
 	gap := rpxOf(s, 10)
 
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
+	// Window ground: a solid toolkit.Backdrop panel, not a hand-drawn FillRect.
+	bg := &toolkit.Backdrop{Fill: th.Background}
+	bg.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: s.H})
+	bg.Draw(p, th)
 
 	// --- content (scrolled, below the topbar), composed as a toolkit VBox ---
 	x := d.x
@@ -150,7 +163,7 @@ func (s *Scene) drawDetail(buf []byte) {
 	col.AddFixed(mkLabel(d.meta, metaFont, muteS), m.meta.height)
 	col.AddFixed(toolkit.NewLabel(""), gap)
 	if len(it.Media) > 0 {
-		col.AddFixed(&detailImage{s: s, it: it, p: p, img: img}, m.thumbH*2)
+		col.AddFixed(&detailImage{s: s, it: it, img: img}, m.thumbH*2)
 		col.AddFixed(toolkit.NewLabel(""), gap)
 	}
 	for _, ln := range d.bodyLines {
@@ -166,14 +179,46 @@ func (s *Scene) drawDetail(buf []byte) {
 	// Scrollbar down the right edge when the article overflows the viewport.
 	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.detailScroll.contentH, s.detailScroll.offset)
 
-	// --- topbar chrome (over content) ---
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
-	p.FillRoundRect(painter.Rect(s.backR), rpxOf(s, 6), th.Surface)
-	m.side.draw(img, s.backR.X+m.pad, s.backR.Y+(s.backR.H-m.side.height)/2, "< Back", th.Accent)
+	// --- topbar chrome (over content), fully composed ---
+	// Accent band + Back / Open original as composed detailPill widgets (a rounded
+	// Surface pill carrying an accent Label). Nothing here is hand-drawn.
+	band := &toolkit.Backdrop{Fill: th.Accent}
+	band.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH})
+	band.Draw(p, th)
+
+	back := &detailPill{s: s, label: "< Back"}
+	back.SetBounds(s.backR)
+	back.Draw(p, th)
 	if s.detailURL() != "" {
-		p.FillRoundRect(painter.Rect(s.openR), rpxOf(s, 6), th.Surface)
-		m.side.draw(img, s.openR.X+m.pad, s.openR.Y+(s.openR.H-m.side.height)/2, "Open original", th.Accent)
+		open := &detailPill{s: s, label: "Open original"}
+		open.SetBounds(s.openR)
+		open.Draw(p, th)
 	}
+}
+
+// detailPill is the reading view's topbar affordance (Back / Open original) as a
+// self-contained composing widget: a rounded Surface pill carrying an accent
+// Label, left-inset by m.pad. There is no stock toolkit widget for a borderless,
+// left-aligned rounded pill — Button centres its label and strokes a border,
+// whose corner anti-aliasing would diverge from the old bare fill — so this thin
+// composing widget mirrors the merged logBackButton and reproduces the old
+// FillRoundRect + m.side.draw byte for byte. Clicks stay routed by detailHitTest
+// (HitBack / HitOpenExternal), so the Back / Open flows in internal/windowapp are
+// unchanged; this widget only paints the visual.
+type detailPill struct {
+	toolkit.Base
+	s     *Scene
+	label string
+}
+
+func (w *detailPill) Draw(pt painter.Painter, th *toolkit.Theme) {
+	s, b := w.s, w.Bounds()
+	m := s.m
+	pt.FillRoundRect(painter.Rect{X: b.X, Y: b.Y, W: b.W, H: b.H}, rpxOf(s, 6), th.Surface)
+	lbl := toolkit.NewLabel(w.label)
+	lbl.Font, lbl.Ink, lbl.VAlign = m.side.font, th.Accent, toolkit.VTop
+	lbl.SetBounds(toolkit.Rect{X: b.X + m.pad, Y: b.Y + (b.H-m.side.height)/2, W: b.W - m.pad, H: m.side.height})
+	lbl.Draw(pt, th)
 }
 
 // detailHitTest maps a click in the detail view to Back / OpenExternal / None.
