@@ -13,7 +13,6 @@ package ui
 
 import (
 	"fmt"
-	"image"
 	"regexp"
 	"strconv"
 	"strings"
@@ -347,66 +346,82 @@ func (s *Scene) layoutSearch() {
 	ss.scroll.refresh((ss.listTop-m.topbarH)+top, s.H-m.topbarH)
 }
 
-// drawSearch paints the Reddit search view.
+// drawSearch paints the Reddit search view. Every element is a composed
+// go-widgets widget: the ground + accent topbar band are toolkit.Backdrop, the
+// Back / Search-run pills inverted toolkit.Button, the title a toolkit.Label, and
+// the controls + result rows are composed by drawSearchControls / drawSearchRows.
+// Nothing in the view is hand-drawn.
 func (s *Scene) drawSearch(buf []byte) {
 	s.layoutSearch()
 	m := s.m
 	ss := &s.search
 	p := painter.NewPixelPainter(buf, s.W, s.H)
-	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, s.H)}
 	th := s.theme
 	onAccent := themeOnAccent(th)
 	muteS := mute(th.OnSurface, th.Surface)
 
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
+	// Full-surface ground — a solid Backdrop, not a hand-drawn FillRect.
+	ground := &toolkit.Backdrop{Fill: th.Background}
+	ground.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: s.H})
+	ground.Draw(p, th)
 
-	s.drawSearchControls(p, img, muteS)
-	s.drawSearchRows(p, img, muteS)
+	s.drawSearchControls(p, muteS)
+	s.drawSearchRows(p, muteS)
 
 	// Scrollbar when the result list overflows.
 	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, ss.scroll.contentH, ss.scroll.offset)
 
-	// Topbar (accent) with Back, title, and the Search run button, over any overflow.
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
-	p.FillRoundRect(painter.Rect(ss.backR), rpxOf(s, 6), onAccent)
-	m.tab.draw(img, ss.backR.X+rpxOf(s, 10), ss.backR.Y+(ss.backR.H-m.tab.height)/2, "‹ Back", th.Accent)
+	// Topbar (accent) with Back, title and the Search run button, over any overflow:
+	// an accent Backdrop band, inverted Button pills and a title Label.
+	band := &toolkit.Backdrop{Fill: th.Accent}
+	band.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH})
+	band.Draw(p, th)
+
+	invTheme := invertedTopbarTheme(th, onAccent)
+	back := &toolkit.Button{Label: "‹ Back", Style: toolkit.ButtonProminent}
+	back.Font = m.tab.font
+	back.SetBounds(ss.backR)
+	back.Draw(p, invTheme)
+
 	title := "Search Reddit"
 	tx := ss.backR.X + ss.backR.W + m.pad
-	m.title.draw(img, tx, (m.topbarH-m.title.height)/2, title, onAccent)
-	p.FillRoundRect(painter.Rect(ss.runR), rpxOf(s, 6), onAccent)
-	m.tab.draw(img, ss.runR.X+(ss.runR.W-m.tab.width("Search"))/2, ss.runR.Y+(ss.runR.H-m.tab.height)/2, "Search", th.Accent)
+	titleLbl := toolkit.NewLabel(title)
+	titleLbl.Font, titleLbl.Ink = m.title.font, onAccent
+	titleLbl.SetBounds(toolkit.Rect{X: tx, Y: (m.topbarH - m.title.height) / 2, W: s.W, H: m.title.height})
+	titleLbl.Draw(p, th)
+
+	run := &toolkit.Button{Label: "Search", Style: toolkit.ButtonProminent}
+	run.Font = m.tab.font
+	run.SetBounds(ss.runR)
+	run.Draw(p, invTheme)
 }
 
 // drawSearchControls paints the query field, the tab pills, the third control row
-// (regexp filter or save button) and the status/count line.
-func (s *Scene) drawSearchControls(p *painter.PixelPainter, img *image.RGBA, muteS toolkit.RGBA) {
+// (regexp filter or save button) and the status/count line — all composed widgets:
+// the query/regexp SearchEntry draw their own body + focus ring, the tab pills and
+// Save button are toolkit.Button, the hint + status line toolkit.Label.
+func (s *Scene) drawSearchControls(p *painter.PixelPainter, muteS toolkit.RGBA) {
 	m := s.m
 	ss := &s.search
 	th := s.theme
 
-	// Query field.
+	// Query + regexp fields: each SearchEntry widget draws its own body, prefix
+	// icon, aligned caret (when focused) and focus ring.
 	drawEntry := func(se *toolkit.SearchEntry, r toolkit.Rect, focused bool) {
 		se.SetBounds(r)
 		se.Font = ttFont(false, rpxOf(s, 13))
 		se.SetFocused(focused)
-		p.FillRoundRect(painter.Rect(r), rpxOf(s, 6), th.Surface)
 		se.Draw(p, th)
-		if focused {
-			p.StrokeRoundRect(painter.Rect(r), rpxOf(s, 6), th.Accent, rpxOf(s, 2))
-		}
 	}
 	drawEntry(ss.queryEntry, ss.queryR, ss.queryFocus)
 
-	// Tab pills: the active one is filled with the accent, the other outlined.
+	// Tab pills: the active one is an accent-filled Button (Selected), the other a
+	// default outlined Button.
 	drawTab := func(r toolkit.Rect, label string, active bool) {
-		if active {
-			p.FillRoundRect(painter.Rect(r), rpxOf(s, 6), th.Accent)
-			m.tab.draw(img, r.X+(r.W-m.tab.width(label))/2, r.Y+(r.H-m.tab.height)/2, label, themeOnAccent(th))
-		} else {
-			p.FillRoundRect(painter.Rect(r), rpxOf(s, 6), th.Surface)
-			p.StrokeRoundRect(painter.Rect(r), rpxOf(s, 6), th.Border, rpxOf(s, 1))
-			m.tab.draw(img, r.X+(r.W-m.tab.width(label))/2, r.Y+(r.H-m.tab.height)/2, label, th.OnSurface)
-		}
+		b := &toolkit.Button{Label: label, Selected: active}
+		b.Font = m.tab.font
+		b.SetBounds(r)
+		b.Draw(p, th)
 	}
 	drawTab(ss.tabSubR, "Subreddits", ss.tab == searchTabSubreddits)
 	drawTab(ss.tabPostR, "Posts", ss.tab == searchTabPosts)
@@ -416,21 +431,29 @@ func (s *Scene) drawSearchControls(p *painter.PixelPainter, img *image.RGBA, mut
 	case searchTabSubreddits:
 		drawEntry(ss.regexEntry, ss.regexR, ss.regexFocus)
 		if ss.regexEntry.Text == "" && !ss.regexFocus {
-			// A faint hint of the field's purpose when empty and unfocused.
-			m.meta.draw(img, ss.regexR.X+rpxOf(s, 30), ss.regexR.Y+(ss.regexR.H-m.meta.height)/2, "regexp filter", muteS)
+			// A faint hint of the field's purpose when empty and unfocused, as a Label.
+			hint := toolkit.NewLabel("regexp filter")
+			hint.Font, hint.Ink = m.meta.font, muteS
+			hint.SetBounds(toolkit.Rect{X: ss.regexR.X + rpxOf(s, 30), Y: ss.regexR.Y + (ss.regexR.H-m.meta.height)/2, W: ss.regexR.W, H: m.meta.height})
+			hint.Draw(p, th)
 		}
 	case searchTabPosts:
 		if ss.saveR.W > 0 {
-			p.FillRoundRect(painter.Rect(ss.saveR), rpxOf(s, 6), th.Accent)
-			lbl := "Save this search"
-			m.tab.draw(img, ss.saveR.X+(ss.saveR.W-m.tab.width(lbl))/2, ss.saveR.Y+(ss.saveR.H-m.tab.height)/2, lbl, themeOnAccent(th))
+			// The "Save this search" affordance is an accent-filled Button (Selected).
+			b := &toolkit.Button{Label: "Save this search", Selected: true}
+			b.Font = m.tab.font
+			b.SetBounds(ss.saveR)
+			b.Draw(p, th)
 		}
 	}
 
-	// Status / count line.
+	// Status / count line as a Label.
 	countY := ss.listTop - m.side.height - rpxOf(s, 8)
 	msg, col := s.searchStatusLine(muteS)
-	m.side.draw(img, m.pad, countY, msg, col)
+	lbl := toolkit.NewLabel(msg)
+	lbl.Font, lbl.Ink = m.side.font, col
+	lbl.SetBounds(toolkit.Rect{X: m.pad, Y: countY, W: s.W - 2*m.pad, H: m.side.height})
+	lbl.Draw(p, th)
 }
 
 // searchStatusLine returns the count/status text and its colour: a bad-regexp
@@ -455,7 +478,7 @@ func (s *Scene) searchStatusLine(muteS toolkit.RGBA) (string, toolkit.RGBA) {
 
 // drawSearchRows paints the scrolling result rows for the active tab, clipped to
 // the list viewport (so a row scrolled under the controls never paints over them).
-func (s *Scene) drawSearchRows(p *painter.PixelPainter, img *image.RGBA, muteS toolkit.RGBA) {
+func (s *Scene) drawSearchRows(p *painter.PixelPainter, muteS toolkit.RGBA) {
 	m := s.m
 	ss := &s.search
 	th := s.theme
@@ -469,26 +492,33 @@ func (s *Scene) drawSearchRows(p *painter.PixelPainter, img *image.RGBA, muteS t
 		}
 		switch {
 		case r.sub != nil:
-			s.drawSubredditRow(p, img, *r.sub, r.subscribe, m.pad, y, rowW, muteS)
+			s.drawSubredditRow(p, *r.sub, r.subscribe, m.pad, y, rowW, muteS)
 		case r.post != nil:
-			s.drawPostRow(p, img, *r.post, m.pad, y, rowW, muteS)
+			s.drawPostRow(p, *r.post, m.pad, y, rowW, muteS)
 		}
-		p.FillRect(painter.Rect{X: 0, Y: y + rowH - 1, W: rowW, H: 1}, th.Border)
+		// Row separator: a 1px toolkit.Backdrop panel, not a bare painter fill.
+		div := &toolkit.Backdrop{Fill: th.Border}
+		div.SetBounds(toolkit.Rect{X: 0, Y: y + rowH - 1, W: rowW, H: 1})
+		div.Draw(p, th)
 	}
 }
 
 // drawSubredditRow paints one subreddit result: r/<name> + subscriber count on
 // the first line, the description on the second, and a Subscribe (or subscribed
 // ✓) affordance on the right.
-func (s *Scene) drawSubredditRow(p *painter.PixelPainter, img *image.RGBA, sr source.SubredditResult, btn toolkit.Rect, x, y, w int, muteS toolkit.RGBA) {
+func (s *Scene) drawSubredditRow(p *painter.PixelPainter, sr source.SubredditResult, btn toolkit.Rect, x, y, w int, muteS toolkit.RGBA) {
 	m := s.m
 	th := s.theme
 	subscribed := s.IsSubscribed(source.Reddit, "r/"+sr.Name)
 	if subscribed {
 		drawCheckIcon(p, toolkit.Rect{X: btn.X + btn.W - m.navIcon - rpxOf(s, 4), Y: btn.Y + (btn.H-m.navIcon)/2, W: m.navIcon, H: m.navIcon}, successColor(th), s.iconStroke())
 	} else {
-		p.FillRoundRect(painter.Rect(btn), rpxOf(s, 6), th.Accent)
-		m.tab.draw(img, btn.X+(btn.W-m.tab.width("Subscribe"))/2, btn.Y+(btn.H-m.tab.height)/2, "Subscribe", themeOnAccent(th))
+		// The Subscribe affordance is an accent-filled Button (Selected), not a
+		// hand-drawn round-rect + text.
+		sub := &toolkit.Button{Label: "Subscribe", Selected: true}
+		sub.Font = m.tab.font
+		sub.SetBounds(btn)
+		sub.Draw(p, th)
 	}
 	right := btn.X - rpxOf(s, 8)
 
@@ -496,10 +526,18 @@ func (s *Scene) drawSubredditRow(p *painter.PixelPainter, img *image.RGBA, sr so
 	if sr.NSFW {
 		name += "  (NSFW)"
 	}
-	m.title.draw(img, x, y+rpxOf(s, 8), m.title.clipRight(name, right-x), th.OnSurface)
+	nameLbl := toolkit.NewLabel(m.title.clipRight(name, right-x))
+	nameLbl.Font, nameLbl.Ink = m.title.font, th.OnSurface
+	nameLbl.SetBounds(toolkit.Rect{X: x, Y: y + rpxOf(s, 8), W: right - x, H: m.title.height})
+	nameLbl.Draw(p, th)
+
 	subs := formatSubscribers(sr.Subscribers)
 	if subs != "" {
-		m.meta.drawRight(img, right, y+rpxOf(s, 10), subs, muteS)
+		// Right-aligned subscriber count, its right edge at the row content edge.
+		subsLbl := toolkit.NewLabel(subs)
+		subsLbl.Font, subsLbl.Ink, subsLbl.Align = m.meta.font, muteS, toolkit.AlignRight
+		subsLbl.SetBounds(toolkit.Rect{X: x, Y: y + rpxOf(s, 10), W: right - x, H: m.meta.height})
+		subsLbl.Draw(p, th)
 	}
 	desc := strings.TrimSpace(sr.Description)
 	if desc == "" {
@@ -507,7 +545,10 @@ func (s *Scene) drawSubredditRow(p *painter.PixelPainter, img *image.RGBA, sr so
 	}
 	if desc != "" {
 		dy := y + rpxOf(s, 8) + m.title.height + rpxOf(s, 2)
-		m.meta.draw(img, x, dy, m.meta.clipRight(desc, right-x), muteS)
+		descLbl := toolkit.NewLabel(m.meta.clipRight(desc, right-x))
+		descLbl.Font, descLbl.Ink = m.meta.font, muteS
+		descLbl.SetBounds(toolkit.Rect{X: x, Y: dy, W: right - x, H: m.meta.height})
+		descLbl.Draw(p, th)
 	}
 }
 
@@ -515,15 +556,22 @@ func (s *Scene) drawSubredditRow(p *painter.PixelPainter, img *image.RGBA, sr so
 // meta line (subreddit · score · comments) on the second. Post rows are preview
 // only — the whole keyword search is saved as one subscription via the Save
 // button, not per row.
-func (s *Scene) drawPostRow(p *painter.PixelPainter, img *image.RGBA, it source.Item, x, y, w int, muteS toolkit.RGBA) {
+func (s *Scene) drawPostRow(p *painter.PixelPainter, it source.Item, x, y, w int, muteS toolkit.RGBA) {
 	m := s.m
 	th := s.theme
 	right := w - m.pad
-	m.title.draw(img, x, y+rpxOf(s, 8), m.title.clipRight(it.Title, right-x), th.OnSurface)
+	titleLbl := toolkit.NewLabel(m.title.clipRight(it.Title, right-x))
+	titleLbl.Font, titleLbl.Ink = m.title.font, th.OnSurface
+	titleLbl.SetBounds(toolkit.Rect{X: x, Y: y + rpxOf(s, 8), W: right - x, H: m.title.height})
+	titleLbl.Draw(p, th)
+
 	meta := "r/" + it.Channel
 	meta += fmt.Sprintf(" · %d pts · %d comments", it.Score, it.Comments)
 	dy := y + rpxOf(s, 8) + m.title.height + rpxOf(s, 2)
-	m.meta.draw(img, x, dy, m.meta.clipRight(meta, right-x), muteS)
+	metaLbl := toolkit.NewLabel(m.meta.clipRight(meta, right-x))
+	metaLbl.Font, metaLbl.Ink = m.meta.font, muteS
+	metaLbl.SetBounds(toolkit.Rect{X: x, Y: dy, W: right - x, H: m.meta.height})
+	metaLbl.Draw(p, th)
 }
 
 // formatSubscribers renders a subscriber count compactly (e.g. "1.2M members",
