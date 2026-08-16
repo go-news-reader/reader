@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"image"
 	"strconv"
 	"strings"
 
@@ -497,12 +496,16 @@ func (s *Scene) drawSettings(buf []byte) {
 	s.layoutSettings()
 	m := s.m
 	p := painter.NewPixelPainter(buf, s.W, s.H)
-	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, s.H)}
 	th := s.theme
 	onAccent := themeOnAccent(th)
 	muteS := mute(th.OnSurface, th.Surface)
 
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
+	// The full-surface ground is a toolkit.Backdrop (a solid fill == the old
+	// Background FillRect), so even the backing is a composed widget rather than
+	// a hand-drawn rectangle.
+	bg := &toolkit.Backdrop{Fill: th.Background}
+	bg.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: s.H})
+	bg.Draw(p, th)
 
 	// Every element is a stock go-widgets widget with the reader's fallback font.
 	// Section captions are toolkit.Label (muted ink).
@@ -555,14 +558,23 @@ func (s *Scene) drawSettings(buf []byte) {
 		w.Draw(p, th)
 	}
 
-	// Topbar (accent) with title + Done, over any overflow.
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
-	m.title.draw(img, m.pad, (m.topbarH-m.title.height)/2, "Settings", onAccent)
-	p.FillRoundRect(painter.Rect(s.sDoneR), rpxOf(s, 6), onAccent)
-	m.tab.draw(img, s.sDoneR.X+rpxOf(s, 12), s.sDoneR.Y+(s.sDoneR.H-m.tab.height)/2, "Done", th.Accent)
+	// Topbar over any overflow, composed from widgets: an accent Backdrop band,
+	// the title as a toolkit.Label, and a stock toolkit.Button for Done. Its rect
+	// is s.sDoneR, so hit-testing in hitSettings is unchanged. (The Done label is
+	// centred, which lands at the same x as the old +12px inset because sDoneR is
+	// the text width plus 24px.)
+	bar := &toolkit.Backdrop{Fill: th.Accent}
+	bar.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH})
+	bar.Draw(p, th)
+	title := toolkit.NewLabel("Settings")
+	title.Font, title.Ink = m.title.font, onAccent
+	title.SetBounds(toolkit.Rect{X: m.pad, Y: (m.topbarH - m.title.height) / 2, W: s.W, H: m.title.height})
+	title.Draw(p, th)
+	done := &toolkit.Button{Label: "Done"}
+	done.Font = m.tab.font
+	done.SetBounds(s.sDoneR)
+	done.Draw(p, th)
 }
-
-// drawInput paints one text field with placeholder + caret.
 
 // hitSettings maps a click in the preferences view to an action.
 func (s *Scene) hitSettings(x, y int) Hit {
