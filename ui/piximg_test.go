@@ -28,4 +28,5 @@ func TestPixImgNonPixelPainter(t *testing.T) {
 	s := New(400, 300, ThemeFor(OSMac, false))
 	np, th := nonPixelPainter{}, s.theme
 	(&logRow{s: s}).Draw(np, th)
+	(&logBackButton{s: s}).Draw(np, th)
 }

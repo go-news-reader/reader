@@ -179,7 +179,32 @@ func (w *logRow) Draw(pt painter.Painter, th *toolkit.Theme) {
 	l2.SetBounds(toolkit.Rect{X: b.X, Y: b.Y + urlFace.height + rpxOf(s, 4), W: b.W, H: m.meta.height})
 	l2.Draw(p, th)
 
-	p.FillRect(painter.Rect{X: b.X, Y: b.Y + b.H - 1, W: b.W, H: 1}, th.Border)
+	// Bottom divider: a 1px toolkit.Backdrop panel, not a bare painter fill, so
+	// the whole row is composed of widgets.
+	div := &toolkit.Backdrop{Fill: th.Border}
+	div.SetBounds(toolkit.Rect{X: b.X, Y: b.Y + b.H - 1, W: b.W, H: 1})
+	div.Draw(p, th)
+}
+
+// logBackButton is the "< Back" affordance as a self-contained widget: a rounded
+// Surface pill (there is no stock toolkit widget for a borderless, left-aligned
+// rounded button — Button centres its label and strokes a border, Chip is a
+// square SurfaceAlt) composing a toolkit.Label for the accent caption. Clicks are
+// still routed by the scene's hit-test (logHitTest → HitCloseLog), so the close
+// flow in internal/windowapp is unchanged; this widget only paints the visual.
+type logBackButton struct {
+	toolkit.Base
+	s *Scene
+}
+
+func (w *logBackButton) Draw(pt painter.Painter, th *toolkit.Theme) {
+	s, b := w.s, w.Bounds()
+	m := s.m
+	pt.FillRoundRect(painter.Rect{X: b.X, Y: b.Y, W: b.W, H: b.H}, rpxOf(s, 6), th.Surface)
+	lbl := toolkit.NewLabel("< Back")
+	lbl.Font, lbl.Ink, lbl.VAlign = ttFont(false, rpxOf(s, 13)), th.Accent, toolkit.VTop
+	lbl.SetBounds(toolkit.Rect{X: b.X + m.pad, Y: b.Y + (b.H-m.side.height)/2, W: b.W - m.pad, H: m.side.height})
+	lbl.Draw(pt, th)
 }
 
 func (s *Scene) drawLog(buf []byte) {
@@ -192,9 +217,11 @@ func (s *Scene) drawLog(buf []byte) {
 	}
 	muteS := mute(th.OnSurface, th.Surface)
 	p := painter.NewPixelPainter(buf, s.W, s.H)
-	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, s.H)}
 
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
+	// Window background: a solid toolkit.Backdrop panel, not a bare painter fill.
+	bg := &toolkit.Backdrop{Fill: th.Background}
+	bg.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: s.H})
+	bg.Draw(p, th)
 
 	entries := s.logEntries()
 	x := m.pad * 2
@@ -203,7 +230,12 @@ func (s *Scene) drawLog(buf []byte) {
 	w := s.scrollClampRight(s.W-m.pad, s.W, 0, s.scrollbarNeeded(s.logScroll.contentH, s.H-m.topbarH)) - x
 
 	if len(entries) == 0 {
-		m.meta.draw(img, x, m.topbarH+m.pad, "No requests yet", muteS)
+		// Empty-state caption as a toolkit.Label (top-anchored to match the row
+		// origin), not a hand-drawn text run.
+		empty := toolkit.NewLabel("No requests yet")
+		empty.Font, empty.Ink, empty.VAlign = ttFont(false, rpxOf(s, 12)), muteS, toolkit.VTop
+		empty.SetBounds(toolkit.Rect{X: x, Y: m.topbarH + m.pad, W: w, H: m.meta.height})
+		empty.Draw(p, th)
 	}
 
 	// The rows are a data-bound toolkit.Container (see ensureLogBinding): an
@@ -216,12 +248,21 @@ func (s *Scene) drawLog(buf []byte) {
 	// Scrollbar down the right edge when the log overflows the viewport.
 	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.logScroll.contentH, s.logScroll.offset)
 
-	// Topbar (accent) over any overflow: "< Back" + title.
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
-	p.FillRoundRect(painter.Rect(s.logBackR), rpxOf(s, 6), th.Surface)
-	m.side.draw(img, s.logBackR.X+m.pad, s.logBackR.Y+(s.logBackR.H-m.side.height)/2, "< Back", th.Accent)
+	// Topbar (accent) over any overflow: an accent Backdrop panel carrying the
+	// "< Back" pill widget and a title Label — all composed, nothing hand-drawn.
+	topbar := &toolkit.Backdrop{Fill: th.Accent}
+	topbar.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH})
+	topbar.Draw(p, th)
+
+	back := &logBackButton{s: s}
+	back.SetBounds(toolkit.Rect(s.logBackR))
+	back.Draw(p, th)
+
 	tx := s.logBackR.X + s.logBackR.W + m.pad
-	m.title.draw(img, tx, (m.topbarH-m.title.height)/2, "Network log", onAccent)
+	title := toolkit.NewLabel("Network log")
+	title.Font, title.Ink, title.VAlign = ttFont(true, rpxOf(s, 15)), onAccent, toolkit.VTop
+	title.SetBounds(toolkit.Rect{X: tx, Y: (m.topbarH - m.title.height) / 2, W: s.W - tx, H: m.title.height})
+	title.Draw(p, th)
 }
 
 // logHitTest maps a click in the log view to Back / None.
