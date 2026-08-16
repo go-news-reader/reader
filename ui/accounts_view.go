@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"image"
 	"sort"
 	"strings"
 
@@ -387,17 +386,39 @@ func (s *Scene) layoutAccounts() {
 	}
 }
 
-// drawAccounts paints the credentials editor.
+// invertedTopbarTheme returns a copy of th in which a ButtonProminent renders as
+// the reader's inverted topbar pill — an OnAccent-filled rounded rect with
+// accent-coloured text and no visible border (Border == the fill). The copy owns
+// a fresh Extra map so tagging accent_fg_color never mutates the shared theme.
+func invertedTopbarTheme(th *toolkit.Theme, onAccent toolkit.RGBA) *toolkit.Theme {
+	dt := *th
+	dt.Accent = onAccent // ButtonProminent fills with Accent…
+	dt.Border = onAccent // …and its border blends into the fill.
+	dt.Extra = make(map[string]toolkit.RGBA, len(th.Extra)+1)
+	for k, v := range th.Extra {
+		dt.Extra[k] = v
+	}
+	dt.Extra["accent_fg_color"] = th.Accent // ButtonProminent's text ink
+	return &dt
+}
+
+// drawAccounts paints the credentials editor. Every element is a composed
+// go-widgets widget: the flat grounds are toolkit.Backdrop, the section captions
+// toolkit.Label, the provider pills / credential fields / action buttons
+// toolkit.Button + toolkit.Entry, and the accent topbar's Back/Done are inverted
+// toolkit.Button pills over a toolkit.Backdrop band. Nothing is hand-drawn.
 func (s *Scene) drawAccounts(buf []byte) {
 	s.layoutAccounts()
 	m := s.m
 	p := painter.NewPixelPainter(buf, s.W, s.H)
-	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, s.H)}
 	th := s.theme
 	onAccent := themeOnAccent(th)
 	muteS := mute(th.OnSurface, th.Surface)
 
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
+	// Full-surface ground — a solid-fill Backdrop, not a hand-drawn FillRect.
+	bg := &toolkit.Backdrop{Fill: th.Background}
+	bg.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: s.H})
+	bg.Draw(p, th)
 
 	// Section captions are stock toolkit.Labels carrying the reader's fallback font
 	// (matching m.side's size/weight) and the muted caption ink.
@@ -468,13 +489,32 @@ func (s *Scene) drawAccounts(buf []byte) {
 		w.Draw(p, th)
 	}
 
-	// Topbar (accent) with Back, title and Done, over any scroll overflow.
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
-	p.FillRoundRect(painter.Rect(s.accBackR), rpxOf(s, 6), onAccent)
-	m.tab.draw(img, s.accBackR.X+rpxOf(s, 10), s.accBackR.Y+(s.accBackR.H-m.tab.height)/2, "‹ Back", th.Accent)
-	m.title.draw(img, s.accBackR.X+s.accBackR.W+m.pad, (m.topbarH-m.title.height)/2, "Accounts", onAccent)
-	p.FillRoundRect(painter.Rect(s.accDoneR), rpxOf(s, 6), onAccent)
-	m.tab.draw(img, s.accDoneR.X+rpxOf(s, 12), s.accDoneR.Y+(s.accDoneR.H-m.tab.height)/2, "Done", th.Accent)
+	// Topbar (accent) with Back, title and Done, over any scroll overflow. The
+	// accent band is a Backdrop; Back/Done are inverted toolkit.Button pills (an
+	// OnAccent fill with accent text, via a derived theme) and the title a Label —
+	// no hand-drawn round-rects or glyph blits.
+	band := &toolkit.Backdrop{Fill: th.Accent}
+	band.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH})
+	band.Draw(p, th)
+
+	invTheme := invertedTopbarTheme(th, onAccent)
+	back := &toolkit.Button{Label: "‹ Back", Style: toolkit.ButtonProminent}
+	back.Font = m.tab.font
+	back.SetBounds(s.accBackR)
+	back.Draw(p, invTheme)
+
+	title := toolkit.NewLabel("Accounts")
+	title.Font, title.Ink = m.title.font, onAccent
+	title.SetBounds(toolkit.Rect{
+		X: s.accBackR.X + s.accBackR.W + m.pad, Y: (m.topbarH - m.title.height) / 2,
+		W: s.W, H: m.title.height,
+	})
+	title.Draw(p, th)
+
+	done := &toolkit.Button{Label: "Done", Style: toolkit.ButtonProminent}
+	done.Font = m.tab.font
+	done.SetBounds(s.accDoneR)
+	done.Draw(p, invTheme)
 }
 
 // accountsHitTest maps a click in the credentials editor to an action.
