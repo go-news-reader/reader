@@ -56,6 +56,11 @@ func (s *Scene) ensureSideTree() {
 	// row, the folders, the unclassified subscriptions and the discovery entries)
 	// are the top-level rows, flush at depth 0 with no root indentation.
 	s.sideTree.HideRoot = true
+	// The scene draws every panel's scrollbar itself (drawVScrollbar → a slim
+	// rounded muted toolkit.Scrollbar) so the sidebar and the card list share one
+	// bar style; suppress the TreeView's own square/accent bar and read its
+	// ScrollExtent instead.
+	s.sideTree.HideScrollbar = true
 }
 
 // buildSideTree (re)builds the TreeView's node set from the current

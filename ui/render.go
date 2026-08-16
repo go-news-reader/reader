@@ -236,6 +236,15 @@ func (s *Scene) Draw(buf []byte) {
 		div.SetBounds(toolkit.Rect{X: m.sidebarW - 1, Y: m.topbarH, W: 1, H: s.H - m.topbarH})
 		div.Draw(p, th)
 		s.drawGripHandle(p, m.sidebarW)
+		// The sidebar's scrollbar is drawn by the scene (HideScrollbar on the
+		// TreeView) so it is the SAME slim rounded muted bar as the card list,
+		// not the TreeView's built-in square/accent one. Rows → pixels via the
+		// row height so drawVScrollbar's proportion math matches the feed's.
+		if off, _, total, shown := s.sideTree.ScrollExtent(); shown {
+			rh := m.sideItemH
+			area := toolkit.Rect{X: 0, Y: s.sideBandTop, W: m.sidebarW, H: s.sideBandBot - s.sideBandTop}
+			s.drawVScrollbar(p, area, m.sidebarW, total*rh, off*rh)
+		}
 	}
 	blitAt(img, s.topbarSprite(onAccent), 0, 0)
 
