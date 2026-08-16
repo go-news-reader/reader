@@ -85,30 +85,6 @@ func TestBuildGroupTreeGroupAndInternal(t *testing.T) {
 	}
 }
 
-func TestFlattenBrowseRespectsExpand(t *testing.T) {
-	root := buildGroupTree(sampleGroups())
-
-	// Collapsed: only the three top-level hierarchies.
-	collapsed := flattenBrowse(root, func(string) bool { return false })
-	if len(collapsed) != 3 {
-		t.Fatalf("collapsed rows = %d, want 3", len(collapsed))
-	}
-	for _, r := range collapsed {
-		if r.depth != 0 {
-			t.Fatalf("top-level row depth = %d, want 0", r.depth)
-		}
-	}
-
-	// Expand only "alt": alt, alt.binaries, alt.test, comp, fr.
-	rows := flattenBrowse(root, func(name string) bool { return name == "alt" })
-	if len(rows) != 5 {
-		t.Fatalf("rows = %d, want 5: %v", len(rows), rows)
-	}
-	if rows[1].node.Name != "alt.binaries" || rows[1].depth != 1 {
-		t.Fatalf("row[1] = %+v", rows[1].node)
-	}
-}
-
 func TestFilterGroupTree(t *testing.T) {
 	root := buildGroupTree(sampleGroups())
 	re := regexp.MustCompile("(?i)binaries")
@@ -126,12 +102,16 @@ func TestFilterGroupTree(t *testing.T) {
 	if alt.IsGroup {
 		t.Fatal("container alt must not be marked a group")
 	}
-	// Auto-expanded flatten reaches the deep leaf.
-	rows := flattenBrowse(f, func(string) bool { return true })
+	// A full pre-order walk of the filtered tree reaches the deep leaf.
 	var names []string
-	for _, r := range rows {
-		names = append(names, r.node.Name)
+	var walk func(n *groupNode)
+	walk = func(n *groupNode) {
+		for _, c := range n.Children {
+			names = append(names, c.Name)
+			walk(c)
+		}
 	}
+	walk(f)
 	want := []string{"alt", "alt.binaries", "alt.binaries.cd", "alt.binaries.cd.image", "alt.binaries.test"}
 	if len(names) != len(want) {
 		t.Fatalf("filtered rows = %v, want %v", names, want)

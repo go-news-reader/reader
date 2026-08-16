@@ -486,7 +486,14 @@ type Scene struct {
 	browseStats    map[string]source.GroupStats
 	browseFocused  bool
 	browseExpanded map[string]bool
-	browseScroll   panelScroll
+	// browseTreeView is the scrolling newsgroup hierarchy: a toolkit.TreeView (a
+	// hidden synthetic Root whose children are the top-level hierarchies, like the
+	// sidebar's) that owns the chevrons, the row window, virtualization and the
+	// scrollbar gutter, while the reader supplies each row's rich content (label +
+	// post count + Subscribe affordance) through its RowRenderer. Its ScrollRow is
+	// the tree's vertical position; browseRows mirrors its flattened, expand-aware
+	// row order for hit-testing + keyboard navigation.
+	browseTreeView *toolkit.TreeView
 	browseRows     []browseRowLayout
 	browseSel      int // keyboard-selected row index into browseRows
 	browseBackR    toolkit.Rect
@@ -1141,7 +1148,7 @@ func (s *Scene) TypeRune(r rune) {
 	if s.mode == ModeBrowse {
 		if s.browseFocused {
 			s.browseEntry.OnEvent(toolkit.Event{Kind: toolkit.EventChar, Code: string(r)})
-			s.browseScroll.offset = 0
+			s.resetBrowseScroll()
 			s.touch()
 		}
 		return
@@ -1187,7 +1194,7 @@ func (s *Scene) Backspace() {
 	if s.mode == ModeBrowse {
 		if s.browseFocused && s.browseEntry.Text != "" {
 			s.browseEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
-			s.browseScroll.offset = 0
+			s.resetBrowseScroll()
 			s.touch()
 		}
 		return
@@ -1310,8 +1317,12 @@ func (s *Scene) Scroll(dy int) {
 		return
 	}
 	if s.mode == ModeBrowse {
-		s.browseScroll.offset += dy
-		s.layoutBrowse() // self-clamps browseScrollY
+		// The tree scrolls by whole rows through its TreeView (the device-pixel wheel
+		// delta becomes a row count), then layoutBrowse re-clamps it — mirroring the
+		// sidebar list's wheel handling.
+		s.layoutBrowse()
+		s.browseTreeView.ScrollBy(wheelRows(dy, s.m.sideItemH))
+		s.layoutBrowse()
 		s.touch()
 		return
 	}

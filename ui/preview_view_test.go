@@ -44,9 +44,8 @@ func TestBrowseUnsubscribeHit(t *testing.T) {
 	s.layoutBrowse()
 	// The subscribed "control" leaf's ✓ marker unsubscribes; the unsubscribed
 	// "junk" leaf's ＋ subscribes.
-	for _, r := range s.browseRows {
-		top := s.browseTreeTop + r.top - s.browseScroll.offset
-		sr := s.browseSubscribeRect(s.m.pad, top, s.W-2*s.m.pad)
+	for i, r := range s.browseRows {
+		sr := s.browseSubscribeRect(i)
 		h := s.browseHitTest(sr.X+sr.W/2, sr.Y+sr.H/2)
 		switch r.node.Name {
 		case "control":
@@ -60,8 +59,7 @@ func TestBrowseUnsubscribeHit(t *testing.T) {
 		}
 	}
 	// A childless subscribed leaf row (not on the marker) also unsubscribes.
-	r := s.browseRows[0] // "control"
-	top := s.browseTreeTop + r.top - s.browseScroll.offset
+	top, _ := s.browseRowScreenY(0) // "control"
 	if h := s.browseHitTest(s.m.pad+2, top+s.m.sideItemH/2); h.Kind != HitUnsubscribeGroup {
 		t.Fatalf("subscribed leaf row = %+v, want HitUnsubscribeGroup", h)
 	}

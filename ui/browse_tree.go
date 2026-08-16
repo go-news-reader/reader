@@ -116,28 +116,3 @@ func filterNode(n *groupNode, re *regexp.Regexp) *groupNode {
 	}
 	return &groupNode{Name: n.Name, Segment: n.Segment, IsGroup: selfMatch, Count: n.Count, Children: kids}
 }
-
-// browseRow is one visible row of the flattened tree: a node plus its indent
-// depth (0 for a top-level hierarchy).
-type browseRow struct {
-	node  *groupNode
-	depth int
-}
-
-// flattenBrowse walks root's subtree in display order, emitting a row per node
-// and descending into a node's children only when it has any and expanded
-// reports it open. root itself is not emitted (it is the synthetic holder).
-func flattenBrowse(root *groupNode, expanded func(name string) bool) []browseRow {
-	var out []browseRow
-	var walk func(n *groupNode, depth int)
-	walk = func(n *groupNode, depth int) {
-		for _, c := range n.Children {
-			out = append(out, browseRow{node: c, depth: depth})
-			if len(c.Children) > 0 && expanded(c.Name) {
-				walk(c, depth+1)
-			}
-		}
-	}
-	walk(root, 0)
-	return out
-}

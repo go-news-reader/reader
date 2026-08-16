@@ -33,30 +33,6 @@ func iconInset(r toolkit.Rect, frac int) toolkit.Rect {
 	return toolkit.Rect{X: r.X + (r.W-d)/2, Y: r.Y + (r.H-d)/2, W: d, H: d}
 }
 
-// drawChevron paints a filled disclosure triangle inside r: down-pointing (▾)
-// when expanded, right-pointing (▸) when collapsed. It is built from 1px
-// FillRects since the painter offers no polygon primitive. Used by the newsgroup
-// browser tree rows.
-func drawChevron(p *painter.PixelPainter, r toolkit.Rect, col toolkit.RGBA, expanded bool) {
-	// iconInset returns a square d×d box, so each successive row/column width
-	// (b.W*(b.H-i)/b.H) stays ≥1 down to the apex — no degenerate-size guard is
-	// needed (a zero box simply skips both loops).
-	b := iconInset(r, 66)
-	if expanded {
-		// Base at the top, apex at the bottom: width shrinks top→bottom.
-		for i := 0; i < b.H; i++ {
-			rowW := b.W * (b.H - i) / b.H
-			p.FillRect(toolkit.Rect{X: b.X + (b.W-rowW)/2, Y: b.Y + i, W: rowW, H: 1}, col)
-		}
-		return
-	}
-	// Base at the left, apex at the right: height shrinks left→right.
-	for i := 0; i < b.W; i++ {
-		colH := b.H * (b.W - i) / b.W
-		p.FillRect(toolkit.Rect{X: b.X + i, Y: b.Y + (b.H-colH)/2, W: 1, H: colH}, col)
-	}
-}
-
 // Cached Iconoir icon lookups. Get is cheap, but caching avoids a registry
 // lookup per frame. Names verified present in iconoir v0.1.0.
 var (

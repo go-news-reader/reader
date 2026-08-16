@@ -63,10 +63,10 @@ func TestBrowseCollapsedSnapshot(t *testing.T) {
 	if altBin.depth != 1 {
 		t.Fatalf("alt.binaries depth = %d, want 1", altBin.depth)
 	}
-	c0 := s.browseChevronRect(s.m.pad, 0, 0)
-	c1 := s.browseChevronRect(s.m.pad, 0, 1)
-	if c1.X <= c0.X {
-		t.Fatalf("depth-1 chevron (%d) not indented past depth-0 (%d)", c1.X, c0.X)
+	// The TreeView indents each depth by a positive step, so a depth-1 row's content
+	// starts further right than a depth-0 row's.
+	if toolkit.Scaled(toolkit.TreeIndentW) <= 0 {
+		t.Fatalf("tree indent step = %d, want > 0", toolkit.Scaled(toolkit.TreeIndentW))
 	}
 }
 
@@ -165,11 +165,10 @@ func TestBrowseSubscribeMarksAndDisables(t *testing.T) {
 	renderPNG(t, s, "browse-subscribed")
 	// The subscribed leaf no longer hit-tests as a Subscribe target.
 	s.layoutBrowse()
-	for _, r := range s.browseRows {
+	for i, r := range s.browseRows {
 		if r.node.Name == h.Value {
-			top := s.browseTreeTop + r.top - s.browseScroll.offset
-			sr := s.browseSubscribeRect(s.m.pad, top, s.W-2*s.m.pad)
-			if got := s.browseHitTest(sr.X+sr.W/2, top+2); got.Kind == HitSubscribeGroup {
+			sr := s.browseSubscribeRect(i)
+			if got := s.browseHitTest(sr.X+sr.W/2, sr.Y+sr.H/2); got.Kind == HitSubscribeGroup {
 				t.Fatal("subscribed leaf must not offer Subscribe again")
 			}
 		}
@@ -199,18 +198,18 @@ func TestBrowseScrollClamps(t *testing.T) {
 	s.SetBrowseGroups(names)
 	s.OpenBrowse()
 	s.Scroll(100000) // clamp to the bottom
-	bottom := s.browseScroll.offset
+	bottom := s.browseTreeView.ScrollRow
 	if bottom <= 0 {
 		t.Fatalf("scroll did not advance: %d", bottom)
 	}
-	s.Scroll(600) // scroll partway so early rows fall above the viewport
+	s.Scroll(-600) // scroll partway up so later rows fall below the viewport
 	renderPNG(t, s, "browse-scrolled")
-	if s.browseScroll.offset == 0 {
+	if s.browseTreeView.ScrollRow == 0 {
 		t.Fatal("partial scroll should be non-zero")
 	}
 	s.Scroll(-100000) // clamp back to the top
-	if s.browseScroll.offset != 0 {
-		t.Fatalf("scroll not clamped to 0: %d", s.browseScroll.offset)
+	if s.browseTreeView.ScrollRow != 0 {
+		t.Fatalf("scroll not clamped to 0: %d", s.browseTreeView.ScrollRow)
 	}
 }
 
@@ -251,22 +250,23 @@ func TestBrowseSubscribeRectOnGroupWithChildren(t *testing.T) {
 	s.ToggleBrowseNode("alt")
 	s.layoutBrowse()
 	var row browseRowLayout
-	for _, r := range s.browseRows {
+	rowIdx := -1
+	for i, r := range s.browseRows {
 		if r.node.Name == "alt.test" {
-			row = r
+			row, rowIdx = r, i
 		}
 	}
 	if row.node == nil || !row.node.IsGroup || len(row.node.Children) == 0 {
 		t.Fatalf("alt.test not a group-with-children: %+v", row.node)
 	}
-	top := s.browseTreeTop + row.top - s.browseScroll.offset
-	sr := s.browseSubscribeRect(s.m.pad, top, s.W-2*s.m.pad)
+	sr := s.browseSubscribeRect(rowIdx)
 	// The Subscribe control subscribes (branch 1).
 	if got := s.browseHitTest(sr.X+sr.W/2, sr.Y+sr.H/2); got.Kind != HitSubscribeGroup || got.Value != "alt.test" {
 		t.Fatalf("subscribe-rect hit = %+v", got)
 	}
 	// The row body (left of the control) toggles (branch 2).
-	if got := s.browseHitTest(s.m.pad+s.browseIndentW(), top+s.m.sideItemH/2); got.Kind != HitToggleBrowseNode {
+	top, _ := s.browseRowScreenY(rowIdx)
+	if got := s.browseHitTest(s.m.pad+2, top+s.m.sideItemH/2); got.Kind != HitToggleBrowseNode {
 		t.Fatalf("row-body hit = %+v", got)
 	}
 }
@@ -353,9 +353,19 @@ func TestSetUsenetServerNoOp(t *testing.T) {
 
 func TestBrowseInvalidateAndClose(t *testing.T) {
 	s := browseScene()
-	s.browseScroll.offset = 40
+	// A long list scrolled off the top gives InvalidateBrowse something to reset.
+	names := make([]source.GroupInfo, 0, 200)
+	for i := 0; i < 200; i++ {
+		names = append(names, source.GroupInfo{Name: "grp" + itoa(i)})
+	}
+	s.SetBrowseGroups(names)
+	s.OpenBrowse()
+	s.Scroll(100000)
+	if s.browseTreeView.ScrollRow == 0 {
+		t.Fatal("expected the tree to have scrolled")
+	}
 	s.InvalidateBrowse()
-	if s.browseScroll.offset != 0 {
+	if s.browseTreeView.ScrollRow != 0 {
 		t.Fatal("InvalidateBrowse should reset scroll")
 	}
 	s.CloseBrowse()
@@ -370,6 +380,62 @@ func TestBrowseThemeWithoutOnAccent(t *testing.T) {
 	s := browseScene()
 	s.SetTheme(toolkit.DefaultLight())
 	renderPNG(t, s, "browse-default-theme")
+}
+
+func TestBrowseGeometryEdges(t *testing.T) {
+	// A tiny window leaves the tree viewport no room: windowRows is 0 and the
+	// TreeView bounds clamp to zero height (layoutBrowse's treeH<0 guard).
+	tiny := browseScene()
+	tiny.H = 100
+	tiny.layoutBrowse()
+	if tiny.browseWindowRows() != 0 {
+		t.Fatalf("tiny window rows = %d, want 0", tiny.browseWindowRows())
+	}
+
+	// A long list scrolled down puts early rows above the window and late rows below.
+	s := New(760, 300, ThemeFor(OSMac, false))
+	s.SetProfiles([]settings.Profile{{Name: "Home"}}, 0)
+	s.SetUsenetServer("news.free.fr:119")
+	g := make([]source.GroupInfo, 100)
+	for i := range g {
+		g[i] = source.GroupInfo{Name: "grp" + itoa(i)}
+	}
+	s.SetBrowseGroups(g)
+	s.OpenBrowse()
+	s.layoutBrowse()
+	s.browseTreeView.ScrollRow = 20
+	s.layoutBrowse()
+	if _, ok := s.browseRowScreenY(0); ok {
+		t.Fatal("row 0 should be scrolled above the window")
+	}
+	if _, ok := s.browseRowScreenY(len(s.browseRows) - 1); ok {
+		t.Fatal("the last row should be below the window")
+	}
+	// browseSubscribeRect returns the zero Rect for an off-screen group row, an
+	// out-of-range index, and (below) a non-group hierarchy node.
+	if r := s.browseSubscribeRect(0); r != (toolkit.Rect{}) {
+		t.Fatalf("off-screen marker = %+v, want zero", r)
+	}
+	if r := s.browseSubscribeRect(-1); r != (toolkit.Rect{}) {
+		t.Fatalf("negative index marker = %+v, want zero", r)
+	}
+	if r := s.browseSubscribeRect(len(s.browseRows)); r != (toolkit.Rect{}) {
+		t.Fatalf("out-of-range marker = %+v, want zero", r)
+	}
+
+	// A hierarchy (container) node is not a real group, so it has no marker.
+	c := New(760, 460, ThemeFor(OSMac, false))
+	c.SetProfiles([]settings.Profile{{Name: "Home"}}, 0)
+	c.SetUsenetServer("news.free.fr:119")
+	c.SetBrowseGroups(gis("alt.a", "alt.b")) // "alt" is a container, not a group
+	c.OpenBrowse()
+	c.layoutBrowse()
+	if c.browseRows[0].node.IsGroup {
+		t.Fatalf("row 0 should be the container 'alt': %+v", c.browseRows[0].node)
+	}
+	if r := c.browseSubscribeRect(0); r != (toolkit.Rect{}) {
+		t.Fatalf("container marker = %+v, want zero", r)
+	}
 }
 
 func TestThemeSuccessErrorColors(t *testing.T) {

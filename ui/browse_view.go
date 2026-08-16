@@ -5,12 +5,17 @@ package ui
 // hierarchical tree (built from the dotted group names by browse_tree.go), a
 // regexp filter field that narrows the tree live as the user types, a Refresh
 // control that re-fetches the list, and a per-leaf Subscribe affordance that
-// adds a usenet:<group> subscription to the active profile. It is drawn with the
-// same painter + anti-aliased text as the rest of the app.
+// adds a usenet:<group> subscription to the active profile.
+//
+// Every element is a composed go-widgets/toolkit widget: the ground + accent
+// topbar are toolkit.Backdrop, the Back/Refresh controls toolkit.Button, the
+// title/server/count lines toolkit.Label, the filter a toolkit.SearchEntry, and
+// the group hierarchy a toolkit.TreeView (chevrons, row window, scrollbar and
+// virtualization owned by the widget) whose RowRenderer paints each row's label,
+// post count and Subscribe marker. Nothing in the view is hand-drawn.
 
 import (
 	"fmt"
-	"image"
 	"regexp"
 	"strconv"
 	"strings"
@@ -21,11 +26,13 @@ import (
 	"github.com/go-news-reader/reader/source"
 )
 
-// browseRowLayout positions one visible tree row: its top offset below the tree
-// viewport origin, plus the node and indent depth it renders.
+// browseRowLayout is one visible tree row: its group-model node, the TreeView
+// node that renders it, and its indent depth (0 for a top-level hierarchy). It
+// mirrors the TreeView's flattened, expand-aware order so hit-testing and
+// keyboard navigation share one definition of "visible row" with the widget.
 type browseRowLayout struct {
-	top   int
 	node  *groupNode
+	tnode *toolkit.TreeNode
 	depth int
 }
 
@@ -42,7 +49,7 @@ type browseViewKey struct {
 func (s *Scene) SetBrowseGroups(groups []source.GroupInfo) {
 	s.browseGroups = groups
 	s.browseGroupsRev++
-	s.browseScroll.offset = 0
+	s.resetBrowseScroll()
 	s.browseSel = 0
 	s.touch()
 }
@@ -118,9 +125,17 @@ func (s *Scene) UsenetServer() string { return s.usenetAddr }
 // view-model like the topbar search (mvvm.BindField).
 func (s *Scene) BrowseEntry() *toolkit.SearchEntry { return s.browseEntry }
 
-// InvalidateBrowse bumps the damage sequence after the filter binder writes
+// InvalidateBrowse resets the scroll after the filter binder writes
 // BrowseEntry.Text directly; passed as mvvm.BindField's invalidate hook.
-func (s *Scene) InvalidateBrowse() { s.browseScroll.offset = 0; s.browseSel = 0; s.touch() }
+func (s *Scene) InvalidateBrowse() { s.resetBrowseScroll(); s.browseSel = 0; s.touch() }
+
+// resetBrowseScroll returns the tree to the top (its TreeView is created lazily,
+// so it tolerates being called before the first layout).
+func (s *Scene) resetBrowseScroll() {
+	if s.browseTreeView != nil {
+		s.browseTreeView.ScrollRow = 0
+	}
+}
 
 // BrowseFocused reports whether the filter field holds keyboard focus.
 func (s *Scene) BrowseFocused() bool { return s.browseFocused }
@@ -131,10 +146,21 @@ func (s *Scene) FocusBrowseFilter(v bool) { s.browseFocused = v; s.touch() }
 // OpenBrowse enters the newsgroup browser view.
 func (s *Scene) OpenBrowse() {
 	s.mode = ModeBrowse
-	s.browseScroll.offset = 0
+	s.resetBrowseScroll()
 	s.browseSel = 0
 	s.browseFocused = false
 	s.touch()
+}
+
+// browseWindowRows is how many whole tree rows fit in the tree viewport (below
+// the count line). 0 before the first layout / when there is no room.
+func (s *Scene) browseWindowRows() int {
+	rh := s.m.sideItemH
+	h := s.H - s.browseTreeTop
+	if rh <= 0 || h <= 0 {
+		return 0
+	}
+	return h / rh
 }
 
 // NavBrowse moves the keyboard selection dir rows through the visible tree
@@ -152,15 +178,17 @@ func (s *Scene) NavBrowse(dir int) {
 	if s.browseSel >= n {
 		s.browseSel = n - 1
 	}
-	row := s.browseRows[s.browseSel]
-	viewH := s.H - s.browseTreeTop
+	// Nudge the TreeView's row window by the minimum needed to keep the selected
+	// row visible, then re-clamp + re-sync through a layout.
+	tv := s.browseTreeView
+	wr := s.browseWindowRows()
 	switch {
-	case row.top < s.browseScroll.offset:
-		s.browseScroll.offset = row.top
-	case row.top+s.m.sideItemH > s.browseScroll.offset+viewH:
-		s.browseScroll.offset = row.top + s.m.sideItemH - viewH
+	case s.browseSel < tv.ScrollRow:
+		tv.ScrollRow = s.browseSel
+	case wr > 0 && s.browseSel >= tv.ScrollRow+wr:
+		tv.ScrollRow = s.browseSel - wr + 1
 	}
-	s.browseScroll.offset = clampScroll(s.browseScroll.offset, s.browseScroll.contentH-(s.H-s.m.topbarH))
+	s.layoutBrowse()
 	s.touch()
 }
 
@@ -280,26 +308,114 @@ func (s *Scene) ensureBrowseView() {
 	s.browseViewKey = key
 }
 
-// browseIndentW is the per-depth indent of a tree row, in device pixels.
-func (s *Scene) browseIndentW() int { return rpxOf(s, 16) }
-
-// browseChevronRect is the disclosure-triangle box for a row at screen y and
-// indent depth.
-func (s *Scene) browseChevronRect(x, y, depth int) toolkit.Rect {
-	m := s.m
-	d := m.side.height
-	return toolkit.Rect{X: x + depth*s.browseIndentW(), Y: y + (m.sideItemH-d)/2, W: d, H: d}
+// ensureBrowseTree lazily builds the newsgroup TreeView (RowRenderer wired to the
+// row painter; the synthetic Root hidden so the top-level hierarchies sit flush
+// at depth 0, exactly like the sidebar's list).
+func (s *Scene) ensureBrowseTree() {
+	if s.browseTreeView != nil {
+		return
+	}
+	s.browseTreeView = toolkit.NewTreeView(nil)
+	s.browseTreeView.RowRenderer = s.drawBrowseRow
+	s.browseTreeView.HideRoot = true
 }
 
-// browseSubscribeRect is the right-aligned Subscribe affordance for a leaf row.
-func (s *Scene) browseSubscribeRect(x, y, w int) toolkit.Rect {
+// buildBrowseTree materialises the TreeView's node set from the current filtered
+// view, mirroring it into browseRows (flattened, expand-aware) for hit-testing +
+// keyboard navigation, and points the TreeView's Selected at the keyboard row.
+// Each TreeNode carries its *groupNode in Data; Expanded comes from the expand
+// map (or is forced open in the filtered view, which auto-expands to its
+// matches). Order matches flattenBrowse so the widget's own flatten agrees.
+func (s *Scene) buildBrowseTree() {
+	s.ensureBrowseTree()
+	expanded := func(name string) bool { return true }
+	if !s.browseFiltered {
+		expanded = func(name string) bool { return s.browseExpanded[name] }
+	}
+	root := &toolkit.TreeNode{}
+	s.browseRows = s.browseRows[:0]
+	var conv func(gn *groupNode, depth int) *toolkit.TreeNode
+	conv = func(gn *groupNode, depth int) *toolkit.TreeNode {
+		tn := &toolkit.TreeNode{Data: gn, Expanded: len(gn.Children) > 0 && expanded(gn.Name)}
+		s.browseRows = append(s.browseRows, browseRowLayout{node: gn, tnode: tn, depth: depth})
+		if tn.Expanded {
+			for _, c := range gn.Children {
+				tn.Children = append(tn.Children, conv(c, depth+1))
+			}
+		}
+		return tn
+	}
+	if s.browseView != nil {
+		for _, c := range s.browseView.Children {
+			root.Children = append(root.Children, conv(c, 0))
+		}
+	}
+	s.browseTreeView.Root = root
+	s.browseTreeView.Selected = nil
+	if s.browseSel >= 0 && s.browseSel < len(s.browseRows) {
+		s.browseTreeView.Selected = s.browseRows[s.browseSel].tnode
+	}
+}
+
+// browseTreeTheme is the TreeView's theme: unselected rows fill with the browse
+// ground (Background) so they blend into the Backdrop rather than showing a
+// Surface band, while the selection (Accent) and scrollbar are the reader's
+// standard tree look, matching the sidebar list.
+func (s *Scene) browseTreeTheme() *toolkit.Theme {
+	tt := *s.theme
+	tt.Surface = s.theme.Background
+	return &tt
+}
+
+// browseRightEdge is the right edge (device px) of a tree row's content — the
+// TreeView's inner width, gutter-inset when the tree overflows — so the Subscribe
+// marker sits clear of the scrollbar. Derived from the widget's own exported
+// geometry so it tracks the TreeView's windowing decision exactly.
+func (s *Scene) browseRightEdge() int {
+	tv := s.browseTreeView
+	return tv.Bounds().X + toolkit.Scaled(toolkit.TreeChevronW) + tv.RowContentWidth(0)
+}
+
+// browseRowScreenY returns the on-screen top of visible tree row i, and whether
+// it currently falls inside the scrolled window.
+func (s *Scene) browseRowScreenY(i int) (int, bool) {
+	tv := s.browseTreeView
+	wr := s.browseWindowRows()
+	if i < tv.ScrollRow {
+		return 0, false
+	}
+	if wr > 0 && i >= tv.ScrollRow+wr {
+		return 0, false
+	}
+	return s.browseTreeTop + (i-tv.ScrollRow)*s.m.sideItemH, true
+}
+
+// browseSubscribeRect is the right-aligned Subscribe affordance for visible tree
+// row i (matching the marker the RowRenderer paints). The zero Rect is returned
+// for a row that is off-screen or not a real group.
+func (s *Scene) browseSubscribeRect(i int) toolkit.Rect {
+	if i < 0 || i >= len(s.browseRows) || !s.browseRows[i].node.IsGroup {
+		return toolkit.Rect{}
+	}
+	y, ok := s.browseRowScreenY(i)
+	if !ok {
+		return toolkit.Rect{}
+	}
+	return s.browseMarkerRect(s.browseRightEdge(), y)
+}
+
+// browseMarkerRect is the Subscribe marker box, right-aligned at rightEdge for a
+// row whose top is at screen y. Shared by the RowRenderer (which computes
+// rightEdge from its content rect) and the hit test (browseRightEdge) so drawn
+// and clickable geometry never disagree.
+func (s *Scene) browseMarkerRect(rightEdge, y int) toolkit.Rect {
 	m := s.m
 	d := m.side.height + rpxOf(s, 6)
-	return toolkit.Rect{X: x + w - m.pad - d, Y: y + (m.sideItemH-d)/2, W: d, H: d}
+	return toolkit.Rect{X: rightEdge - m.pad - d, Y: y + (m.sideItemH-d)/2, W: d, H: d}
 }
 
 // layoutBrowse computes the topbar buttons, the filter field, the count line and
-// the flattened tree rows, applying the vertical scroll offset via row tops.
+// the scrolling tree geometry (TreeView bounds + clamped row window).
 func (s *Scene) layoutBrowse() {
 	s.m = s.computeMetrics()
 	m := s.m
@@ -321,94 +437,108 @@ func (s *Scene) layoutBrowse() {
 	// The tree viewport starts below the count line and scrolls.
 	s.browseTreeTop = s.browseCountY + m.side.height + rpxOf(s, 6)
 
-	expanded := func(name string) bool { return true }
-	if !s.browseFiltered {
-		expanded = func(name string) bool { return s.browseExpanded[name] }
+	// Build the TreeView nodes + the mirrored flat row list, then size the widget
+	// to the viewport and clamp its row window. The clamp (ScrollTo) is the
+	// refresh-time clamp: a resize or filter change can't leave a stale ScrollRow.
+	s.buildBrowseTree()
+	s.browseTreeView.RowHeight = m.sideItemH
+	treeH := s.H - s.browseTreeTop
+	if treeH < 0 {
+		treeH = 0
 	}
-	rows := flattenBrowse(s.browseView, expanded)
-	s.browseRows = s.browseRows[:0]
-	top := 0
-	for _, r := range rows {
-		s.browseRows = append(s.browseRows, browseRowLayout{top: top, node: r.node, depth: r.depth})
-		top += m.sideItemH
-	}
-	// browseContentH is expressed relative to the topbar so the viewport is
-	// (H - topbarH). Clamp here (the refresh-time clamp) so a resize can't leave a
-	// stale offset; the wheel handler then only nudges + relayouts.
-	s.browseScroll.refresh((s.browseTreeTop-m.topbarH)+top, s.H-m.topbarH)
+	s.browseTreeView.SetBounds(toolkit.Rect{X: 0, Y: s.browseTreeTop, W: s.W, H: treeH})
+	s.browseTreeView.ScrollTo(s.browseTreeView.ScrollRow)
 }
 
-// drawBrowse paints the newsgroup browser.
+// drawBrowse paints the newsgroup browser: a Backdrop ground, the scrolling
+// TreeView (with a no-server prompt in its place when unconfigured), then the
+// accent topbar chrome — all composed widgets, nothing hand-drawn.
 func (s *Scene) drawBrowse(buf []byte) {
 	s.layoutBrowse()
 	m := s.m
 	p := painter.NewPixelPainter(buf, s.W, s.H)
-	img := &image.RGBA{Pix: buf, Stride: s.W * 4, Rect: image.Rect(0, 0, s.W, s.H)}
 	th := s.theme
-	onAccent := th.Background
-	if v, ok := th.Extra["OnAccent"]; ok {
-		onAccent = v
-	}
+	onAccent := themeOnAccent(th)
 	muteS := mute(th.OnSurface, th.Surface)
 
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: s.H}, th.Background)
+	// Full-surface ground — a solid Backdrop, not a hand-drawn FillRect.
+	ground := &toolkit.Backdrop{Fill: th.Background}
+	ground.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: s.H})
+	ground.Draw(p, th)
 
 	if s.usenetAddr == "" {
-		// Opened without a configured server: prompt the user to add one.
-		s.drawBrowseNoServer(p, img, muteS)
+		s.drawBrowseNoServer(p, muteS)
 	} else {
-		s.drawBrowseTree(p, img, muteS)
+		s.drawBrowseBody(p, muteS)
 	}
 
-	// Scrollbar down the right edge when the tree overflows (a large server carries
-	// tens of thousands of groups; expanding hierarchies grows it further).
-	s.drawVScrollbar(p, toolkit.Rect{X: 0, Y: m.topbarH, W: s.W, H: s.H - m.topbarH}, 0, s.browseScroll.contentH, s.browseScroll.offset)
+	// Topbar (accent) with Back, title + server and the Refresh control, over any
+	// tree overflow: an accent Backdrop band, inverted Button pills and Labels.
+	band := &toolkit.Backdrop{Fill: th.Accent}
+	band.SetBounds(toolkit.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH})
+	band.Draw(p, th)
 
-	// Topbar (accent) with Back, title + server, and the Refresh control, drawn
-	// over any tree overflow.
-	p.FillRect(painter.Rect{X: 0, Y: 0, W: s.W, H: m.topbarH}, th.Accent)
-	p.FillRoundRect(painter.Rect(s.browseBackR), rpxOf(s, 6), onAccent)
-	m.tab.draw(img, s.browseBackR.X+rpxOf(s, 10), s.browseBackR.Y+(s.browseBackR.H-m.tab.height)/2, "‹ Back", th.Accent)
+	invTheme := invertedTopbarTheme(th, onAccent)
+	back := &toolkit.Button{Label: "‹ Back", Style: toolkit.ButtonProminent}
+	back.Font = m.tab.font
+	back.SetBounds(s.browseBackR)
+	back.Draw(p, invTheme)
+
 	title := "Browse newsgroups"
 	tx := s.browseBackR.X + s.browseBackR.W + m.pad
-	m.title.draw(img, tx, (m.topbarH-m.title.height)/2, title, onAccent)
+	titleLbl := toolkit.NewLabel(title)
+	titleLbl.Font, titleLbl.Ink = m.title.font, onAccent
+	titleLbl.SetBounds(toolkit.Rect{X: tx, Y: (m.topbarH - m.title.height) / 2, W: s.W, H: m.title.height})
+	titleLbl.Draw(p, th)
 	if s.browseServer != "" {
 		sx := tx + m.title.width(title) + m.pad
-		m.meta.draw(img, sx, (m.topbarH-m.meta.height)/2, s.browseServer, onAccent)
+		srv := toolkit.NewLabel(s.browseServer)
+		srv.Font, srv.Ink = m.meta.font, onAccent
+		srv.SetBounds(toolkit.Rect{X: sx, Y: (m.topbarH - m.meta.height) / 2, W: s.W, H: m.meta.height})
+		srv.Draw(p, th)
 	}
-	// Refresh pill (icon). While loading it is drawn muted, matching the sidebar.
-	p.FillRoundRect(painter.Rect(s.browseRefreshR), rpxOf(s, 6), onAccent)
-	ir := toolkit.Rect{X: s.browseRefreshR.X + (s.browseRefreshR.W-m.navIcon)/2, Y: s.browseRefreshR.Y + (s.browseRefreshR.H-m.navIcon)/2, W: m.navIcon, H: m.navIcon}
-	drawRefreshIcon(p, ir, th.Accent, s.iconStroke())
+	// Refresh: an inverted icon Button (onAccent pill with an accent glyph).
+	refresh := &toolkit.Button{Style: toolkit.ButtonProminent, Icon: s.browseRefreshIcon}
+	refresh.SetBounds(s.browseRefreshR)
+	refresh.Draw(p, invTheme)
 }
 
-// drawBrowseNoServer paints the "configure a server first" prompt.
-func (s *Scene) drawBrowseNoServer(p *painter.PixelPainter, img *image.RGBA, muteS toolkit.RGBA) {
+// browseRefreshIcon centres the reader's refresh glyph inside the Refresh
+// button's face, in the button's current ink (the accent-foreground of the
+// inverted topbar theme).
+func (s *Scene) browseRefreshIcon(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
+	d := s.m.navIcon
+	ir := toolkit.Rect{X: r.X + (r.W-d)/2, Y: r.Y + (r.H-d)/2, W: d, H: d}
+	drawRefreshIcon(p, ir, ink, s.iconStroke())
+}
+
+// drawBrowseNoServer paints the "configure a server first" prompt as a centred
+// Label.
+func (s *Scene) drawBrowseNoServer(p painter.Painter, muteS toolkit.RGBA) {
 	m := s.m
 	msg := "No Usenet server configured — add one in Accounts."
 	cx := (s.W - m.title.width(msg)) / 2
-	m.title.draw(img, cx, s.H/2, msg, muteS)
+	lbl := toolkit.NewLabel(msg)
+	lbl.Font, lbl.Ink = m.title.font, muteS
+	lbl.SetBounds(toolkit.Rect{X: cx, Y: s.H / 2, W: s.W, H: m.title.height})
+	lbl.Draw(p, s.theme)
 }
 
-// drawBrowseTree paints the filter field, the count/hint line and the scrolling
-// tree of newsgroups.
-func (s *Scene) drawBrowseTree(p *painter.PixelPainter, img *image.RGBA, muteS toolkit.RGBA) {
+// drawBrowseBody paints the filter field, the count/hint line and the scrolling
+// TreeView of newsgroups.
+func (s *Scene) drawBrowseBody(p painter.Painter, muteS toolkit.RGBA) {
 	m := s.m
 	th := s.theme
 
-	// Filter field: the browse SearchEntry widget (it draws its own aligned caret
-	// when focused) with a focus ring.
+	// Filter field: the browse SearchEntry widget draws its own body, aligned caret
+	// (when focused) and focus ring.
 	se := s.browseEntry
-	se.SetBounds(toolkit.Rect(s.browseFilterR))
+	se.SetBounds(s.browseFilterR)
 	se.Font = ttFont(false, rpxOf(s, 13))
 	se.SetFocused(s.browseFocused)
-	p.FillRoundRect(painter.Rect(s.browseFilterR), rpxOf(s, 6), th.Surface)
 	se.Draw(p, th)
-	if s.browseFocused {
-		p.StrokeRoundRect(painter.Rect(s.browseFilterR), rpxOf(s, 6), th.Accent, rpxOf(s, 2))
-	}
 
-	// Count / hint line.
+	// Count / hint line as a Label.
 	count := fmt.Sprintf("%d groups", s.browseMatchCount)
 	col := muteS
 	if s.browseFilterErr != "" {
@@ -421,85 +551,90 @@ func (s *Scene) drawBrowseTree(p *painter.PixelPainter, img *image.RGBA, muteS t
 			count = "No groups — press Refresh."
 		}
 	}
-	m.side.draw(img, m.pad, s.browseCountY, count, col)
+	countLbl := toolkit.NewLabel(count)
+	countLbl.Font, countLbl.Ink = m.side.font, col
+	countLbl.SetBounds(toolkit.Rect{X: m.pad, Y: s.browseCountY, W: s.W - 2*m.pad, H: m.side.height})
+	countLbl.Draw(p, th)
 
-	// Tree rows (scrolled), clipped to the tree viewport. When the scrollbar is
-	// shown, rows and the selected-row tint stop at the shared gutter so nothing
-	// paints under the bar (same rule the feed's cards use).
-	shown := s.scrollbarNeeded(s.browseScroll.contentH, s.H-m.topbarH)
-	feedW := s.scrollClampRight(s.W-m.pad, s.W, 0, shown) - m.pad
-	tintRight := s.scrollClampRight(s.W, s.W, 0, shown)
-	for i, r := range s.browseRows {
-		y := s.browseTreeTop + r.top - s.browseScroll.offset
-		if y+m.sideItemH < s.browseTreeTop || y >= s.H {
-			continue
-		}
-		s.drawBrowseRow(p, img, r, m.pad, y, feedW, tintRight, muteS, i == s.browseSel)
-	}
+	// The scrolling group hierarchy: the TreeView owns the chevrons, the row
+	// window, the scrollbar gutter and virtualization; drawBrowseRow paints each
+	// row's rich content.
+	s.browseTreeView.Draw(p, s.browseTreeTheme())
 }
 
-// drawBrowseRow paints one tree row at screen y: indent, optional chevron with
-// child count, the node segment, and — for a real group — a Subscribe (＋) or
-// subscribed (✓) marker.
-func (s *Scene) drawBrowseRow(p *painter.PixelPainter, img *image.RGBA, r browseRowLayout, x, y, w, tintRight int, muteS toolkit.RGBA, selected bool) {
+// drawBrowseRow is the TreeView RowRenderer: it paints one tree row's content in
+// the rect the widget hands it (already past the chevron + indent and inset for
+// the scrollbar gutter). It draws the node's label (with a "(N)" leaf count on a
+// hierarchy node), a real group's estimated post count as a right-aligned column,
+// and a Subscribe (＋) / subscribed (✓) marker. The label + count use the
+// resolved ink so they stay legible on the accent-filled selected row.
+func (s *Scene) drawBrowseRow(p painter.Painter, _ *toolkit.Theme, cr toolkit.Rect, node *toolkit.TreeNode, selected bool, ink toolkit.RGBA) {
 	m := s.m
 	th := s.theme
-	n := r.node
-	if selected {
-		// Keyboard-selected row: a tint spanning to the shared gutter (tintRight) so
-		// the cursor is clear without painting under the scrollbar.
-		p.FillRect(painter.Rect{X: 0, Y: y, W: tintRight, H: m.sideItemH}, th.SurfaceAlt)
-	}
-	chev := s.browseChevronRect(x, y, r.depth)
-	textX := chev.X + chev.W + rpxOf(s, 4)
-	if len(n.Children) > 0 {
-		expanded := s.browseFiltered || s.browseExpanded[n.Name]
-		drawChevron(p, chev, th.OnSurface, expanded)
-	}
+	// Every node the TreeView renders was built by buildBrowseTree with a *groupNode
+	// in Data, so the assertion always holds.
+	n := node.Data.(*groupNode)
+
 	label := n.Segment
 	if len(n.Children) > 0 {
 		label = fmt.Sprintf("%s  (%d)", n.Segment, n.Leaves)
 	}
-	right := x + w
+
+	// A real group's Subscribe marker, right-aligned at the content edge. On the
+	// selected (accent) row a bare ＋ in the row ink stays visible; elsewhere it is
+	// the accent pill with an on-accent glyph. The row body ends at the marker.
+	right := cr.X + cr.W
 	if n.IsGroup {
-		sr := s.browseSubscribeRect(x, y, w)
+		sr := s.browseMarkerRect(cr.X+cr.W, cr.Y)
 		right = sr.X
-		if s.IsSubscribed(source.Usenet, n.Name) {
+		switch {
+		case s.IsSubscribed(source.Usenet, n.Name):
 			drawCheckIcon(p, sr, successColor(th), s.iconStroke())
-		} else {
-			p.FillRoundRect(painter.Rect(sr), rpxOf(s, 4), th.Accent)
+		case selected:
+			drawPlusIcon(p, sr, ink, s.iconStroke())
+		default:
+			// The accent marker ground is a Backdrop widget (rounded fill), with the
+			// on-accent ＋ icon composited over it — no hand-drawn shape.
+			bg := &toolkit.Backdrop{Fill: th.Accent, Radius: rpxOf(s, 4)}
+			bg.SetBounds(sr)
+			bg.Draw(p, th)
 			drawPlusIcon(p, sr, themeOnAccent(th), s.iconStroke())
 		}
 	}
-	// Label + optional post count, composed as an HBox between the chevron and the
-	// Subscribe marker: the label flexes, and a real group's estimated count is a
-	// fixed right-aligned column (so the browser conveys how busy each group is).
+
+	// Label + optional post count, composed as an HBox between the content origin
+	// and the Subscribe marker: the label flexes, and a real group's estimated
+	// count is a fixed right-aligned column (so the browser conveys how busy each
+	// group is).
 	content := toolkit.NewHBox()
 	content.Spacing = rpxOf(s, 6)
-	labelW := right - textX - m.pad
 	var cnt string
 	var cw int
 	if n.IsGroup && n.Count > 0 {
 		cnt = strconv.Itoa(n.Count)
-		// Append the sampled content-mix estimate once a scan has landed.
 		if st, ok := s.groupStats(n.Name); ok {
 			if lbl := groupStatsLabel(st); lbl != "" {
 				cnt += " · " + lbl
 			}
 		}
 		cw = m.side.width(cnt)
-		labelW -= cw + rpxOf(s, 6)
 	}
 	sideFont := ttFont(false, rpxOf(s, 13))
 	nameLbl := toolkit.NewLabel(label)
-	nameLbl.Font, nameLbl.Ink, nameLbl.Ellipsis = sideFont, th.OnSurface, true
+	nameLbl.Font, nameLbl.Ink, nameLbl.Ellipsis = sideFont, ink, true
 	content.AddFlex(nameLbl, 1)
 	if cnt != "" {
+		// Muted on a normal row; the row ink on the selected row (where muteS would
+		// be unreadable against the accent fill).
+		cntCol := mute(th.OnSurface, th.Surface)
+		if selected {
+			cntCol = ink
+		}
 		cntLbl := toolkit.NewLabel(cnt)
-		cntLbl.Font, cntLbl.Ink, cntLbl.Align = sideFont, muteS, toolkit.AlignRight
+		cntLbl.Font, cntLbl.Ink, cntLbl.Align = sideFont, cntCol, toolkit.AlignRight
 		content.AddFixed(cntLbl, cw)
 	}
-	content.SetBounds(toolkit.Rect{X: textX, Y: y, W: right - textX - m.pad, H: m.sideItemH})
+	content.SetBounds(toolkit.Rect{X: cr.X, Y: cr.Y, W: right - cr.X - m.pad, H: m.sideItemH})
 	content.Draw(p, th)
 }
 
@@ -518,43 +653,40 @@ func (s *Scene) browseHitTest(x, y int) Hit {
 	if inRect(s.browseFilterR, x, y) {
 		return Hit{Kind: HitBrowseFilter}
 	}
-	m := s.m
-	feedW := s.W - 2*m.pad
 	// A click above the tree viewport (in the filter/count chrome) hits no row:
 	// without this, a row scrolled up under the count line was still selectable
 	// through it, silently subscribing to or toggling an invisible group.
 	if y < s.browseTreeTop {
 		return Hit{Kind: HitNone}
 	}
-	for _, r := range s.browseRows {
-		top := s.browseTreeTop + r.top - s.browseScroll.offset
-		// Skip rows outside the tree viewport, mirroring the draw-side clip so a
-		// drawn-clipped (invisible) row is never hit-testable.
-		if top+m.sideItemH < s.browseTreeTop || top >= s.H {
-			continue
+	// The TreeView maps the (band-local) point to the node under it; empty space
+	// below the last row resolves to no node.
+	node := s.browseTreeView.NodeAt(x, y-s.browseTreeTop)
+	if node == nil {
+		return Hit{Kind: HitNone}
+	}
+	// Every visible node carries a *groupNode (buildBrowseTree), so the assertion
+	// always holds; the hidden synthetic root is never returned by NodeAt.
+	n := node.Data.(*groupNode)
+	// A real group's ✓/＋ marker toggles the subscription: ＋ subscribes, ✓
+	// unsubscribes. The chevron/label area of a node with children toggles expand;
+	// a childless leaf row toggles the subscription too.
+	subHit := func() Hit {
+		if s.IsSubscribed(source.Usenet, n.Name) {
+			return Hit{Kind: HitUnsubscribeGroup, Value: n.Name}
 		}
-		if y < top || y >= top+m.sideItemH {
-			continue
-		}
-		n := r.node
-		// A real group's ✓/＋ marker toggles the subscription: ＋ subscribes, ✓
-		// unsubscribes. The chevron area (a node with children) toggles expand; a
-		// childless leaf row toggles the subscription too.
-		subHit := func() Hit {
-			if s.IsSubscribed(source.Usenet, n.Name) {
-				return Hit{Kind: HitUnsubscribeGroup, Value: n.Name}
-			}
-			return Hit{Kind: HitSubscribeGroup, Value: n.Name}
-		}
-		if n.IsGroup && inRect(s.browseSubscribeRect(m.pad, top, feedW), x, y) {
+		return Hit{Kind: HitSubscribeGroup, Value: n.Name}
+	}
+	if n.IsGroup {
+		// The clicked row's on-screen top, from the same row-window math the TreeView
+		// draws with, gives the Subscribe marker its screen rect.
+		rowTop := s.browseTreeTop + ((y-s.browseTreeTop)/s.m.sideItemH)*s.m.sideItemH
+		if inRect(s.browseMarkerRect(s.browseRightEdge(), rowTop), x, y) {
 			return subHit()
 		}
-		if len(n.Children) > 0 {
-			return Hit{Kind: HitToggleBrowseNode, Value: n.Name}
-		}
-		// A matched row with no children is a real group leaf; its row toggles the
-		// subscription.
-		return subHit()
 	}
-	return Hit{Kind: HitNone}
+	if len(n.Children) > 0 {
+		return Hit{Kind: HitToggleBrowseNode, Value: n.Name}
+	}
+	return subHit()
 }

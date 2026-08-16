@@ -25,7 +25,7 @@ func TestBrowseHitTestClampsChrome(t *testing.T) {
 	for i := 0; i < 12; i++ { // scroll so rows leave the viewport top AND bottom
 		s.Scroll(60)
 	}
-	if s.browseScroll.offset <= 0 {
+	if s.browseTreeView.ScrollRow <= 0 {
 		t.Fatal("expected the tree to have scrolled")
 	}
 	if s.browseTreeTop <= s.m.topbarH {
@@ -54,9 +54,7 @@ func TestBrowseHitTestSubscribeRect(t *testing.T) {
 	if !r.node.IsGroup {
 		t.Fatalf("first row not a leaf group: %+v", r.node)
 	}
-	top := s.browseTreeTop + r.top - s.browseScroll.offset
-	m := s.m
-	sr := s.browseSubscribeRect(m.pad, top, s.W-2*m.pad)
+	sr := s.browseSubscribeRect(0)
 	if h := s.browseHitTest(sr.X+sr.W/2, sr.Y+sr.H/2); h.Kind != HitSubscribeGroup || h.Value != "control" {
 		t.Fatalf("subscribe-rect click = %+v, want HitSubscribeGroup control", h)
 	}
