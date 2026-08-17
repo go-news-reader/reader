@@ -124,6 +124,17 @@ type App struct {
 	mediaFetch  func(reqs []ui.MediaRequest)
 	mediaClient *http.Client
 
+	// mediaInflight is the set of item IDs whose remote thumbnail is being
+	// fetched right now, so the incremental prefetch fired on every streaming
+	// update downloads each thumbnail once instead of re-requesting an in-flight
+	// one on every update. An ID is released the moment its fetch finishes —
+	// success OR failure — so a transient failure is retried on a later prefetch,
+	// mirroring the Usenet downloader's inflight map. mediaMu guards it because
+	// PrefetchMedia claims from the UI thread while loadMediaThumbs releases from
+	// its delivery goroutine.
+	mediaInflight map[string]bool
+	mediaMu       sync.Mutex
+
 	// mediaCache is the pluggable media-bytes store fetchThumb consults before a
 	// download and fills after one. It defaults to the built-in on-disk
 	// mediacache.DiskCache; when the CacheBackend setting names a cache-plugin
@@ -1268,9 +1279,21 @@ func (a *App) RefreshStreaming(ctx context.Context) []error {
 			a.vm.SetStatus(firstNonAuthError(errs))
 			a.vm.SetLoad(u.Done < u.Total, u.Done, u.Total)
 		})
+		if a.deferScene {
+			// Window path: fetch thumbnails as each source's items arrive, not
+			// only once the whole aggregation finishes — with ~100 subscriptions
+			// (some slow NNTP) that tail can be minutes away, so a single trailing
+			// prefetch left every card on its placeholder for the whole load. The
+			// prefetch is idempotent (HasThumb skips) and de-duplicated (claimMedia
+			// / the downloader's inflight map), so posting it on every update just
+			// pulls each thumbnail forward to the moment its item appears.
+			// deferScene is set once at startup, before any refresh, never after.
+			a.post(a.PrefetchImages)
+			a.post(a.PrefetchMedia)
+		}
 	})
-	a.post(a.PrefetchImages) // prefetch shown Usenet images in parallel (UI thread)
-	a.post(a.PrefetchMedia)  // and every other source's remote thumbnails over HTTP
+	a.post(a.PrefetchImages) // final sweep + the one-shot CLI path (SetMediaSync)
+	a.post(a.PrefetchMedia)  // runs these once, after Refresh returns
 	return compactErrs(byIndex)
 }
 

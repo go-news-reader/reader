@@ -32,11 +32,44 @@ const mediaThumbWorkers = 6
 // refresh), the same thread that drains SetThumb, so the HasThumb reads inside
 // MediaPrefetch are race-free; the downloads themselves are asynchronous.
 func (a *App) PrefetchMedia() {
-	reqs := a.scene.MediaPrefetch()
+	reqs := a.claimMedia(a.scene.MediaPrefetch())
 	if len(reqs) == 0 {
 		return
 	}
 	a.mediaFetch(reqs)
+}
+
+// claimMedia keeps only the requests whose thumbnail is not already being
+// fetched and marks the survivors in flight. RefreshStreaming posts PrefetchMedia
+// on EVERY streaming update, so without this each still-downloading thumbnail
+// would be re-requested on every one of the ~100 updates — a fetch storm.
+// loadMediaThumbs releases each ID once its fetch finishes (success or failure),
+// so a transient failure is retried on a later prefetch, exactly as the Usenet
+// downloader's inflight map behaves.
+func (a *App) claimMedia(reqs []ui.MediaRequest) []ui.MediaRequest {
+	a.mediaMu.Lock()
+	defer a.mediaMu.Unlock()
+	if a.mediaInflight == nil {
+		a.mediaInflight = map[string]bool{}
+	}
+	out := reqs[:0]
+	for _, r := range reqs {
+		if a.mediaInflight[r.ID] {
+			continue
+		}
+		a.mediaInflight[r.ID] = true
+		out = append(out, r)
+	}
+	return out
+}
+
+// releaseMedia clears one thumbnail's in-flight mark once its fetch has
+// finished, so a later prefetch may request it again (only ever after a failure,
+// since a success sets HasThumb, which MediaPrefetch skips).
+func (a *App) releaseMedia(id string) {
+	a.mediaMu.Lock()
+	delete(a.mediaInflight, id)
+	a.mediaMu.Unlock()
 }
 
 // SetMediaFetchHook overrides the async thumbnail fetch (tests use a
@@ -86,6 +119,7 @@ func (a *App) loadMediaThumbs(ctx context.Context, reqs []ui.MediaRequest) {
 	go func() { wg.Wait(); close(out) }()
 
 	for res := range out {
+		a.releaseMedia(res.id) // fetch finished — let a later prefetch retry a failure
 		if res.img == nil {
 			continue
 		}

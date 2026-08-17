@@ -110,6 +110,30 @@ func TestPrefetchMediaUsesHook(t *testing.T) {
 	}
 }
 
+// TestClaimMediaDedupsInFlight checks the in-flight guard that keeps the
+// per-update incremental prefetch from re-requesting a still-downloading
+// thumbnail: a claimed ID is skipped until it is released, then let through
+// again (the failure-retry path).
+func TestClaimMediaDedupsInFlight(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	reqs := []ui.MediaRequest{{ID: "a", URL: "u1"}, {ID: "b", URL: "u2"}}
+
+	first := a.claimMedia(reqs)
+	if len(first) != 2 {
+		t.Fatalf("first claim = %d requests, want both", len(first))
+	}
+	// Both are in flight now: a second claim of the same IDs yields nothing.
+	if again := a.claimMedia([]ui.MediaRequest{{ID: "a", URL: "u1"}, {ID: "b", URL: "u2"}}); len(again) != 0 {
+		t.Fatalf("re-claim of in-flight IDs = %+v, want none", again)
+	}
+	// Releasing exactly one lets only it through on the next claim.
+	a.releaseMedia("a")
+	third := a.claimMedia([]ui.MediaRequest{{ID: "a", URL: "u1"}, {ID: "b", URL: "u2"}})
+	if len(third) != 1 || third[0].ID != "a" {
+		t.Fatalf("after releasing a, claim = %+v, want just a", third)
+	}
+}
+
 // TestLoadMediaThumbsSkipsFailures checks a failing item leaves the scene alone
 // rather than failing the batch: only the good one gets a thumbnail.
 func TestLoadMediaThumbsSkipsFailures(t *testing.T) {
