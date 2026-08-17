@@ -1122,6 +1122,17 @@ func (s *Scene) drawWebPreview(p *painter.PixelPainter) {
 	// The embedded browser fills the pane below the header.
 	s.browser.Draw(p, th)
 
+	// Its own scrollbar is hidden (HideScrollbar); draw the shared one down the
+	// content's right edge so the preview pane's bar is identical to the feed and
+	// sidebar. The area is the browser's content rect (its right edge is flush with
+	// previewR's, its bottom is the pane's), reconstructed from Bounds + the
+	// vertical extent, so the thumb tracks the actual scrollable region.
+	if off, vp, total, shown := s.browser.ScrollExtent(); shown {
+		bb := s.browser.Bounds()
+		content := toolkit.Rect{X: bb.X, Y: bb.Y + bb.H - vp, W: bb.W, H: vp}
+		s.drawVScrollbar(p, content, 0, total, off)
+	}
+
 	// "Open" pill floated over the header, top-right.
 	if s.previewOpenR.W > 0 {
 		pill := &previewOpenPill{s: s}

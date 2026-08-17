@@ -768,20 +768,6 @@ func TestWebPreviewEventForwarding(t *testing.T) {
 	}
 }
 
-// vThumbTop returns the surface-y of the top of the browser's vertical scrollbar
-// thumb (its Accent run) within bounds b, scanning inside the right-edge track.
-// A larger value after a drag proves the page scrolled down.
-func vThumbTop(buf []byte, w int, b toolkit.Rect, accent toolkit.RGBA) int {
-	x := b.X + b.W - 3
-	for y := b.Y; y < b.Y+b.H; y++ {
-		i := (y*w + x) * 4
-		if buf[i] == accent.R && buf[i+1] == accent.G && buf[i+2] == accent.B {
-			return y
-		}
-	}
-	return -1
-}
-
 // mustFrame returns just the current framebuffer.
 func mustFrame(a *app.App) []byte { buf, _ := a.Frame(); return buf }
 
@@ -806,34 +792,43 @@ func TestMouseMoveRoutesBrowserDrag(t *testing.T) {
 	s.Browser().Deliver("https://site/", page.Pix, b.W, b.H*3, b.W, nil, "T")
 
 	h := New(a)
-	w := s.W
-	topBefore := vThumbTop(mustFrame(a), w, b, th.Accent)
-	if topBefore < 0 {
-		t.Fatal("no vertical scrollbar thumb drawn")
+	// The browser's own bar is hidden (the reader overlays the shared Scrollbar);
+	// its thumb stays grabbable via geometry and hugs the content top at scroll=0.
+	// The scroll offset (ScrollExtent), not a painted thumb, proves the motion.
+	off := func() int { o, _, _, _ := s.Browser().ScrollExtent(); return o }
+	_, vp, _, shown := s.Browser().ScrollExtent()
+	if !shown {
+		t.Fatal("no vertical overflow for a 3×-tall page")
 	}
+	contentTop := b.Y + b.H - vp
 	x := b.X + b.W - 3
+	before := off()
 
-	// A move with NO press held must NOT drag the browser (thumb stays put).
-	h.MouseMove(x, topBefore+b.H/3)
-	if got := vThumbTop(mustFrame(a), w, b, th.Accent); got != topBefore {
-		t.Fatalf("move without a press moved the thumb: %d -> %d", topBefore, got)
+	// A move with NO press held must NOT drag the browser (offset stays put).
+	h.MouseMove(x, contentTop+b.H/3)
+	mustFrame(a)
+	if got := off(); got != before {
+		t.Fatalf("move without a press scrolled: %d -> %d", before, got)
 	}
 
 	// Press ON the thumb, then move: the motion is routed as a browser drag and the
-	// thumb tracks the pointer (the page scrolls).
-	h.MouseDown(x, topBefore+2)
-	h.MouseMove(x, topBefore+b.H/3)
-	topAfter := vThumbTop(mustFrame(a), w, b, th.Accent)
-	if !(topAfter > topBefore) {
-		t.Fatalf("MouseMove during a browser press did not scroll: thumb %d -> %d", topBefore, topAfter)
+	// page scrolls (offset grows).
+	h.MouseDown(x, contentTop+2)
+	h.MouseMove(x, contentTop+b.H/3)
+	mustFrame(a)
+	after := off()
+	if !(after > before) {
+		t.Fatalf("MouseMove during a browser press did not scroll: %d -> %d", before, after)
 	}
 
-	// Release clears the grab: a further move at the thumb column no longer drags
-	// the browser, so the thumb stays where the release left it.
-	h.MouseUp(x, topBefore+b.H/3)
-	settled := vThumbTop(mustFrame(a), w, b, th.Accent)
-	h.MouseMove(x, topBefore+2) // would drag the thumb UP if still routed
-	if got := vThumbTop(mustFrame(a), w, b, th.Accent); got != settled {
+	// Release clears the grab: a further move no longer drags the browser, so the
+	// offset stays where the release left it.
+	h.MouseUp(x, contentTop+b.H/3)
+	mustFrame(a)
+	settled := off()
+	h.MouseMove(x, contentTop+2) // would scroll UP if still routed
+	mustFrame(a)
+	if got := off(); got != settled {
 		t.Fatalf("after release a move still dragged the browser: %d -> %d", settled, got)
 	}
 }

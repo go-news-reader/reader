@@ -587,6 +587,11 @@ func New(w, h int, theme *toolkit.Theme) *Scene {
 	// navigation / load / tab change requests a redraw through touch(). The app
 	// wires browser.OnNavigate to the async page render.
 	s.browser = toolkit.NewBrowser()
+	// Draw the preview's vertical scrollbar with the SAME shared toolkit.Scrollbar
+	// every other panel uses (drawWebPreview → drawVScrollbar), not the browser's
+	// own embedded house-style bar — so the preview pane matches the feed and
+	// sidebar exactly. The browser keeps its wheel scrolling.
+	s.browser.HideScrollbar = true
 	// Real Iconoir glyphs on the toolbar buttons (instead of the text-label
 	// fallback): Back / Forward / Reload + the two zoom magnifiers. Each is sized
 	// to the topbar burger (chromeIcon) so the preview chrome reads at one weight.

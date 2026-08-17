@@ -116,6 +116,54 @@ func TestWebPreviewSelectionAndDraw(t *testing.T) {
 	s.Draw(buf) // exercises drawWebPreview with a delivered page (drawPage blit)
 }
 
+// TestWebPreviewSharedScrollbar checks the preview pane's web view draws the SAME
+// shared scrollbar every other panel uses — a SurfaceAlt track down previewR's
+// right edge — and NOT the embedded Browser's own Accent house-style bar
+// (HideScrollbar suppresses it). Regression guard for the migration: the preview
+// bar must be identical to the feed and sidebar.
+func TestWebPreviewSharedScrollbar(t *testing.T) {
+	s := New(900, 560, ThemeFor(OSMac, false))
+	buf := make([]byte, s.W*s.H*4)
+	s.SelectPreview(webTestItem())
+	s.Browser().Open("https://example.com/a", "Title")
+	// A page far taller than the pane so the content overflows and the bar shows.
+	page := image.NewRGBA(image.Rect(0, 0, 400, 2400))
+	s.Browser().Deliver("https://example.com/a", page.Pix, 400, 2400, 400, nil, "Title")
+	s.Draw(buf)
+
+	_, vp, _, shown := s.Browser().ScrollExtent()
+	if !shown {
+		t.Fatal("a 2400px page must overflow the preview browser")
+	}
+	bb := s.Browser().Bounds()
+	th := s.theme
+	// The shared bar occupies the column [right-w, right) over the browser's content
+	// rows (below its chrome), inset top and bottom exactly as drawVScrollbar insets.
+	right := s.scrollbarRightX(bb.X+bb.W, 0)
+	w := s.scrollbarW()
+	inset := rpxOf(s, 2)
+	y0 := bb.Y + bb.H - vp + inset
+	y1 := bb.Y + bb.H - inset
+	track, accent := false, false
+	for x := right - w; x < right; x++ {
+		for y := y0; y < y1; y++ {
+			c := px(buf, s.W, x, y)
+			if c.R == th.SurfaceAlt.R && c.G == th.SurfaceAlt.G && c.B == th.SurfaceAlt.B {
+				track = true
+			}
+			if c.R == th.Accent.R && c.G == th.Accent.G && c.B == th.Accent.B {
+				accent = true
+			}
+		}
+	}
+	if !track {
+		t.Fatal("shared scrollbar track (SurfaceAlt) not painted down the preview's right edge")
+	}
+	if accent {
+		t.Fatal("browser's own Accent scrollbar still painted — HideScrollbar not honoured")
+	}
+}
+
 func TestWebPreviewHeaderLines(t *testing.T) {
 	// A long title in a narrow pane wraps to more than two lines; the fixed header
 	// caps it at two.
@@ -287,22 +335,6 @@ func TestForwardBrowserScroll(t *testing.T) {
 	}
 }
 
-// vThumbTop returns the surface-y of the topmost pixel of the browser's vertical
-// scrollbar thumb (its Accent run) within the browser bounds b, scanning a column
-// well inside the right-edge track. It returns -1 when no thumb is drawn. Because
-// the track above the thumb is SurfaceAlt and the chrome above the content is
-// neither, the first Accent pixel from the top is the thumb top — so a larger
-// value after a drag proves the page scrolled down.
-func vThumbTop(buf []byte, w int, b toolkit.Rect, accent toolkit.RGBA) int {
-	x := b.X + b.W - 3 // inside the [b.W-scrollbarWidth, b.W) vertical track
-	for y := b.Y; y < b.Y+b.H; y++ {
-		if p := px(buf, w, x, y); p.R == accent.R && p.G == accent.G && p.B == accent.B {
-			return y
-		}
-	}
-	return -1
-}
-
 // TestForwardBrowserDrag verifies the drag-forward path that fixes the (previously
 // dead) scrollbar-thumb dragging: a drag is forwarded to the browser ONLY while a
 // press it consumed is still held (the browserPressed flag), and dragging the
@@ -336,31 +368,30 @@ func TestForwardBrowserDrag(t *testing.T) {
 		t.Fatal("drag with no active browser press must not be forwarded")
 	}
 
-	accent := s.theme.Accent
-	topBefore := vThumbTop(buf, s.W, b, accent)
-	if topBefore < 0 {
-		t.Fatal("no vertical scrollbar thumb drawn for a 3×-tall page")
+	// The browser's own bar is hidden (the reader overlays the shared Scrollbar),
+	// but its thumb stays grabbable via geometry: at scroll=0 it hugs the content
+	// top, so press there through the reader seam. The scroll offset (ScrollExtent),
+	// not a painted thumb pixel, is what proves the page moved.
+	_, vp, _, shown := s.Browser().ScrollExtent()
+	if !shown {
+		t.Fatal("a 3×-tall page must overflow the preview browser")
 	}
-
-	// Press ON the thumb (inside the browser): this consumes the press, grabs the
-	// thumb and arms the drag (browserPressed).
+	contentTop := b.Y + b.H - vp
 	x := b.X + b.W - 3
-	if !s.ForwardBrowserClick(x, topBefore+2) {
+	if !s.ForwardBrowserClick(x, contentTop+2) {
 		t.Fatal("a press on the scrollbar thumb should be consumed by the browser")
 	}
-	// Now a drag downward is forwarded and moves the thumb (the page scrolls).
-	if !s.ForwardBrowserDrag(x, topBefore+b.H/3) {
+	// Now a drag downward is forwarded and scrolls the page.
+	if !s.ForwardBrowserDrag(x, contentTop+b.H/3) {
 		t.Fatal("a drag while pressed inside the browser must be forwarded")
 	}
-	s.Draw(buf)
-	topAfter := vThumbTop(buf, s.W, b, accent)
-	if !(topAfter > topBefore) {
-		t.Fatalf("thumb drag did not scroll: thumb top %d -> %d (want it to move down)", topBefore, topAfter)
+	if off, _, _, _ := s.Browser().ScrollExtent(); off <= 0 {
+		t.Fatalf("thumb drag did not scroll: offset %d, want > 0", off)
 	}
 
 	// Release clears the grab: a subsequent drag is no longer forwarded.
-	s.ForwardBrowserRelease(x, topBefore+b.H/3)
-	if s.ForwardBrowserDrag(x, topBefore+2) {
+	s.ForwardBrowserRelease(x, contentTop+b.H/3)
+	if s.ForwardBrowserDrag(x, contentTop+2) {
 		t.Fatal("after release the drag must no longer be forwarded")
 	}
 }
