@@ -160,6 +160,7 @@ func (s *Scene) SelectPreview(it source.Item) {
 	s.previewScroll.offset = 0
 	s.previewImgPending = false
 	s.browserFocused = false // a new selection drops browser keyboard focus
+	s.previewFocused = false // and returns keyboard focus to the feed card list
 	s.markViewed(it.ID)      // opening a post marks its card "already read" (muted)
 	s.touch()
 }
@@ -369,6 +370,104 @@ func (s *Scene) setBrowserFocused(v bool) {
 
 // BrowserFocused reports whether the embedded browser holds keyboard focus.
 func (s *Scene) BrowserFocused() bool { return s.browserFocused }
+
+// previewKeyStep is one Arrow-key preview scroll step, in logical (unscaled) px —
+// a little over one wheel notch so an arrow press moves a comfortable amount.
+const previewKeyStep = 60
+
+// PreviewFocusable reports whether the preview pane can currently take keyboard
+// focus: it is laid out (visible) and has a selected item to scroll.
+func (s *Scene) PreviewFocusable() bool { return s.previewR.W > 0 && s.previewHas }
+
+// PreviewFocused reports whether the preview pane holds keyboard focus (so the
+// scroll keys drive it rather than the feed card list).
+func (s *Scene) PreviewFocused() bool { return s.previewFocused }
+
+// TogglePreviewFocus flips keyboard focus between the feed card list and the
+// preview pane (the Tab key). Focus is only granted when the pane is focusable;
+// otherwise it stays on the feed and the call is a no-op. It returns the new
+// focused state.
+func (s *Scene) TogglePreviewFocus() bool {
+	if s.previewFocused {
+		s.setPreviewFocused(false)
+		return false
+	}
+	if !s.PreviewFocusable() {
+		return false
+	}
+	s.setPreviewFocused(true)
+	return true
+}
+
+// setPreviewFocused records the pane's keyboard-focus state and keeps the related
+// focus flags consistent: taking focus drops the topbar search focus, and for a
+// web-linked item it mirrors onto browserFocused so the embedded browser is the
+// scroll/edit target (and clears it when focus leaves).
+func (s *Scene) setPreviewFocused(v bool) {
+	s.previewFocused = v
+	if v {
+		s.searchFocused = false
+	}
+	if s.webPreviewItem() {
+		s.browserFocused = v
+	}
+	s.touch()
+}
+
+// ScrollPreviewKey scrolls the focused preview pane by one keyboard step: dir<0
+// scrolls up, dir>0 down; page requests a (near) full viewport move (PageUp /
+// PageDown / Space). For a web-linked item it forwards to the embedded browser;
+// for a text/image item it nudges previewScroll. It consumes the key (returns
+// true) whenever the pane holds focus — even with nothing to scroll — so the key
+// does not fall through to the feed selection. It is a no-op (false) when the
+// pane is not focused or dir is 0.
+func (s *Scene) ScrollPreviewKey(dir int, page bool) bool {
+	if !s.previewFocused || dir == 0 {
+		return false
+	}
+	if s.webPreviewItem() {
+		return s.scrollBrowserKey(dir, page)
+	}
+	if !s.previewScroll.needsBar() {
+		return true // focused but the content fits: swallow the key
+	}
+	step := rpxOf(s, previewKeyStep)
+	if page {
+		if p := s.previewScroll.viewport - step; p > step {
+			step = p // a page is a viewport less one line of overlap
+		}
+	}
+	s.previewScroll.scrollBy(dir * step)
+	s.touch()
+	return true
+}
+
+// browserKeyRows / browserKeyPageRows are how many browser content rows one Arrow
+// press and one PageUp/PageDown/Space press scroll the embedded web preview.
+const (
+	browserKeyRows     = 3
+	browserKeyPageRows = 12
+)
+
+// scrollBrowserKey drives the embedded web-preview browser from the keyboard when
+// the pane is focused: it converts a key step into the widget's row-based scroll
+// intent (a page move is a larger stride) and delivers it as an EventScroll at the
+// widget centre, so no pointer position is required. The browser clamps the delta
+// to its own content, so an over-large page stride is harmless. It always consumes
+// the key (returns true) while the pane is focused.
+func (s *Scene) scrollBrowserKey(dir int, page bool) bool {
+	b := s.browser.Bounds()
+	if b.W <= 0 {
+		return true // web preview focused but not yet laid out: swallow the key
+	}
+	step := browserKeyRows
+	if page {
+		step = browserKeyPageRows
+	}
+	s.browser.OnEvent(toolkit.Event{Kind: toolkit.EventScroll, X: b.X + b.W/2, Y: b.Y + b.H/2, Delta: dir * step})
+	s.touch()
+	return true
+}
 
 // WebPreviewURL returns the external http(s) target page to render for it, or ""
 // when there is none or the source isn't web-renderable. Usenet posts preview as
@@ -684,6 +783,7 @@ func (s *Scene) layoutPreview() {
 	m := s.m
 	pw := s.previewWidth()
 	if pw == 0 {
+		s.previewFocused = false // a hidden pane cannot hold keyboard focus
 		s.previewR = toolkit.Rect{}
 		s.previewOpenR = toolkit.Rect{}
 		s.sTextSmallerR = toolkit.Rect{}
@@ -835,6 +935,20 @@ func (s *Scene) drawPreview(p *painter.PixelPainter) {
 	divider.SetBounds(toolkit.Rect{X: r.X, Y: r.Y, W: 1, H: r.H})
 	divider.Draw(p, th)
 	s.drawGripHandle(p, r.X) // resize grab handle
+	// Keyboard-focus ring: an accent outline (matching the selected-card ring) so
+	// it is visible that the scroll keys now drive the pane, not the feed list. It
+	// is an outline-only Backdrop (NoFill) rather than a hand-drawn
+	// StrokeRoundRect, and it goes on last so it sits over the divider and grip.
+	if s.previewFocused {
+		ring := &toolkit.Backdrop{
+			NoFill:      true,
+			Radius:      rpxOf(s, 6),
+			Stroke:      th.Accent,
+			StrokeWidth: rpxOf(s, 2),
+		}
+		ring.SetBounds(r)
+		ring.Draw(p, th)
+	}
 
 	if !s.previewHas {
 		msg := "Select an item to preview"

@@ -82,8 +82,11 @@ func TestKeyNameTranslatesTheArrows(t *testing.T) {
 		"Enter":      "Enter",
 		"Escape":     "Escape",
 		"Backspace":  "Backspace",
-		"F7":         "", // not part of this application's vocabulary
-		"a":          "", // a character arrives as EventChar, not by name
+		"Tab":        "Tab",      // preview-focus toggle
+		"PageUp":     "PageUp",   // preview page-scroll
+		"PageDown":   "PageDown", // preview page-scroll
+		"F7":         "",         // not part of this application's vocabulary
+		"a":          "",         // a character arrives as EventChar, not by name
 		"":           "",
 	} {
 		if got := keyName(code); got != want {

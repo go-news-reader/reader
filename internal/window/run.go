@@ -341,10 +341,10 @@ func keyName(code string) string {
 		return "Left"
 	case "ArrowRight":
 		return "Right"
-	case "Backspace", "Escape", "Enter":
+	case "Backspace", "Escape", "Enter", "Tab":
 		return code
 	case "PageUp", "PageDown", "Home", "End":
-		return code // feed paging keys, routed to the CardList in windowapp
+		return code // paging/jump keys: the focused preview, else the CardList
 	}
 	return ""
 }

@@ -645,8 +645,12 @@ func (h *Handler) Key(name string, r rune) {
 	case "Up":
 		switch s.Mode() {
 		case ui.ModeFeed:
-			s.FocusSearch(false)
-			h.a.SelectAdjacent(-1) // move the feed selection up (previous post)
+			if s.PreviewFocused() {
+				s.ScrollPreviewKey(-1, false) // preview holds focus: scroll it up
+			} else {
+				s.FocusSearch(false)
+				h.a.SelectAdjacent(-1) // move the feed selection up (previous post)
+			}
 		case ui.ModeBrowse:
 			s.NavBrowse(-1) // move the newsgroup-tree selection up
 			h.a.ScanBrowseGroup()
@@ -654,21 +658,49 @@ func (h *Handler) Key(name string, r rune) {
 	case "Down":
 		switch s.Mode() {
 		case ui.ModeFeed:
-			s.FocusSearch(false)
-			h.a.SelectAdjacent(1) // move the feed selection down (next post)
+			if s.PreviewFocused() {
+				s.ScrollPreviewKey(1, false) // preview holds focus: scroll it down
+			} else {
+				s.FocusSearch(false)
+				h.a.SelectAdjacent(1) // move the feed selection down (next post)
+			}
 		case ui.ModeBrowse:
 			s.NavBrowse(1) // move the newsgroup-tree selection down
 			h.a.ScanBrowseGroup()
 		}
 	case "PageUp", "PageDown", "Home", "End":
-		// Feed paging / jump keys route straight into the CardList (its selection
-		// cursor moves a viewport or to an end, firing the feed select hook →
-		// preview). The toolkit's selectMove codes match these names verbatim.
+		// Paging and jump keys follow keyboard focus, exactly as Up/Down do. With
+		// the preview focused they page the pane; otherwise they route straight
+		// into the CardList (its selection cursor moves a viewport or to an end,
+		// firing the feed select hook → preview) — the toolkit's selectMove codes
+		// match these names verbatim. Home/End have no preview counterpart yet, so
+		// a focused preview consumes them rather than moving the feed selection
+		// out from under the article the reader is looking at.
+		if s.Mode() != ui.ModeFeed {
+			return
+		}
+		if s.PreviewFocused() {
+			switch name {
+			case "PageUp":
+				s.ScrollPreviewKey(-1, true) // page the focused preview up
+			case "PageDown":
+				s.ScrollPreviewKey(1, true) // page the focused preview down
+			}
+			return
+		}
+		s.FocusSearch(false)
+		s.FeedEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: name})
+	case "Tab":
 		if s.Mode() == ui.ModeFeed {
-			s.FocusSearch(false)
-			s.FeedEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: name})
+			s.TogglePreviewFocus() // swap keyboard focus feed list <-> preview pane
 		}
 	default:
+		// Space pages the focused preview down (its usual "read on" gesture); it
+		// arrives as a printable rune, so it is handled here rather than by name.
+		if r == ' ' && s.Mode() == ui.ModeFeed && s.PreviewFocused() {
+			s.ScrollPreviewKey(1, true)
+			return
+		}
 		if r != 0 {
 			s.TypeRune(r)
 		}

@@ -357,6 +357,13 @@ type Scene struct {
 	browser        *toolkit.Browser
 	browserVM      *tkbind.BrowserVM
 	browserFocused bool
+	// previewFocused records that the right-hand preview pane holds keyboard focus
+	// (toggled with Tab). While set, the scroll keys (arrows / PageUp / PageDown /
+	// Space) drive the pane's content rather than the feed card list, and the pane
+	// paints an accent focus ring. For a web-linked item the embedded browser is the
+	// scroll target, so focusing a web preview also arms browserFocused; for a
+	// text/image item previewScroll is the target.
+	previewFocused bool
 	// browserPressed records that a mouse press landed inside the browser and the
 	// button is still held, so pointer motion is forwarded to the browser as an
 	// EventMouseDrag (letting a scrollbar thumb track the pointer). Set when
