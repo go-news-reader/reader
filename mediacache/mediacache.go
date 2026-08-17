@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Cache is a media-bytes store keyed by URL. Get reports a hit with the stored
@@ -39,6 +40,22 @@ type Cache interface {
 	Get(url string) ([]byte, bool)
 	// Put stores the original data for url. Empty data is not stored.
 	Put(url string, data []byte)
+}
+
+// TimedCache is an optional extension of [Cache] for backends that can stamp a
+// stored entry with a specific modification time — the creation time of the POST
+// the media was downloaded for — so the on-disk cache reflects post chronology
+// (for coherent sorting and budget-driven eviction) rather than download order.
+// A backend that cannot honour it (for instance an out-of-process plugin whose
+// storage has no per-entry mtime) simply implements [Cache]; callers type-assert
+// for TimedCache and fall back to Put.
+type TimedCache interface {
+	Cache
+	// PutTimed stores the original data for url and, when unixSec > 0, sets the
+	// stored entry's modification time to that Unix second (UTC). A unixSec of 0
+	// (an item with no known creation time) leaves the default write-time mtime.
+	// Empty data is not stored.
+	PutTimed(url string, data []byte, unixSec int64)
 }
 
 // appCacheSubdir is the per-user cache subdirectory for the reader; mediaSubdir
@@ -119,8 +136,20 @@ func (c *DiskCache) Get(url string) ([]byte, bool) {
 // Put stores the ORIGINAL data under url's stem plus a content-derived extension
 // (so the file is previewable in Finder), creating the cache dir as needed, then
 // prunes the directory back under Budget. It is best-effort: any error (no cache
-// dir, write failure) is silently ignored. Empty data is not stored.
+// dir, write failure) is silently ignored. Empty data is not stored. It is
+// [PutTimed] with no post time, so the entry keeps its write-time mtime.
 func (c *DiskCache) Put(url string, data []byte) {
+	c.PutTimed(url, data, 0)
+}
+
+// PutTimed stores data exactly as [Put] does and, when unixSec > 0, sets the
+// stored file's modification time to that Unix second (UTC) — the creation time
+// of the post the media belongs to — so the cache on disk mirrors post
+// chronology rather than the moment of download. A unixSec of 0 leaves the
+// default write-time mtime. The cache key (and therefore a later cache hit) is
+// unchanged: only the file's mtime differs. Best-effort throughout; a failed
+// chtimes just leaves the write-time mtime. Empty data is not stored.
+func (c *DiskCache) PutTimed(url string, data []byte, unixSec int64) {
 	if len(data) == 0 {
 		return
 	}
@@ -131,9 +160,13 @@ func (c *DiskCache) Put(url string, data []byte) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
-	name := GlobPrefix(url) + Ext(url, data)
-	if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+	p := filepath.Join(dir, GlobPrefix(url)+Ext(url, data))
+	if err := os.WriteFile(p, data, 0o644); err != nil {
 		return
+	}
+	if unixSec > 0 {
+		t := time.Unix(unixSec, 0)
+		_ = os.Chtimes(p, t, t)
 	}
 	c.prune(dir)
 }

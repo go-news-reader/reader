@@ -67,6 +67,17 @@ func (a *App) openWebPreview(it source.Item, url string) {
 	a.prefetchNeighbors(it)
 }
 
+// currentPostCreated returns the creation time (Unix seconds, UTC) of the post
+// currently shown in the preview pane, or 0 when nothing is previewed or the
+// item carries no known date. It is read on the UI thread (the OnNavigate seam)
+// so the media a page turns out to hold can be cached under the post's date.
+func (a *App) currentPostCreated() int64 {
+	if it, ok := a.scene.PreviewItem(); ok {
+		return it.Created
+	}
+	return 0
+}
+
 // tickWebDebounce advances the frame clock and opens an armed web page once the
 // selection has held for webDebounceFrames ticks. Called once per Frame on the
 // render thread (the only thread that arms/reads these fields).

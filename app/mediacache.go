@@ -60,6 +60,21 @@ func (a *App) wireImageCache() {
 	}
 }
 
+// cacheMedia stores the ORIGINAL media bytes for url in the selected media
+// cache, stamping the on-disk file's modification time with the POST's creation
+// time (created, Unix seconds UTC) when it is known (>0) so the cache mirrors
+// post chronology rather than download order. A backend that cannot honour a
+// timed write (a plugin whose store has no per-entry mtime) falls back to a
+// plain Put; either way the cache key is unchanged, so a later cache hit still
+// finds the same entry.
+func (a *App) cacheMedia(url string, data []byte, created int64) {
+	if tc, ok := a.mediaCache.(mediacache.TimedCache); ok {
+		tc.PutTimed(url, data, created)
+		return
+	}
+	a.mediaCache.Put(url, data)
+}
+
 // applyMediaCacheBudget re-applies the settings' media-cache byte budget to the
 // built-in DiskCache after a live settings edit. It is a no-op for a plugin
 // backend, which manages its own capacity out of process.

@@ -726,7 +726,7 @@ func TestMouseDownFixAuthOpensAccounts(t *testing.T) {
 func TestWebPreviewEventForwarding(t *testing.T) {
 	a := app.New(app.Config{Registry: source.NewRegistry(), Width: 1000, Height: 700})
 	a.Scene().SetScale(1)
-	a.SetWebFetchHook(func(string, int) {}) // no-op: navigation must not hit the network
+	a.SetWebFetchHook(func(string, int, int64) {}) // no-op: navigation must not hit the network
 	s := a.Scene()
 	it := source.Item{ID: "w", Source: source.HackerNews, Title: "T", Link: "https://site/"}
 	s.SelectPreview(it) // opens the browser tab (OnNavigate → the no-op fetch)
@@ -781,7 +781,7 @@ func TestMouseMoveRoutesBrowserDrag(t *testing.T) {
 	s := a.Scene()
 	s.SetScale(1)
 	s.SetTheme(th) // known accent so the drawn thumb colour is predictable
-	a.SetWebFetchHook(func(string, int) {})
+	a.SetWebFetchHook(func(string, int, int64) {})
 	s.SelectPreview(source.Item{ID: "w", Source: source.HackerNews, Title: "T", Link: "https://site/"})
 	a.Frame() // lay out the browser bounds
 	b := s.Browser().Bounds()

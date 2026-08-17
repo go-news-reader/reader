@@ -7,10 +7,13 @@ import (
 )
 
 // MediaRequest names one feed item's remote thumbnail: the item ID the decoded
-// image is keyed by, and the URL to fetch it from.
+// image is keyed by, the URL to fetch it from, and the item's Created time (Unix
+// seconds, UTC; 0 when unknown) so the on-disk media cache can stamp the stored
+// file with the POST's date rather than the download moment.
 type MediaRequest struct {
-	ID  string
-	URL string
+	ID      string
+	URL     string
+	Created int64
 }
 
 // MediaPrefetch lists the remote thumbnails the currently shown feed is still
@@ -38,7 +41,7 @@ func (s *Scene) MediaPrefetch() []MediaRequest {
 			continue
 		}
 		seen[it.ID] = true
-		out = append(out, MediaRequest{ID: it.ID, URL: u})
+		out = append(out, MediaRequest{ID: it.ID, URL: u, Created: it.Created})
 	}
 	return out
 }

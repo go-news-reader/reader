@@ -113,7 +113,7 @@ func (a *App) loadMediaThumbs(ctx context.Context, reqs []ui.MediaRequest) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			out <- thumbResult{id: r.ID, img: a.fetchThumb(ctx, r.URL)}
+			out <- thumbResult{id: r.ID, img: a.fetchThumb(ctx, r.URL, r.Created)}
 		}(r)
 	}
 	go func() { wg.Wait(); close(out) }()
@@ -138,7 +138,7 @@ func (a *App) loadMediaThumbs(ctx context.Context, reqs []ui.MediaRequest) {
 // media hosts that fingerprint the TLS handshake, pbs.twimg.com among them,
 // serve it and the Network log records the fetch), then — only when the bytes
 // are a usable image — caches the ORIGINAL for next time.
-func (a *App) fetchThumb(ctx context.Context, url string) *image.RGBA {
+func (a *App) fetchThumb(ctx context.Context, url string, created int64) *image.RGBA {
 	raw, cached := a.mediaCache.Get(url)
 	if !cached {
 		var derr error
@@ -152,7 +152,9 @@ func (a *App) fetchThumb(ctx context.Context, url string) *image.RGBA {
 		return nil // a non-image (or undecodable) download is never cached
 	}
 	if !cached {
-		a.mediaCache.Put(url, raw)
+		// Stamp the cached file with the POST's creation time (created), so the
+		// on-disk media reflects post chronology, not the download moment.
+		a.cacheMedia(url, raw, created)
 	}
 	return img
 }

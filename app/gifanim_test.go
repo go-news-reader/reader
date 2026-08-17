@@ -178,7 +178,7 @@ func TestCompositeGIFDefaults(t *testing.T) {
 func TestPlayAnimatedGIFDrivesFrames(t *testing.T) {
 	a := New(Config{Registry: newReg(), Width: 900, Height: 600})
 	a.SetWebRenderer(&fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 40, 40))})
-	a.gifFetch = func(context.Context, string) ([]byte, error) { return threeFrameGIF(t), nil }
+	a.gifFetch = func(context.Context, string, int64) ([]byte, error) { return threeFrameGIF(t), nil }
 	clock := &fakeClock{t: time.Unix(1000, 0)}
 	a.now = clock.now
 	syncFetch(a)
@@ -237,20 +237,20 @@ func TestPlayAnimatedGIFFalsePaths(t *testing.T) {
 	a := New(Config{Registry: newReg()})
 	ctx := context.Background()
 
-	if a.playAnimatedGIF(ctx, "https://ex/page.html", 800) {
+	if a.playAnimatedGIF(ctx, "https://ex/page.html", 800, 0) {
 		t.Fatal("a non-GIF URL must not be intercepted")
 	}
-	a.gifFetch = func(context.Context, string) ([]byte, error) { return nil, errors.New("boom") }
-	if a.playAnimatedGIF(ctx, "https://ex/x.gif", 800) {
+	a.gifFetch = func(context.Context, string, int64) ([]byte, error) { return nil, errors.New("boom") }
+	if a.playAnimatedGIF(ctx, "https://ex/x.gif", 800, 0) {
 		t.Fatal("a fetch error must fall through")
 	}
-	a.gifFetch = func(context.Context, string) ([]byte, error) { return []byte("not a gif"), nil }
-	if a.playAnimatedGIF(ctx, "https://ex/x.gif", 800) {
+	a.gifFetch = func(context.Context, string, int64) ([]byte, error) { return []byte("not a gif"), nil }
+	if a.playAnimatedGIF(ctx, "https://ex/x.gif", 800, 0) {
 		t.Fatal("undecodable bytes must fall through")
 	}
 	single := encodeAnimatedGIF(t, 2, 2, []*image.Paletted{palFrame(image.Rect(0, 0, 2, 2), 1)}, []int{5})
-	a.gifFetch = func(context.Context, string) ([]byte, error) { return single, nil }
-	if a.playAnimatedGIF(ctx, "https://ex/x.gif", 800) {
+	a.gifFetch = func(context.Context, string, int64) ([]byte, error) { return single, nil }
+	if a.playAnimatedGIF(ctx, "https://ex/x.gif", 800, 0) {
 		t.Fatal("a single-frame GIF must fall through to the static render")
 	}
 }
@@ -271,13 +271,13 @@ func TestFetchGIFBytes(t *testing.T) {
 	a.mediaClient = ok.Client()
 	// Go through the default gifFetch closure (the New-wired wrapper over
 	// fetchGIFBytes) so that seam is exercised too.
-	got, err := a.gifFetch(ctx, ok.URL)
+	got, err := a.gifFetch(ctx, ok.URL, 0)
 	if err != nil || !bytes.Equal(got, body) {
 		t.Fatalf("fetch ok: err=%v len=%d want=%d", err, len(got), len(body))
 	}
 	// A second fetch of the same URL is served from the on-disk media cache — no
 	// network — so re-opening a GIF post is instant.
-	got2, err := a.fetchGIFBytes(ctx, ok.URL)
+	got2, err := a.fetchGIFBytes(ctx, ok.URL, 0)
 	if err != nil || !bytes.Equal(got2, body) {
 		t.Fatalf("cache hit: err=%v len=%d want=%d", err, len(got2), len(body))
 	}
@@ -290,7 +290,7 @@ func TestFetchGIFBytes(t *testing.T) {
 	}))
 	defer bad.Close()
 	a.mediaClient = bad.Client()
-	if _, err := a.fetchGIFBytes(ctx, bad.URL); err == nil || err.Error() != "gif fetch: non-200 status" {
+	if _, err := a.fetchGIFBytes(ctx, bad.URL, 0); err == nil || err.Error() != "gif fetch: non-200 status" {
 		t.Fatalf("non-200: err=%v, want errBadGIFStatus", err)
 	}
 
@@ -303,7 +303,7 @@ func TestFetchGIFBytes(t *testing.T) {
 	}))
 	defer short.Close()
 	a.mediaClient = short.Client()
-	if _, err := a.fetchGIFBytes(ctx, short.URL+"/short.gif"); err == nil {
+	if _, err := a.fetchGIFBytes(ctx, short.URL+"/short.gif", 0); err == nil {
 		t.Fatal("a truncated body should error on read")
 	}
 
@@ -313,12 +313,12 @@ func TestFetchGIFBytes(t *testing.T) {
 	client := dead.Client()
 	dead.Close()
 	a.mediaClient = client
-	if _, err := a.fetchGIFBytes(ctx, url); err == nil {
+	if _, err := a.fetchGIFBytes(ctx, url, 0); err == nil {
 		t.Fatal("a dead server should error")
 	}
 
 	// Request-build error: a URL with a control character.
-	if _, err := a.fetchGIFBytes(ctx, "http://foo\nbar/a.gif"); err == nil {
+	if _, err := a.fetchGIFBytes(ctx, "http://foo\nbar/a.gif", 0); err == nil {
 		t.Fatal("a malformed URL should error before the request")
 	}
 }

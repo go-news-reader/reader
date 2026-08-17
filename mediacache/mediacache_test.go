@@ -59,6 +59,51 @@ func TestDiskCacheRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPutTimedStampsPostMtime(t *testing.T) {
+	c := tmpCache(t, 1<<30)
+	dir, _ := c.Dir()
+
+	// A post-dated write stamps the file's mtime with the post's creation second,
+	// so the on-disk cache mirrors post chronology rather than the download moment.
+	const created int64 = 1_500_000_000 // 2017-07-14, well in the past
+	url := "https://x/dated.png"
+	c.PutTimed(url, pngBytes(3, 3), created)
+	matches, _ := filepath.Glob(filepath.Join(dir, GlobPrefix(url)+".*"))
+	if len(matches) != 1 {
+		t.Fatalf("expected one cached file, got %v", matches)
+	}
+	info, err := os.Stat(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.ModTime().Unix(); got != created {
+		t.Fatalf("mtime = %d, want the post's Created %d", got, created)
+	}
+
+	// A zero (unknown) post time leaves the default write-time mtime, which is
+	// recent — never stamped back to the Unix epoch.
+	before := time.Now().Add(-time.Minute)
+	zurl := "https://x/undated.png"
+	c.PutTimed(zurl, pngBytes(3, 3), 0)
+	zmatches, _ := filepath.Glob(filepath.Join(dir, GlobPrefix(zurl)+".*"))
+	if len(zmatches) != 1 {
+		t.Fatalf("expected one cached file, got %v", zmatches)
+	}
+	zinfo, err := os.Stat(zmatches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zinfo.ModTime().Before(before) {
+		t.Fatalf("zero-Created write mtime = %v, want a recent (write-time) mtime", zinfo.ModTime())
+	}
+
+	// Empty data is never stored, even with a post time.
+	c.PutTimed("https://x/empty", nil, created)
+	if _, ok := c.Get("https://x/empty"); ok {
+		t.Fatal("empty data must not be stored by PutTimed")
+	}
+}
+
 func TestGlobPrefixStable(t *testing.T) {
 	if GlobPrefix("https://x/a") != GlobPrefix("https://x/a") {
 		t.Fatal("same URL must map to the same stem")

@@ -41,7 +41,9 @@ func webItem(id, link string) source.Item {
 // syncFetch wires a synchronous render so Open → OnNavigate → webFetch →
 // loadPreviewPage all run inline (deterministic, no goroutine, no network).
 func syncFetch(a *App) {
-	a.SetWebFetchHook(func(target string, width int) { a.loadPreviewPage(context.Background(), target, width) })
+	a.SetWebFetchHook(func(target string, width int, created int64) {
+		a.loadPreviewPage(context.Background(), target, width, created)
+	})
 }
 
 func TestSelectPreviewRendersWebPage(t *testing.T) {
@@ -303,7 +305,7 @@ func TestWebFetchDebounce(t *testing.T) {
 	a.SetWebRenderer(&fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 400, 800))})
 	calls := 0
 	lastURL := ""
-	a.SetWebFetchHook(func(target string, width int) { calls++; lastURL = target })
+	a.SetWebFetchHook(func(target string, width int, _ int64) { calls++; lastURL = target })
 
 	// Debounced select arms but does not open/fetch immediately.
 	a.selectPreview(webItem("a", "https://a/"), true)
@@ -348,22 +350,22 @@ func TestWebFetchDebounce(t *testing.T) {
 // cache without re-rendering; a different width misses and re-renders.
 func TestLoadPreviewPageCachesAndReuses(t *testing.T) {
 	a := New(Config{Registry: newReg()})
-	a.SetWebFetchHook(func(string, int) {}) // Open must not auto-render
+	a.SetWebFetchHook(func(string, int, int64) {}) // Open must not auto-render
 	fr := &fakeRenderer{img: image.NewRGBA(image.Rect(0, 0, 50, 60))}
 	a.SetWebRenderer(fr)
 
-	a.loadPreviewPage(context.Background(), "https://p/", 800) // miss → render #1
+	a.loadPreviewPage(context.Background(), "https://p/", 800, 0) // miss → render #1
 	if fr.calls != 1 {
 		t.Fatalf("first render calls = %d, want 1", fr.calls)
 	}
 	if pages, _ := a.RenderCacheStats(); pages != 1 {
 		t.Fatalf("final frame not cached: pages=%d", pages)
 	}
-	a.loadPreviewPage(context.Background(), "https://p/", 800) // hit → no render
+	a.loadPreviewPage(context.Background(), "https://p/", 800, 0) // hit → no render
 	if fr.calls != 1 {
 		t.Fatalf("cache hit re-rendered: calls=%d", fr.calls)
 	}
-	a.loadPreviewPage(context.Background(), "https://p/", 900) // different width → miss
+	a.loadPreviewPage(context.Background(), "https://p/", 900, 0) // different width → miss
 	if fr.calls != 2 {
 		t.Fatalf("different width should miss: calls=%d", fr.calls)
 	}
@@ -372,7 +374,7 @@ func TestLoadPreviewPageCachesAndReuses(t *testing.T) {
 	if pages, _ := a.RenderCacheStats(); pages != 0 {
 		t.Fatalf("clear should empty the cache: pages=%d", pages)
 	}
-	a.loadPreviewPage(context.Background(), "https://p/", 800)
+	a.loadPreviewPage(context.Background(), "https://p/", 800, 0)
 	if fr.calls != 3 {
 		t.Fatalf("after clear the page should re-render: calls=%d", fr.calls)
 	}

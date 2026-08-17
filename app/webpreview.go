@@ -30,13 +30,15 @@ import (
 // an empty page for the same target so the spinner clears rather than spinning
 // forever. The default webFetch runs this on its own goroutine; tests call it
 // directly for determinism.
-func (a *App) loadPreviewPage(ctx context.Context, target string, width int) {
+func (a *App) loadPreviewPage(ctx context.Context, target string, width int, created int64) {
 	// A fresh navigation supersedes any animated GIF that was playing.
 	a.clearActiveGIF()
 	// Animated-GIF interception: a direct .gif target the page renderer would show
 	// as a single frozen frame is decoded here and driven frame-by-frame into the
-	// browser instead (skipping both the engine render and the render cache).
-	if a.playAnimatedGIF(ctx, target, width) {
+	// browser instead (skipping both the engine render and the render cache). The
+	// post's creation time (created) is threaded through so a freshly downloaded
+	// GIF is cached with its mtime stamped to the post's date.
+	if a.playAnimatedGIF(ctx, target, width, created) {
 		return
 	}
 	key := renderKey{url: target, width: width}
@@ -179,7 +181,7 @@ func toBrowserLinks(links []webrender.Link) []toolkit.BrowserLink {
 
 // SetWebFetchHook overrides the async page render (tests use a synchronous
 // variant for determinism).
-func (a *App) SetWebFetchHook(f func(target string, width int)) { a.webFetch = f }
+func (a *App) SetWebFetchHook(f func(target string, width int, created int64)) { a.webFetch = f }
 
 // SetWebRenderer overrides the page renderer (tests inject a fake that returns a
 // canned image without touching the network).

@@ -6,8 +6,10 @@ import (
 	"image"
 	"image/gif"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/mediacache"
@@ -204,3 +206,78 @@ type staticCache struct {
 
 func (c staticCache) Get(string) ([]byte, bool) { return c.data, c.found }
 func (staticCache) Put(string, []byte)          {}
+
+// recordingCache is a plain mediacache.Cache (NOT a TimedCache) that records the
+// last Put, so a test can prove cacheMedia falls back to Put for a backend that
+// cannot stamp an mtime.
+type recordingCache struct {
+	putURL  string
+	putData []byte
+	puts    int
+}
+
+func (c *recordingCache) Get(string) ([]byte, bool) { return nil, false }
+func (c *recordingCache) Put(url string, data []byte) {
+	c.putURL, c.putData, c.puts = url, data, c.puts+1
+}
+
+// mediaCachePath returns the single on-disk cache file for url, failing the test
+// when the entry is missing or ambiguous.
+func mediaCachePath(t *testing.T, url string) string {
+	t.Helper()
+	dir, err := mediaCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, mediacache.GlobPrefix(url)+".*"))
+	if len(matches) != 1 {
+		t.Fatalf("cache entry for %q = %v, want exactly one file", url, matches)
+	}
+	return matches[0]
+}
+
+// TestCacheMediaStampsPostMtime: the built-in DiskCache backend stamps a stored
+// media file's mtime with the POST's creation second when it is known (>0), and
+// leaves a recent write-time mtime when it is 0 — the chronology the cache is
+// meant to mirror.
+func TestCacheMediaStampsPostMtime(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+
+	const created int64 = 1_400_000_000 // 2014-05-13, comfortably in the past
+	url := "https://x/post-media.gif"
+	a.cacheMedia(url, gifBytes(4, 4), created)
+	info, err := os.Stat(mediaCachePath(t, url))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.ModTime().Unix(); got != created {
+		t.Fatalf("mtime = %d, want the post's Created %d", got, created)
+	}
+
+	// A zero (unknown) creation time leaves a recent write-time mtime, never the
+	// Unix epoch.
+	before := time.Now().Add(-time.Minute)
+	zurl := "https://x/undated-media.gif"
+	a.cacheMedia(zurl, gifBytes(4, 4), 0)
+	zinfo, err := os.Stat(mediaCachePath(t, zurl))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zinfo.ModTime().Before(before) {
+		t.Fatalf("zero-Created mtime = %v, want a recent write-time mtime", zinfo.ModTime())
+	}
+}
+
+// TestCacheMediaPluginFallback: a backend that only implements Cache (not
+// TimedCache) — a shared/plugin cache with no per-entry mtime — receives a plain
+// Put, unchanged, so cacheMedia never drops the write for such a backend.
+func TestCacheMediaPluginFallback(t *testing.T) {
+	a := New(Config{Registry: newReg()})
+	rec := &recordingCache{}
+	a.mediaCache = rec
+
+	a.cacheMedia("https://x/shared.png", []byte("bytes"), 1_400_000_000)
+	if rec.puts != 1 || rec.putURL != "https://x/shared.png" || string(rec.putData) != "bytes" {
+		t.Fatalf("fallback Put = {puts:%d url:%q data:%q}, want one Put of the bytes", rec.puts, rec.putURL, rec.putData)
+	}
+}

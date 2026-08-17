@@ -149,7 +149,7 @@ type App struct {
 	// browser's OnNavigate seam). A field so tests can substitute a synchronous
 	// variant. webRender is the page renderer it uses (go-webengine by default; a
 	// fake in tests).
-	webFetch  func(target string, width int)
+	webFetch  func(target string, width int, created int64)
 	webRender webrender.Renderer
 
 	// rcache caches final web-preview renders keyed by (url, width) so a page is
@@ -275,7 +275,7 @@ type App struct {
 	gifMu     sync.Mutex
 	activeGIF *previewGIF
 	now       func() time.Time
-	gifFetch  func(ctx context.Context, url string) ([]byte, error)
+	gifFetch  func(ctx context.Context, url string, created int64) ([]byte, error)
 
 	// moreMu guards the pagination state used by infinite scroll: cursors maps each
 	// subscription's [source.SubKey] to its next-page token (populated by
@@ -404,11 +404,13 @@ func New(cfg Config) *App {
 		go a.loadMediaThumbs(context.Background(), reqs)
 	}
 	a.now = time.Now
-	a.gifFetch = func(ctx context.Context, url string) ([]byte, error) { return a.fetchGIFBytes(ctx, url) }
+	a.gifFetch = func(ctx context.Context, url string, created int64) ([]byte, error) {
+		return a.fetchGIFBytes(ctx, url, created)
+	}
 	a.webRender = webrender.New()
 	a.rcache = newRenderCache(renderCacheMaxBytes)
-	a.webFetch = func(target string, width int) {
-		go a.loadPreviewPage(context.Background(), target, width)
+	a.webFetch = func(target string, width int, created int64) {
+		go a.loadPreviewPage(context.Background(), target, width, created)
 	}
 	a.prefetchSem = make(chan struct{}, prefetchWorkers)
 	a.prefetchFetch = func(url string, width int) {
@@ -431,7 +433,10 @@ func New(cfg Config) *App {
 	a.scene.Browser().OnNavigate = func(target string, width int) {
 		a.lastRenderWidth = width
 		a.scene.SyncBookmarkStar() // reflect whether the just-navigated page is bookmarked
-		a.webFetch(target, width)
+		// Capture the previewed post's creation time on this (UI) thread and thread
+		// it through the render, so a GIF the page turns out to be is cached with its
+		// mtime stamped to the post's date rather than the download moment.
+		a.webFetch(target, width, a.currentPostCreated())
 	}
 	// The Settings view shows the live render-cache size.
 	a.scene.SetRenderCacheStats(a.RenderCacheStats)

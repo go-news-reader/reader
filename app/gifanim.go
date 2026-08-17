@@ -57,11 +57,11 @@ func looksLikeGIFURL(target string) bool {
 // then reports true so the caller skips the engine render (and the render cache).
 // It returns false for a non-GIF URL, a fetch/decode failure, or a single-frame
 // GIF, so the caller falls back to the normal static render path.
-func (a *App) playAnimatedGIF(ctx context.Context, target string, width int) bool {
+func (a *App) playAnimatedGIF(ctx context.Context, target string, width int, created int64) bool {
 	if !looksLikeGIFURL(target) {
 		return false
 	}
-	data, err := a.gifFetch(ctx, target)
+	data, err := a.gifFetch(ctx, target, created)
 	if err != nil {
 		return false
 	}
@@ -139,8 +139,11 @@ func (a *App) clearActiveGIF() {
 
 // fetchGIFBytes GETs url through the shared browser-fingerprint media client
 // (so the Network log records it and fingerprinting hosts serve it) and returns
-// the raw body, bounded to maxGIFBytes. It is the default gifFetch seam.
-func (a *App) fetchGIFBytes(ctx context.Context, url string) ([]byte, error) {
+// the raw body, bounded to maxGIFBytes. created is the Unix-second creation time
+// of the post the GIF belongs to (0 when unknown): a freshly downloaded GIF is
+// cached with the file's mtime stamped to it, so the on-disk cache reflects post
+// chronology. It is the default gifFetch seam.
+func (a *App) fetchGIFBytes(ctx context.Context, url string, created int64) ([]byte, error) {
 	// Serve a previously-fetched GIF straight from the on-disk media cache: no
 	// network, so re-opening a GIF post is instant (and survives restarts). Only
 	// the download path pays the cost, once.
@@ -163,7 +166,7 @@ func (a *App) fetchGIFBytes(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.mediaCache.Put(url, data)
+	a.cacheMedia(url, data, created)
 	return data, nil
 }
 

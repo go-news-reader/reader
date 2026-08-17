@@ -163,23 +163,23 @@ func TestFetchThumbRejectsUnusableResponses(t *testing.T) {
 	ctx := context.Background()
 
 	// A URL that cannot even be turned into a request.
-	if img := a.fetchThumb(ctx, "://\x7f bad"); img != nil {
+	if img := a.fetchThumb(ctx, "://\x7f bad", 0); img != nil {
 		t.Fatal("a malformed URL should yield no thumbnail")
 	}
 	// A transport failure (nothing listening).
-	if img := a.fetchThumb(ctx, "http://127.0.0.1:1/x.png"); img != nil {
+	if img := a.fetchThumb(ctx, "http://127.0.0.1:1/x.png", 0); img != nil {
 		t.Fatal("an unreachable host should yield no thumbnail")
 	}
 	// A non-200 answer.
-	if img := a.fetchThumb(ctx, srv.URL+"/missing"); img != nil {
+	if img := a.fetchThumb(ctx, srv.URL+"/missing", 0); img != nil {
 		t.Fatal("a 404 should yield no thumbnail")
 	}
 	// A 200 that is not an image.
-	if img := a.fetchThumb(ctx, srv.URL+"/notimage"); img != nil {
+	if img := a.fetchThumb(ctx, srv.URL+"/notimage", 0); img != nil {
 		t.Fatal("non-image bytes should yield no thumbnail")
 	}
 	// The happy path, for contrast.
-	if img := a.fetchThumb(ctx, srv.URL+"/ok.png"); img == nil {
+	if img := a.fetchThumb(ctx, srv.URL+"/ok.png", 0); img == nil {
 		t.Fatal("a served PNG should decode")
 	}
 }
@@ -189,7 +189,7 @@ func TestFetchThumbRejectsUnusableResponses(t *testing.T) {
 func TestFetchThumbBodyReadError(t *testing.T) {
 	a := New(Config{Registry: newReg()})
 	a.mediaClient = &http.Client{Transport: brokenBodyRT{}}
-	if img := a.fetchThumb(context.Background(), "https://example.invalid/x.png"); img != nil {
+	if img := a.fetchThumb(context.Background(), "https://example.invalid/x.png", 0); img != nil {
 		t.Fatal("a body that fails to read should yield no thumbnail")
 	}
 }
@@ -207,7 +207,7 @@ func TestFetchThumbReDecodeError(t *testing.T) {
 	}
 	defer func() { decodeImage = orig }()
 
-	if img := a.fetchThumb(context.Background(), srv.URL+"/ok.png"); img != nil {
+	if img := a.fetchThumb(context.Background(), srv.URL+"/ok.png", 0); img != nil {
 		t.Fatal("a failed re-decode should yield no thumbnail")
 	}
 }
@@ -271,14 +271,14 @@ func TestFetchThumbCachesAndSkipsRedownload(t *testing.T) {
 	a.mediaClient = srv.Client()
 	url := srv.URL + "/photo.png"
 
-	if img := a.fetchThumb(context.Background(), url); img == nil {
+	if img := a.fetchThumb(context.Background(), url, 0); img == nil {
 		t.Fatal("first fetch returned no image")
 	}
 	if hits() != 1 {
 		t.Fatalf("after first fetch, server hits = %d, want 1", hits())
 	}
 	// Second fetch: served from the on-disk cache, no new request.
-	if img := a.fetchThumb(context.Background(), url); img == nil {
+	if img := a.fetchThumb(context.Background(), url, 0); img == nil {
 		t.Fatal("cached fetch returned no image")
 	}
 	if hits() != 1 {
@@ -293,17 +293,17 @@ func TestFetchThumbDownloadErrorsNotCached(t *testing.T) {
 	a := New(Config{Registry: newReg()})
 	a.mediaClient = srv.Client()
 
-	if img := a.fetchThumb(context.Background(), srv.URL+"/missing"); img != nil {
+	if img := a.fetchThumb(context.Background(), srv.URL+"/missing", 0); img != nil {
 		t.Fatal("404 should yield no image")
 	}
 	if _, ok := a.mediaCache.Get(srv.URL + "/missing"); ok {
 		t.Fatal("a failed fetch must not be cached")
 	}
-	if img := a.fetchThumb(context.Background(), srv.URL+"/notimage"); img != nil {
+	if img := a.fetchThumb(context.Background(), srv.URL+"/notimage", 0); img != nil {
 		t.Fatal("non-image should yield no image")
 	}
 	// A transport error (bad URL) also yields nil without caching.
-	if img := a.fetchThumb(context.Background(), "http://%zz"); img != nil {
+	if img := a.fetchThumb(context.Background(), "http://%zz", 0); img != nil {
 		t.Fatal("malformed URL should yield no image")
 	}
 }
@@ -346,7 +346,7 @@ func TestFetchThumbCachesOriginalMedia(t *testing.T) {
 		{srv.URL + "/pic.png", ".png", png},
 		{srv.URL + "/anim.gif", ".gif", anim},
 	} {
-		if img := a.fetchThumb(context.Background(), tc.url); img == nil {
+		if img := a.fetchThumb(context.Background(), tc.url, 0); img == nil {
 			t.Fatalf("%s: first fetch returned no thumbnail", tc.url)
 		}
 		matches, _ := filepath.Glob(filepath.Join(dir, mediacache.GlobPrefix(tc.url)+".*"))
@@ -367,7 +367,7 @@ func TestFetchThumbCachesOriginalMedia(t *testing.T) {
 	}
 	mu.Unlock()
 	for _, u := range []string{srv.URL + "/pic.png", srv.URL + "/anim.gif"} {
-		if img := a.fetchThumb(context.Background(), u); img == nil {
+		if img := a.fetchThumb(context.Background(), u, 0); img == nil {
 			t.Fatalf("%s: cached fetch returned no thumbnail", u)
 		}
 	}

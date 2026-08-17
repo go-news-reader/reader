@@ -18,7 +18,7 @@ func webPreviewApp(t *testing.T) *app.App {
 	t.Helper()
 	a := app.New(app.Config{Registry: source.NewRegistry(), Width: 1000, Height: 700})
 	a.Scene().SetScale(1)
-	a.SetWebFetchHook(func(string, int) {}) // navigation must not hit the network
+	a.SetWebFetchHook(func(string, int, int64) {}) // navigation must not hit the network
 	s := a.Scene()
 	s.SelectPreview(source.Item{ID: "w", Source: source.HackerNews, Title: "T", Link: "https://site/"})
 	page := image.NewRGBA(image.Rect(0, 0, 400, 1200))
