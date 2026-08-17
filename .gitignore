@@ -1,5 +1,13 @@
 /cover.out
+
+# Compiled binaries. `go build` in the repo root leaves one named after the
+# module or after whatever -o was passed; three of them were committed before
+# this line existed, at ~97 MB each. A pattern per name is not the answer --
+# the next one will have a new name -- so the binaries the build actually
+# produces are listed, and `git add -A` no longer sweeps them in.
 /reader
+/newsreader
+/reader-fixed
 /*.png
 .DS_Store
 
