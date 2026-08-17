@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/go-news-reader/reader/provider/usenet"
 	"github.com/go-news-reader/reader/source"
@@ -41,10 +42,18 @@ func TestDownloaderAsyncStoresThumb(t *testing.T) {
 	a := New(Config{Registry: newReg(&fakePrefetcher{jpeg: pngBytes(8, 8)})})
 	a.DeferSceneWrites()
 	a.dl.enqueue(usenet.ImageRequest{ID: "x", Parts: []usenet.ReconstructPart{{MessageID: "m"}}})
+	// Wait on a deadline, not on an iteration count. The download runs in its own
+	// goroutine, and a million spins of drainScene is not a duration: on a loaded
+	// machine (the full package suite, or CI) the loop can burn through all of
+	// them before that goroutine is ever scheduled, failing a test that is not
+	// broken. Yielding between polls lets the worker run, and a wall-clock
+	// deadline is what "it never arrived" actually means.
 	stored := false
-	for i := 0; i < 1_000_000 && !stored; i++ {
+	for deadline := time.Now().Add(10 * time.Second); !stored && time.Now().Before(deadline); {
 		a.drainScene()
-		stored = a.scene.HasThumb("x")
+		if stored = a.scene.HasThumb("x"); !stored {
+			time.Sleep(time.Millisecond)
+		}
 	}
 	if !stored {
 		t.Fatal("async prefetch did not store the thumbnail")
