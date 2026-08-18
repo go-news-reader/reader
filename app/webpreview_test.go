@@ -551,22 +551,22 @@ func TestBookmarkPersistence(t *testing.T) {
 	a := New(Config{Registry: newReg(), Store: store, Width: 900, Height: 600})
 	syncFetch(a)
 	a.SelectPreview(webItem("h1", "https://site/")) // Open → OnNavigate(SyncBookmarkStar)+fetch
-	if a.Scene().Browser().Bookmarked {
+	if a.Scene().Browser().Bookmarked().Get() {
 		t.Fatal("a freshly opened page should not be bookmarked")
 	}
 	// Toggle on via the widget's hook → persisted.
-	a.Scene().Browser().OnBookmarkToggle(true)
+	a.Scene().Browser().Bookmarked().Set(true)
 	saved, err := store.Load()
 	if err != nil || len(saved.Bookmarks) != 1 || saved.Bookmarks[0] != "https://site/" {
 		t.Fatalf("persist on: err=%v bookmarks=%v", err, saved.Bookmarks)
 	}
 	// Re-navigating (Reload) syncs the star to the bookmarked state.
 	a.Scene().Browser().Reload()
-	if !a.Scene().Browser().Bookmarked {
+	if !a.Scene().Browser().Bookmarked().Get() {
 		t.Fatal("SyncBookmarkStar after reload should reflect the bookmark")
 	}
 	// Toggle off → removed from the store.
-	a.Scene().Browser().OnBookmarkToggle(false)
+	a.Scene().Browser().Bookmarked().Set(false)
 	if saved2, _ := store.Load(); len(saved2.Bookmarks) != 0 {
 		t.Fatalf("persist off: %v", saved2.Bookmarks)
 	}
@@ -574,5 +574,27 @@ func TestBookmarkPersistence(t *testing.T) {
 	a2 := New(Config{Registry: newReg(), Width: 900, Height: 600})
 	syncFetch(a2)
 	a2.SelectPreview(webItem("x", "https://x/"))
-	a2.Scene().Browser().OnBookmarkToggle(true)
+	a2.Scene().Browser().Bookmarked().Set(true)
+}
+
+// TestBookmarkStarSyncDoesNotPersist checks that the programmatic store→star sync
+// (SyncBookmarkStar on navigation, which Sets the shared Observable) does NOT
+// persist — only a real user toggle does. The subscriber's guard (on == stored)
+// suppresses the sync-driven notification.
+func TestBookmarkStarSyncDoesNotPersist(t *testing.T) {
+	dir := t.TempDir()
+	store := testStore(t, dir+"/settings.json")
+	a := New(Config{Registry: newReg(), Store: store, Width: 900, Height: 600})
+	syncFetch(a)
+	a.SelectPreview(webItem("h1", "https://one/"))
+	a.Scene().Browser().Bookmarked().Set(true) // user bookmarks one/ → persisted
+	// Navigate to a non-bookmarked page: SyncBookmarkStar sets the star off,
+	// firing the subscriber with on == IsBookmarked(two/) == false → guard returns.
+	a.SelectPreview(webItem("h2", "https://two/"))
+	if a.Scene().Browser().Bookmarked().Get() {
+		t.Fatal("a non-bookmarked page should clear the star")
+	}
+	if saved, _ := store.Load(); len(saved.Bookmarks) != 1 || saved.Bookmarks[0] != "https://one/" {
+		t.Fatalf("the sync-off must not persist a removal: %v", saved)
+	}
 }

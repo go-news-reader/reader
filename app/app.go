@@ -440,11 +440,19 @@ func New(cfg Config) *App {
 	}
 	// The Settings view shows the live render-cache size.
 	a.scene.SetRenderCacheStats(a.RenderCacheStats)
-	// The address-bar star toggles the current page's bookmark + persists it.
-	a.scene.Browser().OnBookmarkToggle = func(on bool) {
-		a.scene.SetBookmarked(a.scene.Browser().CurrentURL(), on)
+	// The address-bar star toggles the current page's bookmark + persists it. The
+	// bookmark state is a shared mvvm.Observable now, so subscribe once (in the
+	// constructor) instead of assigning a callback. The guard skips the
+	// programmatic store→star sync (SyncBookmarkStar) so only a real user toggle
+	// (star diverging from the store) persists — matching the prior behaviour.
+	a.scene.Browser().Bookmarked().Subscribe(func(on bool) {
+		url := a.scene.Browser().CurrentURL()
+		if on == a.scene.IsBookmarked(url) {
+			return
+		}
+		a.scene.SetBookmarked(url, on)
 		a.persistSettings()
-	}
+	})
 	a.scene.SetBrowserSingleTab(set.SingleTab())              // apply the persisted tab-mode preference (default single-tab)
 	a.scene.SetBrowserChromeHidden(set.HideBrowserChrome)     // apply the persisted toolbar-visibility preference
 	a.scene.SetBrowserZoomKeys(set.ZoomInKey, set.ZoomOutKey) // apply the persisted browser zoom keybindings
