@@ -97,6 +97,11 @@ jobs:
           - { goos: darwin, goarch: arm64 }
           - { goos: windows, goarch: amd64 }
           - { goos: windows, goarch: arm64 }
+          # Android is a real target since go-widgets/window v0.44.0: Open dials the
+          # go-widgets/android host inside an APK, and falls through to X11/Wayland
+          # under Termux. arm64 is the ONLY Android arch Go links CGO-free, which is
+          # the whole premise of a CGO=0 build.
+          - { goos: android, goarch: arm64 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

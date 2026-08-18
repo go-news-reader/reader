@@ -9,7 +9,7 @@ require (
 	github.com/go-browserhttp/browserhttp v0.2.0
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-iconoir/iconoir v0.2.0
-	github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38
+	github.com/go-images/images v0.0.0-20260815210351-4a50ef5ab734
 	github.com/go-instagram/instagram v0.2.0
 	github.com/go-keyring/keyring v0.1.0
 	github.com/go-lemmy/lemmy v0.1.0
@@ -19,7 +19,7 @@ require (
 	github.com/go-newsgroups/nzb v0.1.0
 	github.com/go-newsgroups/par2 v0.1.0
 	github.com/go-newsgroups/yenc v0.1.0
-	github.com/go-opentype/fonts v0.7.0
+	github.com/go-opentype/fonts v0.8.0
 	github.com/go-reddit/reddit v0.9.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.3.0
@@ -27,7 +27,7 @@ require (
 	github.com/go-widgets/mvvm v0.8.0
 	github.com/go-widgets/painter v0.11.0
 	github.com/go-widgets/toolkit v0.203.0
-	github.com/go-widgets/window v0.41.0
+	github.com/go-widgets/window v0.44.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.83.0
@@ -53,10 +53,11 @@ require (
 	github.com/go-macos/keychain v0.1.0 // indirect
 	github.com/go-macos/objc v0.1.1 // indirect
 	github.com/go-mswin/win32 v0.1.0 // indirect
-	github.com/go-opentype/opentype v0.5.0 // indirect
+	github.com/go-opentype/opentype v0.6.0 // indirect
 	github.com/go-opentype/shape v0.5.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-typeset/bidi v0.3.0 // indirect
+	github.com/go-widgets/android v0.12.1 // indirect
 	github.com/go-widgets/data v0.1.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -70,6 +71,8 @@ require (
 	github.com/oklog/run v1.1.0 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/sergeymakinen/go-bmp v1.0.0 // indirect
+	github.com/sergeymakinen/go-ico v1.0.0 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	golang.org/x/crypto v0.54.0 // indirect

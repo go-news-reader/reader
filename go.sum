@@ -47,8 +47,8 @@ github.com/go-hackernews/hackernews v0.1.0 h1:4d9f4KmqfEnd8WTRyx2ee5jnA4JJz7QHZq
 github.com/go-hackernews/hackernews v0.1.0/go.mod h1:qqjIppBfii2cO163KCgdBX1RjlcEfp4MROYs4SZjay0=
 github.com/go-iconoir/iconoir v0.2.0 h1:2ANqG6gkvHMoCtpNgNhSeOsuGMnlWQ+Sl43EndujIC0=
 github.com/go-iconoir/iconoir v0.2.0/go.mod h1:BrOQ68YO5BMsF7y+/nht4shbgjVfh9CxBoQF35eNosw=
-github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38 h1:p+DjIujiwUvBiyD0oS9SUatf3pMKo0GpcA4p/Kyv7d8=
-github.com/go-images/images v0.0.0-20260811115337-bc5d586f8e38/go.mod h1:nWwQCf77xG1GhaSD3rvlp7FNjjDhz47vrztyeBvIerk=
+github.com/go-images/images v0.0.0-20260815210351-4a50ef5ab734 h1:nU+MGeyJzidGvCtx+HLZgHKG9GpUUomkQvB5nXLRWoc=
+github.com/go-images/images v0.0.0-20260815210351-4a50ef5ab734/go.mod h1:ObuOBKDEidGX0LqLKY/5nqj7JVN/hsCzHMAJd0TNc0k=
 github.com/go-instagram/instagram v0.2.0 h1:93vT55kKHYtLtNWXolNVo3CAMSaKH5qNF1ZmE+RFVsQ=
 github.com/go-instagram/instagram v0.2.0/go.mod h1:FNtFVnKzf/mUyFS3St/C2wrUeuR+1c2AmlMf/ICsnj8=
 github.com/go-keyring/keyring v0.1.0 h1:pMtGuDZqs3mTQGtwh5gZN6Lam/13O33YARCS6QSsSqY=
@@ -77,10 +77,10 @@ github.com/go-newsgroups/par2 v0.1.0 h1:XQq/7uoRyj/P7gIvxX4w924ZU3E7yRGidH6j3POd
 github.com/go-newsgroups/par2 v0.1.0/go.mod h1:mn7efd724iWYCx/s9jql+Z8m6cov4vn0s8luEFxOj18=
 github.com/go-newsgroups/yenc v0.1.0 h1:oS4d9BJBuQfznqgyHrsr5ZNFZ+s7/SkfUl7ALVo5ZIM=
 github.com/go-newsgroups/yenc v0.1.0/go.mod h1:+BWqb2iT8+aVnLKzayWJex6adUNI276vH7iWizcR3P4=
-github.com/go-opentype/fonts v0.7.0 h1:2PG7FEWcBHgFp+UFOKilP2qF9+D/12bPfL1T9+GsDf8=
-github.com/go-opentype/fonts v0.7.0/go.mod h1:C6yQL2apHItfEZ5hztpsHF0S5mlX/hklLlq/Z5fRG/g=
-github.com/go-opentype/opentype v0.5.0 h1:++VoqgbXgYACyTTNzUAivoxW9M3m2gxWMAn6bIY7DXg=
-github.com/go-opentype/opentype v0.5.0/go.mod h1:AOixevJf7XQaH7+WG+OMIOZEbYPXfMqklVk26Y6YTUU=
+github.com/go-opentype/fonts v0.8.0 h1:77i3VPIH90GbstzNb21mk+an4WvEOe2idC6W+J0n0fw=
+github.com/go-opentype/fonts v0.8.0/go.mod h1:C6yQL2apHItfEZ5hztpsHF0S5mlX/hklLlq/Z5fRG/g=
+github.com/go-opentype/opentype v0.6.0 h1:2t1Qs/Uo4M+f9gahV5QGihLTTeI/q4s0l7MIsbkd290=
+github.com/go-opentype/opentype v0.6.0/go.mod h1:AOixevJf7XQaH7+WG+OMIOZEbYPXfMqklVk26Y6YTUU=
 github.com/go-opentype/shape v0.5.0 h1:jHNaOMHNBdDj5EixOevlrrsi92svMxvVMKN7GYaPfxo=
 github.com/go-opentype/shape v0.5.0/go.mod h1:3ImRYNIj6zpwWQ/DV3BWhgMFfmzDITH6XpZw2auQHTo=
 github.com/go-reddit/reddit v0.9.0 h1:oO6GghKLEYnvFmqg8aApixD0CZOj2r2K0drUezrtPqk=
@@ -95,6 +95,8 @@ github.com/go-typeset/bidi v0.3.0 h1:4fjGjejvjE2LzLNzY4si8PkVO321NcsKIiANhWT3jF4
 github.com/go-typeset/bidi v0.3.0/go.mod h1:ct3cmYT8Qt1FGJQ+2QaakrUxqaP4ZysgdQQg2ym5+Xo=
 github.com/go-webengine/engine v0.3.11 h1:Xdlqv2Dmk9DvMIEt8M++fqAaFAXjvmKqjJMDw6FClV4=
 github.com/go-webengine/engine v0.3.11/go.mod h1:AsTkHIJS28Lj6jkDnXLgyN2X4oxNGWz5+bnh77jgTyo=
+github.com/go-widgets/android v0.12.1 h1:AEg7HglJ3YkVwnoLuQw2H4j4SUjugIaVmaHRvkS19z8=
+github.com/go-widgets/android v0.12.1/go.mod h1:MsEBpJyEUhmq4yKPXIMMf+BX21NWAPQW9lfU0deDR+g=
 github.com/go-widgets/data v0.1.0 h1:PB9EZtd3ASBeVx6XxgCaFr1YU8bgrmNkYULyyvyPkvU=
 github.com/go-widgets/data v0.1.0/go.mod h1:OUFAK+pXaIt6Hc7wE49iMNykmcXEWICZtycbDiqMLFc=
 github.com/go-widgets/mvvm v0.8.0 h1:DqyNiNNTdITkMOdAwGvWFuCd6xpTaDRS2S+LNxd8inA=
@@ -103,8 +105,8 @@ github.com/go-widgets/painter v0.11.0 h1:xsj4zTz8B43rOZnWrx7ZsaUBMgJyvgaE/Pq2Ffc
 github.com/go-widgets/painter v0.11.0/go.mod h1:IPRLqdUJuJX8sfuHeYLZCzjoLvA0ApbOlyIAVmguJDQ=
 github.com/go-widgets/toolkit v0.203.0 h1:HusfwKlT31YLC34mbLHR5klRTyx6MnKz6odf8YDjTdQ=
 github.com/go-widgets/toolkit v0.203.0/go.mod h1:CgKorv767ex8Jh4QNoQVUNIQZMBQDdpJCFtpgA5lJGY=
-github.com/go-widgets/window v0.41.0 h1:SUBXxzrq9u1RmqnY+kVUW8VaHX9vcRYDe6aOg3Rljc4=
-github.com/go-widgets/window v0.41.0/go.mod h1:YDFL54Q1UTWu3XBqaDvc5otSKQTPVMzVgCAc50ogsLk=
+github.com/go-widgets/window v0.44.0 h1:0tId+z1kxDO4DuNwk/noR6qjDdTTHMJZJL5f9dZyREE=
+github.com/go-widgets/window v0.44.0/go.mod h1:v+6OSvJHsmXJ1w8rIfybWTy5oX5LDKzOWijm8Dhhz74=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
 github.com/goccy/go-yaml v1.19.2/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7LkFRi1kA=
 github.com/godbus/dbus/v5 v5.2.2 h1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=
@@ -146,6 +148,10 @@ github.com/refraction-networking/utls v1.8.2 h1:j4Q1gJj0xngdeH+Ox/qND11aEfhpgoEv
 github.com/refraction-networking/utls v1.8.2/go.mod h1:jkSOEkLqn+S/jtpEHPOsVv/4V4EVnelwbMQl4vCWXAM=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
+github.com/sergeymakinen/go-bmp v1.0.0 h1:SdGTzp9WvCV0A1V0mBeaS7kQAwNLdVJbmHlqNWq0R+M=
+github.com/sergeymakinen/go-bmp v1.0.0/go.mod h1:/mxlAQZRLxSvJFNIEGGLBE/m40f3ZnUifpgVDlcUIEY=
+github.com/sergeymakinen/go-ico v1.0.0 h1:uL3khgvKkY6WfAetA+RqsguClBuu7HpvBB/nq/Jvr80=
+github.com/sergeymakinen/go-ico v1.0.0/go.mod h1:wQ47mTczswBO5F0NoDt7O0IXgnV4Xy3ojrroMQzyhUk=
 github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c h1:km8GpoQut05eY3GiYWEedbTT0qnSxrCjsVbb7yKY1KE=
 github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c/go.mod h1:cNQ3dwVJtS5Hmnjxy6AgTPd0Inb3pW05ftPSX7NZO7Q=
 github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef h1:Ch6Q+AZUxDBCVqdkI8FSpFyZDtCVBc2VmejdNrm5rRQ=
