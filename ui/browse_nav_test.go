@@ -68,13 +68,13 @@ func TestBrowseNavScrollsIntoView(t *testing.T) {
 	for range groups {
 		s.NavBrowse(1) // walk to the bottom
 	}
-	if s.browseTreeView.ScrollRow == 0 {
+	if s.browseTreeView.ScrollRow().Get() == 0 {
 		t.Fatal("navigating to the bottom should scroll the tree")
 	}
 	for range groups {
 		s.NavBrowse(-1) // walk back to the top
 	}
-	if s.browseTreeView.ScrollRow != 0 {
-		t.Fatalf("navigating to the top should scroll back to 0, got %d", s.browseTreeView.ScrollRow)
+	if s.browseTreeView.ScrollRow().Get() != 0 {
+		t.Fatalf("navigating to the top should scroll back to 0, got %d", s.browseTreeView.ScrollRow().Get())
 	}
 }

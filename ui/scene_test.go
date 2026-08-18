@@ -129,9 +129,10 @@ func TestSearchEditing(t *testing.T) {
 }
 
 // TestSearchEntryWidget proves the topbar search is a real toolkit.SearchEntry:
-// keystrokes route through the widget (its OnChange fires with the text) and the
-// binder-facing accessors expose it. The scene keeps rendering from the widget's
-// Text and InvalidateSearch bumps the damage sequence after a direct field write.
+// keystrokes route through the widget (its Text() Observable fires with the text)
+// and the binder-facing accessors expose it. The scene keeps rendering from the
+// widget's Text() and InvalidateSearch bumps the damage sequence after a direct
+// observable write.
 func TestSearchEntryWidget(t *testing.T) {
 	s := newScene()
 	entry := s.SearchEntry()
@@ -139,21 +140,22 @@ func TestSearchEntryWidget(t *testing.T) {
 		t.Fatal("SearchEntry() is nil")
 	}
 	var last string
-	entry.OnChange = func(v string) { last = v } // stand-in for the mvvm binder
+	// Subscribe the widget's Text() Observable as a stand-in for the mvvm binder.
+	entry.Text().Subscribe(func(v string) { last = v })
 
 	s.FocusSearch(true)
 	s.TypeRune('h')
 	s.TypeRune('i')
-	if entry.Text != "hi" || last != "hi" {
-		t.Fatalf("widget text=%q OnChange=%q", entry.Text, last)
+	if entry.Text().Get() != "hi" || last != "hi" {
+		t.Fatalf("widget text=%q sub=%q", entry.Text().Get(), last)
 	}
 	s.Backspace()
-	if entry.Text != "h" || last != "h" {
-		t.Fatalf("after bs: text=%q OnChange=%q", entry.Text, last)
+	if entry.Text().Get() != "h" || last != "h" {
+		t.Fatalf("after bs: text=%q sub=%q", entry.Text().Get(), last)
 	}
-	// A direct field write (what mvvm.BindField does on a vm.Search change) plus
-	// InvalidateSearch repaints without going through SetSearch.
-	entry.Text = "zzz"
+	// A direct observable write (what the mvvm binder does on a vm.Search change)
+	// plus InvalidateSearch repaints without going through SetSearch.
+	entry.Text().Set("zzz")
 	before := s.Rev()
 	s.InvalidateSearch()
 	if s.Rev() <= before {

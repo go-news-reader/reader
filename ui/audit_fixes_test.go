@@ -25,7 +25,7 @@ func TestBrowseHitTestClampsChrome(t *testing.T) {
 	for i := 0; i < 12; i++ { // scroll so rows leave the viewport top AND bottom
 		s.Scroll(60)
 	}
-	if s.browseTreeView.ScrollRow <= 0 {
+	if s.browseTreeView.ScrollRow().Get() <= 0 {
 		t.Fatal("expected the tree to have scrolled")
 	}
 	if s.browseTreeTop <= s.m.topbarH {
@@ -235,10 +235,10 @@ func TestSidebarOverflowScrollAndClip(t *testing.T) {
 	// From a fresh (top) state, a wheel with the pointer over the sidebar scrolls
 	// the sub list (the TreeView's top-row index), not the feed.
 	s.MouseMove(10, 150)
-	before := s.sideTree.ScrollRow
+	before := s.sideTree.ScrollRow().Get()
 	s.Scroll(120)
-	if s.sideTree.ScrollRow <= before {
-		t.Fatalf("sidebar did not scroll: %d -> %d", before, s.sideTree.ScrollRow)
+	if s.sideTree.ScrollRow().Get() <= before {
+		t.Fatalf("sidebar did not scroll: %d -> %d", before, s.sideTree.ScrollRow().Get())
 	}
 	// Clicking inside the pinned footer resolves to a pinned entry, never a
 	// scrolled sub row bleeding into it.
@@ -255,10 +255,10 @@ func TestSidebarOverflowScrollAndClip(t *testing.T) {
 	s.Draw(buf)
 	// An over-scroll is clamped back to the maximum by the TreeView.
 	s.sideTree.ScrollTo(1_000_000)
-	max := s.sideTree.ScrollRow
+	max := s.sideTree.ScrollRow().Get()
 	s.Scroll(120) // a further wheel down cannot advance past the clamped maximum
-	if s.sideTree.ScrollRow != max {
-		t.Fatalf("over-scroll not clamped: %d != %d", s.sideTree.ScrollRow, max)
+	if s.sideTree.ScrollRow().Get() != max {
+		t.Fatalf("over-scroll not clamped: %d != %d", s.sideTree.ScrollRow().Get(), max)
 	}
 	// At a high zoom on a minimum-height window the pinned footer's top falls above
 	// the sub-list top, so the band is negative before the guard clamps it to 0 —

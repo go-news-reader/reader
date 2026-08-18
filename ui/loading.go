@@ -39,7 +39,8 @@ func (s *Scene) spinnerPhase() float64 {
 // frame, bounded to r. Shared by the empty-feed placeholder, the strip and the
 // sidebar pending marker so every indicator spins in lock-step.
 func (s *Scene) spinnerAt(r toolkit.Rect, style toolkit.SpinnerStyle) *toolkit.Spinner {
-	sp := &toolkit.Spinner{Active: true, Phase: s.spinnerPhase(), Style: style}
+	sp := &toolkit.Spinner{Phase: s.spinnerPhase(), Style: style}
+	sp.Active().Set(true)
 	sp.SetBounds(r)
 	return sp
 }

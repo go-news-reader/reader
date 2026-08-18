@@ -126,7 +126,7 @@ func TestBrowseBackspace(t *testing.T) {
 		s.TypeRune(r)
 	}
 	s.Backspace()
-	if got := s.BrowseEntry().Text; got != "ab" {
+	if got := s.BrowseEntry().Text().Get(); got != "ab" {
 		t.Fatalf("filter text = %q, want ab", got)
 	}
 }
@@ -198,18 +198,18 @@ func TestBrowseScrollClamps(t *testing.T) {
 	s.SetBrowseGroups(names)
 	s.OpenBrowse()
 	s.Scroll(100000) // clamp to the bottom
-	bottom := s.browseTreeView.ScrollRow
+	bottom := s.browseTreeView.ScrollRow().Get()
 	if bottom <= 0 {
 		t.Fatalf("scroll did not advance: %d", bottom)
 	}
 	s.Scroll(-600) // scroll partway up so later rows fall below the viewport
 	renderPNG(t, s, "browse-scrolled")
-	if s.browseTreeView.ScrollRow == 0 {
+	if s.browseTreeView.ScrollRow().Get() == 0 {
 		t.Fatal("partial scroll should be non-zero")
 	}
 	s.Scroll(-100000) // clamp back to the top
-	if s.browseTreeView.ScrollRow != 0 {
-		t.Fatalf("scroll not clamped to 0: %d", s.browseTreeView.ScrollRow)
+	if s.browseTreeView.ScrollRow().Get() != 0 {
+		t.Fatalf("scroll not clamped to 0: %d", s.browseTreeView.ScrollRow().Get())
 	}
 }
 
@@ -361,11 +361,11 @@ func TestBrowseInvalidateAndClose(t *testing.T) {
 	s.SetBrowseGroups(names)
 	s.OpenBrowse()
 	s.Scroll(100000)
-	if s.browseTreeView.ScrollRow == 0 {
+	if s.browseTreeView.ScrollRow().Get() == 0 {
 		t.Fatal("expected the tree to have scrolled")
 	}
 	s.InvalidateBrowse()
-	if s.browseTreeView.ScrollRow != 0 {
+	if s.browseTreeView.ScrollRow().Get() != 0 {
 		t.Fatal("InvalidateBrowse should reset scroll")
 	}
 	s.CloseBrowse()
@@ -403,7 +403,7 @@ func TestBrowseGeometryEdges(t *testing.T) {
 	s.SetBrowseGroups(g)
 	s.OpenBrowse()
 	s.layoutBrowse()
-	s.browseTreeView.ScrollRow = 20
+	s.browseTreeView.ScrollRow().Set(20)
 	s.layoutBrowse()
 	if _, ok := s.browseRowScreenY(0); ok {
 		t.Fatal("row 0 should be scrolled above the window")

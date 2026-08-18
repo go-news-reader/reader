@@ -133,7 +133,7 @@ func (s *Scene) InvalidateBrowse() { s.resetBrowseScroll(); s.browseSel = 0; s.t
 // so it tolerates being called before the first layout).
 func (s *Scene) resetBrowseScroll() {
 	if s.browseTreeView != nil {
-		s.browseTreeView.ScrollRow = 0
+		s.browseTreeView.ScrollRow().Set(0)
 	}
 }
 
@@ -182,11 +182,12 @@ func (s *Scene) NavBrowse(dir int) {
 	// row visible, then re-clamp + re-sync through a layout.
 	tv := s.browseTreeView
 	wr := s.browseWindowRows()
+	sr := tv.ScrollRow()
 	switch {
-	case s.browseSel < tv.ScrollRow:
-		tv.ScrollRow = s.browseSel
-	case wr > 0 && s.browseSel >= tv.ScrollRow+wr:
-		tv.ScrollRow = s.browseSel - wr + 1
+	case s.browseSel < sr.Get():
+		sr.Set(s.browseSel)
+	case wr > 0 && s.browseSel >= sr.Get()+wr:
+		sr.Set(s.browseSel - wr + 1)
 	}
 	s.layoutBrowse()
 	s.touch()
@@ -282,7 +283,7 @@ func (s *Scene) ensureBrowseView() {
 		s.browseTreeRev = s.browseGroupsRev
 		s.browseView = nil
 	}
-	filter := strings.TrimSpace(s.browseEntry.Text)
+	filter := strings.TrimSpace(s.browseEntry.Text().Get())
 	key := browseViewKey{rev: s.browseGroupsRev, filter: filter}
 	if s.browseView != nil && s.browseViewKey == key {
 		return
@@ -351,9 +352,9 @@ func (s *Scene) buildBrowseTree() {
 		}
 	}
 	s.browseTreeView.Root = root
-	s.browseTreeView.Selected = nil
+	s.browseTreeView.Selected().Set(nil)
 	if s.browseSel >= 0 && s.browseSel < len(s.browseRows) {
-		s.browseTreeView.Selected = s.browseRows[s.browseSel].tnode
+		s.browseTreeView.Selected().Set(s.browseRows[s.browseSel].tnode)
 	}
 }
 
@@ -381,13 +382,14 @@ func (s *Scene) browseRightEdge() int {
 func (s *Scene) browseRowScreenY(i int) (int, bool) {
 	tv := s.browseTreeView
 	wr := s.browseWindowRows()
-	if i < tv.ScrollRow {
+	sr := tv.ScrollRow().Get()
+	if i < sr {
 		return 0, false
 	}
-	if wr > 0 && i >= tv.ScrollRow+wr {
+	if wr > 0 && i >= sr+wr {
 		return 0, false
 	}
-	return s.browseTreeTop + (i-tv.ScrollRow)*s.m.sideItemH, true
+	return s.browseTreeTop + (i-sr)*s.m.sideItemH, true
 }
 
 // browseSubscribeRect is the right-aligned Subscribe affordance for visible tree
@@ -447,7 +449,7 @@ func (s *Scene) layoutBrowse() {
 		treeH = 0
 	}
 	s.browseTreeView.SetBounds(toolkit.Rect{X: 0, Y: s.browseTreeTop, W: s.W, H: treeH})
-	s.browseTreeView.ScrollTo(s.browseTreeView.ScrollRow)
+	s.browseTreeView.ScrollTo(s.browseTreeView.ScrollRow().Get())
 }
 
 // drawBrowse paints the newsgroup browser: a Backdrop ground, the scrolling

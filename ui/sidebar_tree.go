@@ -76,7 +76,7 @@ func (s *Scene) buildSideTree() {
 	// overridden below when a real subscription is the active filter.
 	allNode := &toolkit.TreeNode{Label: "All Sources", Data: sideNode{Kind: sideAll}}
 	root.Children = append(root.Children, allNode)
-	s.sideTree.Selected = allNode
+	s.sideTree.Selected().Set(allNode)
 
 	// Index the active profile's subscriptions by their stable key so a folder can
 	// claim the ones it lists that are actually present in this profile.
@@ -163,7 +163,7 @@ func (s *Scene) sidebarA11yNodes() []A11yNode {
 	out := []A11yNode{node(toolkit.RoleList, "Sources", strconv.Itoa(len(s.Subs))+" subscriptions", toolkit.Rect{})}
 	rows := s.flattenSide()
 	for i, n := range rows {
-		r := toolkit.Rect{X: 0, Y: s.sideBandTop + (i-s.sideTree.ScrollRow)*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
+		r := toolkit.Rect{X: 0, Y: s.sideBandTop + (i-s.sideTree.ScrollRow().Get())*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
 		name, value := "", ""
 		switch d := sideData(n); d.Kind {
 		case sideAll:
@@ -195,7 +195,7 @@ func (s *Scene) sidebarA11yNodes() []A11yNode {
 func (s *Scene) sideSubNode(i int) *toolkit.TreeNode {
 	n := &toolkit.TreeNode{Data: sideNode{Kind: sideSub, Sub: i}}
 	if s.Active == i {
-		s.sideTree.Selected = n
+		s.sideTree.Selected().Set(n)
 	}
 	return n
 }

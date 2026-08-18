@@ -145,12 +145,12 @@ func TestSidebarSelectedNode(t *testing.T) {
 	s := foldersScene(t)
 	s.SetActive(AllFilter)
 	s.layout()
-	if sel := s.sideTree.Selected; sel != s.sideTree.Root.Children[0] || sideData(sel).Kind != sideAll {
+	if sel := s.sideTree.Selected().Get(); sel != s.sideTree.Root.Children[0] || sideData(sel).Kind != sideAll {
 		t.Fatal("AllFilter should select the All Sources child, not the hidden root")
 	}
 	s.SetActive(0) // the golang sub, which lives inside the Langs folder
 	s.layout()
-	if sd := sideData(s.sideTree.Selected); sd.Kind != sideSub || sd.Sub != 0 {
+	if sd := sideData(s.sideTree.Selected().Get()); sd.Kind != sideSub || sd.Sub != 0 {
 		t.Fatalf("Active=0 selected %+v, want sub 0", sd)
 	}
 }
@@ -186,13 +186,13 @@ func TestSidebarWheelScroll(t *testing.T) {
 	}
 	s.MouseMove(10, 150)
 	s.Scroll(200) // down
-	if s.sideTree.ScrollRow == 0 {
+	if s.sideTree.ScrollRow().Get() == 0 {
 		t.Fatal("wheel down did not scroll the tree")
 	}
-	down := s.sideTree.ScrollRow
+	down := s.sideTree.ScrollRow().Get()
 	s.Scroll(-200) // up
-	if s.sideTree.ScrollRow >= down {
-		t.Fatalf("wheel up did not scroll back: %d !< %d", s.sideTree.ScrollRow, down)
+	if s.sideTree.ScrollRow().Get() >= down {
+		t.Fatalf("wheel up did not scroll back: %d !< %d", s.sideTree.ScrollRow().Get(), down)
 	}
 }
 

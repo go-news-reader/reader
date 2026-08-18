@@ -68,10 +68,10 @@ func (s *Scene) currentArticle() (source.Item, bool) {
 func (s *Scene) Copy() bool {
 	// A focused topbar search field copies its query (with a select-all
 	// highlight), so Cmd/Ctrl+C works there like any text field.
-	if s.searchFocused && s.searchEntry.Text != "" {
+	if s.searchFocused && s.searchEntry.Text().Get() != "" {
 		s.searchCopied = true
 		s.touch()
-		return s.copyToClipboard(s.searchEntry.Text)
+		return s.copyToClipboard(s.searchEntry.Text().Get())
 	}
 	if s.webPreviewItem() && s.browser.AddressFocused() {
 		if _, ok := s.browser.CopyAddress(); ok {
