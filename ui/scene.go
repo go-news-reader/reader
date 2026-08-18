@@ -674,7 +674,7 @@ func (s *Scene) BookmarkedURLs() []string {
 // SyncBookmarkStar sets the address-bar star to reflect whether the browser's
 // current page is bookmarked (called after each navigation).
 func (s *Scene) SyncBookmarkStar() {
-	s.browser.Bookmarked = s.IsBookmarked(s.browser.CurrentURL())
+	s.browser.Bookmarked().Set(s.IsBookmarked(s.browser.CurrentURL()))
 }
 
 // SetBrowserSingleTab selects the embedded browser's tab mode: single-tab reuses

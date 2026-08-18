@@ -552,7 +552,7 @@ func TestSceneBookmarkModelAndDraw(t *testing.T) {
 	deliverPage(s, "https://ex/page", "P", 400, 900)
 	s.SetBookmarks([]string{"https://ex/page"})
 	s.SyncBookmarkStar()
-	if !s.Browser().Bookmarked {
+	if !s.Browser().Bookmarked().Get() {
 		t.Fatal("SyncBookmarkStar should mark the bookmarked page")
 	}
 	buf := make([]byte, s.W*s.H*4)
@@ -560,7 +560,7 @@ func TestSceneBookmarkModelAndDraw(t *testing.T) {
 	// Non-https page (lock-slash) + not bookmarked (plain star).
 	deliverPage(s, "http://insecure/", "I", 400, 900)
 	s.SyncBookmarkStar()
-	if s.Browser().Bookmarked {
+	if s.Browser().Bookmarked().Get() {
 		t.Fatal("http page is not bookmarked → star off")
 	}
 	s.Draw(buf) // LeadingIcon http→lock-slash, BookmarkIcon off
