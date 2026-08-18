@@ -1122,10 +1122,10 @@ func (s *Scene) clampSize() {
 }
 
 // Search returns the current filter text (the search widget's text).
-func (s *Scene) Search() string { return s.searchEntry.Text }
+func (s *Scene) Search() string { return s.searchEntry.Text().Get() }
 
 // SetSearch replaces the filter text on the search widget.
-func (s *Scene) SetSearch(v string) { s.searchEntry.Text = v; s.touch() }
+func (s *Scene) SetSearch(v string) { s.searchEntry.Text().Set(v); s.touch() }
 
 // SearchEntry exposes the topbar's search widget so the app can two-way bind
 // vm.Search to it (mvvm.BindField(&entry.Text, &entry.OnChange)).
@@ -1219,7 +1219,7 @@ func (s *Scene) Backspace() {
 		return
 	}
 	if s.mode == ModeBrowse {
-		if s.browseFocused && s.browseEntry.Text != "" {
+		if s.browseFocused && s.browseEntry.Text().Get() != "" {
 			s.browseEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
 			s.resetBrowseScroll()
 			s.touch()
@@ -1238,7 +1238,7 @@ func (s *Scene) Backspace() {
 		s.touch()
 		return
 	}
-	if s.searchFocused && s.searchEntry.Text != "" {
+	if s.searchFocused && s.searchEntry.Text().Get() != "" {
 		s.searchCopied = false // an edit dismisses the copied-highlight
 		s.searchEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
 		s.touch()
@@ -1454,7 +1454,7 @@ func clampScroll(v, max int) int {
 // filtered returns the items matching the active subscription filter and the
 // search text (case-insensitive substring of the title).
 func (s *Scene) filtered() []source.Item {
-	q := strings.ToLower(strings.TrimSpace(s.searchEntry.Text))
+	q := strings.ToLower(strings.TrimSpace(s.searchEntry.Text().Get()))
 	var sub *Subscription
 	if s.Active >= 0 && s.Active < len(s.Subs) {
 		sub = &s.Subs[s.Active]

@@ -72,8 +72,8 @@ func TestVMSearchTwoWayBinding(t *testing.T) {
 	// ViewModel -> widget field, with a repaint (the topbar sprite keys on text).
 	rev := s.Rev()
 	vm.Search.Set("golang")
-	if s.SearchEntry().Text != "golang" || s.Search() != "golang" {
-		t.Fatalf("vm->widget: entry=%q search=%q", s.SearchEntry().Text, s.Search())
+	if s.SearchEntry().Text().Get() != "golang" || s.Search() != "golang" {
+		t.Fatalf("vm->widget: entry=%q search=%q", s.SearchEntry().Text().Get(), s.Search())
 	}
 	if s.Rev() <= rev {
 		t.Fatal("vm.Search change did not repaint the scene")
@@ -83,8 +83,8 @@ func TestVMSearchTwoWayBinding(t *testing.T) {
 	// OnEvent, whose OnChange (composed by BindField) sets vm.Search — no loop.
 	vm.FocusSearch(true)
 	s.TypeRune('!')
-	if vm.Search.Get() != "golang!" || s.SearchEntry().Text != "golang!" {
-		t.Fatalf("widget->vm: vm=%q entry=%q", vm.Search.Get(), s.SearchEntry().Text)
+	if vm.Search.Get() != "golang!" || s.SearchEntry().Text().Get() != "golang!" {
+		t.Fatalf("widget->vm: vm=%q entry=%q", vm.Search.Get(), s.SearchEntry().Text().Get())
 	}
 }
 

@@ -106,10 +106,10 @@ func (ss *searchState) typeRune(s *Scene, r rune) {
 func (ss *searchState) backspace(s *Scene) {
 	ss.ensureWidgets()
 	switch {
-	case ss.queryFocus && ss.queryEntry.Text != "":
+	case ss.queryFocus && ss.queryEntry.Text().Get() != "":
 		ss.queryEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
 		s.touch()
-	case ss.regexFocus && ss.regexEntry.Text != "":
+	case ss.regexFocus && ss.regexEntry.Text().Get() != "":
 		ss.regexEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Backspace"})
 		ss.scroll.offset = 0
 		s.touch()
@@ -147,13 +147,13 @@ func (s *Scene) SearchTabPosts() bool { return s.search.tab == searchTabPosts }
 // SearchQuery returns the trimmed query text.
 func (s *Scene) SearchQuery() string {
 	s.search.ensureWidgets()
-	return strings.TrimSpace(s.search.queryEntry.Text)
+	return strings.TrimSpace(s.search.queryEntry.Text().Get())
 }
 
 // SearchRegex returns the trimmed subreddit-results regexp filter text.
 func (s *Scene) SearchRegex() string {
 	s.search.ensureWidgets()
-	return strings.TrimSpace(s.search.regexEntry.Text)
+	return strings.TrimSpace(s.search.regexEntry.Text().Get())
 }
 
 // FocusSearchQuery gives (or removes) keyboard focus to the query field. Focusing
@@ -246,7 +246,7 @@ func (ss *searchState) filteredSubResults() []source.SubredditResult {
 	ss.filterMsg = ""
 	filter := ""
 	if ss.regexEntry != nil {
-		filter = strings.TrimSpace(ss.regexEntry.Text)
+		filter = strings.TrimSpace(ss.regexEntry.Text().Get())
 	}
 	if filter == "" {
 		return ss.subResults
@@ -430,7 +430,7 @@ func (s *Scene) drawSearchControls(p *painter.PixelPainter, muteS toolkit.RGBA) 
 	switch ss.tab {
 	case searchTabSubreddits:
 		drawEntry(ss.regexEntry, ss.regexR, ss.regexFocus)
-		if ss.regexEntry.Text == "" && !ss.regexFocus {
+		if ss.regexEntry.Text().Get() == "" && !ss.regexFocus {
 			// A faint hint of the field's purpose when empty and unfocused, as a Label.
 			hint := toolkit.NewLabel("regexp filter")
 			hint.Font, hint.Ink = m.meta.font, muteS

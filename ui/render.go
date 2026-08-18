@@ -311,7 +311,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	if s.PendingCount() > 0 {
 		anim = s.animFrame
 	}
-	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim, sideScroll: s.sideTree.ScrollRow, fold: s.foldRev}
+	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim, sideScroll: s.sideTree.ScrollRow().Get(), fold: s.foldRev}
 	if s.sidebarSpr != nil && s.sidebarKey == k {
 		return s.sidebarSpr
 	}
@@ -384,7 +384,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	m := s.m
 	th := s.theme
-	k := topbarKey{w: s.W, sidebarW: m.sidebarW, scale: s.Scale, theme: th, search: s.searchEntry.Text, focused: s.searchFocused, copied: s.searchCopied}
+	k := topbarKey{w: s.W, sidebarW: m.sidebarW, scale: s.Scale, theme: th, search: s.searchEntry.Text().Get(), focused: s.searchFocused, copied: s.searchCopied}
 	if s.topbarSpr != nil && s.topbarKey == k {
 		return s.topbarSpr
 	}
@@ -421,13 +421,13 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	// own background, so the highlight must go on top — a translucent accent lets
 	// the glyphs show through (a real selection look). The text origin mirrors
 	// SearchEntry.Draw exactly (PadX + the icon slot) so it lines up.
-	if s.searchCopied && s.searchEntry.Text != "" {
+	if s.searchCopied && s.searchEntry.Text().Get() != "" {
 		f := se.Font
 		tx := s.searchR.X + toolkit.SearchEntryPadX + toolkit.SearchEntryIconW
 		hl := th.Accent
 		hl.A = 0x55
 		over := &toolkit.Backdrop{Fill: hl}
-		over.SetBounds(toolkit.Rect{X: tx, Y: s.searchR.Y + (s.searchR.H-f.Height())/2, W: f.Measure(s.searchEntry.Text), H: f.Height()})
+		over.SetBounds(toolkit.Rect{X: tx, Y: s.searchR.Y + (s.searchR.H-f.Height())/2, W: f.Measure(s.searchEntry.Text().Get()), H: f.Height()})
 		over.Draw(p, th)
 	}
 	// Refresh button at the right, drawn as the Iconoir "refresh-double" glyph at

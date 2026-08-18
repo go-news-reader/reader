@@ -572,7 +572,7 @@ func (s *Scene) syncFeed() {
 	// idle re-layout (every Draw / HitTest calls layout) would re-diff and
 	// re-measure the whole feed for nothing. The width is part of the signature so
 	// a resize re-measures the variable-height cards.
-	sig := feedSig{width: cardW, active: s.Active, search: s.searchEntry.Text, itemsRev: s.subsRev, loading: s.loading}
+	sig := feedSig{width: cardW, active: s.Active, search: s.searchEntry.Text().Get(), itemsRev: s.subsRev, loading: s.loading}
 	if !s.feed.synced || s.feed.sig != sig {
 		if cardW != s.feed.width {
 			s.feed.heights = nil // width changed → measured heights are stale
