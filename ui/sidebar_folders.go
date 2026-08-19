@@ -153,7 +153,7 @@ func (s *Scene) BeginFolderRename(name string) {
 		return
 	}
 	s.renamingFolder = name
-	s.renameFolderEntry = &toolkit.Entry{Text: name, Cursor: len([]rune(name))}
+	s.renameFolderEntry = toolkit.NewEntry(name)
 	s.renameFolderEntry.SetFocused(true)
 	s.foldRev++
 	s.touch()
@@ -167,7 +167,7 @@ func (s *Scene) CommitFolderRename() {
 		return
 	}
 	old := s.renamingFolder
-	buf := strings.TrimSpace(s.renameFolderEntry.Text)
+	buf := strings.TrimSpace(s.renameFolderEntry.Text().Get())
 	if buf != "" && buf != old {
 		s.RenameFolder(old, buf)
 	}
