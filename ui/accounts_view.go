@@ -452,10 +452,10 @@ func (s *Scene) drawAccounts(buf []byte) {
 			w.Draw(p, th)
 			continue
 		}
-		w := &toolkit.Entry{Text: s.accFieldValue(s.accSel, f.key), Placeholder: "…"}
+		w := toolkit.NewEntry(s.accFieldValue(s.accSel, f.key))
+		w.Placeholder = "…"
 		w.SetFocused(f.focused)
 		w.Font = pillFont
-		w.Cursor = len([]rune(w.Text))
 		if f.secret {
 			w.Mask = '•' // the toolkit masks the display; Text keeps the real secret
 		}
