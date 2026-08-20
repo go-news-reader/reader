@@ -378,7 +378,8 @@ func (s *Scene) drawSearch(buf []byte) {
 	band.Draw(p, th)
 
 	invTheme := invertedTopbarTheme(th, onAccent)
-	back := &toolkit.Button{Label: "‹ Back", Style: toolkit.ButtonProminent}
+	back := toolkit.NewButton("‹ Back", nil)
+	back.Style = toolkit.ButtonProminent
 	back.Font = m.tab.font
 	back.SetBounds(ss.backR)
 	back.Draw(p, invTheme)
@@ -390,7 +391,8 @@ func (s *Scene) drawSearch(buf []byte) {
 	titleLbl.SetBounds(toolkit.Rect{X: tx, Y: (m.topbarH - m.title.height) / 2, W: s.W, H: m.title.height})
 	titleLbl.Draw(p, th)
 
-	run := &toolkit.Button{Label: "Search", Style: toolkit.ButtonProminent}
+	run := toolkit.NewButton("Search", nil)
+	run.Style = toolkit.ButtonProminent
 	run.Font = m.tab.font
 	run.SetBounds(ss.runR)
 	run.Draw(p, invTheme)
@@ -418,7 +420,8 @@ func (s *Scene) drawSearchControls(p *painter.PixelPainter, muteS toolkit.RGBA) 
 	// Tab pills: the active one is an accent-filled Button (Selected), the other a
 	// default outlined Button.
 	drawTab := func(r toolkit.Rect, label string, active bool) {
-		b := &toolkit.Button{Label: label, Selected: active}
+		b := toolkit.NewButton(label, nil)
+		b.Selected().Set(active)
 		b.Font = m.tab.font
 		b.SetBounds(r)
 		b.Draw(p, th)
@@ -440,7 +443,8 @@ func (s *Scene) drawSearchControls(p *painter.PixelPainter, muteS toolkit.RGBA) 
 	case searchTabPosts:
 		if ss.saveR.W > 0 {
 			// The "Save this search" affordance is an accent-filled Button (Selected).
-			b := &toolkit.Button{Label: "Save this search", Selected: true}
+			b := toolkit.NewButton("Save this search", nil)
+			b.Selected().Set(true)
 			b.Font = m.tab.font
 			b.SetBounds(ss.saveR)
 			b.Draw(p, th)
@@ -515,7 +519,8 @@ func (s *Scene) drawSubredditRow(p *painter.PixelPainter, sr source.SubredditRes
 	} else {
 		// The Subscribe affordance is an accent-filled Button (Selected), not a
 		// hand-drawn round-rect + text.
-		sub := &toolkit.Button{Label: "Subscribe", Selected: true}
+		sub := toolkit.NewButton("Subscribe", nil)
+		sub.Selected().Set(true)
 		sub.Font = m.tab.font
 		sub.SetBounds(btn)
 		sub.Draw(p, th)

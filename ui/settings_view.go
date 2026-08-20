@@ -519,7 +519,8 @@ func (s *Scene) drawSettings(buf []byte) {
 	// Pills are toolkit.Button (Selected = active choice, ButtonDanger = destructive).
 	pillFont := ttFont(true, rpxOf(s, 12))
 	for _, b := range s.sButtons {
-		w := &toolkit.Button{Label: b.label, Selected: b.active}
+		w := toolkit.NewButton(b.label, nil)
+		w.Selected().Set(b.active)
 		w.Font = pillFont
 		if b.danger {
 			w.Style = toolkit.ButtonDanger
@@ -571,7 +572,7 @@ func (s *Scene) drawSettings(buf []byte) {
 	title.Font, title.Ink = m.title.font, onAccent
 	title.SetBounds(toolkit.Rect{X: m.pad, Y: (m.topbarH - m.title.height) / 2, W: s.W, H: m.title.height})
 	title.Draw(p, th)
-	done := &toolkit.Button{Label: "Done"}
+	done := toolkit.NewButton("Done", nil)
 	done.Font = m.tab.font
 	done.SetBounds(s.sDoneR)
 	done.Draw(p, th)

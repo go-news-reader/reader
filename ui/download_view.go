@@ -136,7 +136,7 @@ func (s *Scene) drawDownloadPanel(p *painter.PixelPainter, img *image.RGBA) {
 
 	// Clear: a stock toolkit.Button at dlClearR (hit-tested unchanged via
 	// HitClearDownloads), replacing the FillRoundRect + StrokeRoundRect + glyph-blit.
-	clear := &toolkit.Button{Label: "Clear"}
+	clear := toolkit.NewButton("Clear", nil)
 	clear.Font = m.side.font
 	clear.SetBounds(s.dlClearR)
 	clear.Draw(p, th)

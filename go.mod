@@ -26,7 +26,7 @@ require (
 	github.com/go-webengine/engine v0.3.11
 	github.com/go-widgets/mvvm v0.8.0
 	github.com/go-widgets/painter v0.11.0
-	github.com/go-widgets/toolkit v0.210.0
+	github.com/go-widgets/toolkit v0.223.0
 	github.com/go-widgets/window v0.44.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
@@ -38,6 +38,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/breml/rootcerts v0.3.7 // indirect
+	github.com/coder/websocket v1.8.15 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/dop251/goja v0.0.0-20260723142020-b4aef50fa347 // indirect
@@ -45,7 +46,8 @@ require (
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
-	github.com/go-crdt/crdt v0.19.0 // indirect
+	github.com/go-crdt/collab v0.18.0 // indirect
+	github.com/go-crdt/crdt v0.22.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
@@ -55,6 +57,7 @@ require (
 	github.com/go-mswin/win32 v0.1.0 // indirect
 	github.com/go-opentype/opentype v0.6.0 // indirect
 	github.com/go-opentype/shape v0.5.0 // indirect
+	github.com/go-richdoc/richdoc v0.1.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-typeset/bidi v0.3.0 // indirect
 	github.com/go-widgets/android v0.12.1 // indirect
