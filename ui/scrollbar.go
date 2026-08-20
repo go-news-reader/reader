@@ -67,7 +67,8 @@ func (s *Scene) drawVScrollbar(p *painter.PixelPainter, area toolkit.Rect, gripX
 	w := s.scrollbarW()
 	inset := rpxOf(s, 2)
 	right := s.scrollbarRightX(area.X+area.W, gripX)
-	sb := &toolkit.Scrollbar{Total: total, Viewport: view, Offset: offset}
+	sb := &toolkit.Scrollbar{Total: total, Viewport: view}
+	sb.Offset().Set(offset)
 	sb.SetBounds(toolkit.Rect{X: right - w, Y: area.Y + inset, W: w, H: area.H - 2*inset})
 	sb.Draw(p, s.theme) // toolkit v0.55+ paints a clearly-visible muted-grey thumb
 }

@@ -38,7 +38,7 @@ func (s *Scene) OpenContextMenu(m *toolkit.ContextMenu, x, y int) {
 
 // ContextMenuActive reports whether a context menu is currently popped up, so the
 // input path can route events to it instead of the scene beneath.
-func (s *Scene) ContextMenuActive() bool { return s.ctxMenu != nil && s.ctxMenu.Open }
+func (s *Scene) ContextMenuActive() bool { return s.ctxMenu != nil && s.ctxMenu.Open().Get() }
 
 // ContextMenuEvent forwards one input event to the open context menu and drops
 // the menu once it has closed itself (an item fired, a click landed outside, or
@@ -49,7 +49,7 @@ func (s *Scene) ContextMenuEvent(ev toolkit.Event) {
 	}
 	s.ctxMenu.SetBounds(s.surfaceRect())
 	s.ctxMenu.OnEvent(ev)
-	if !s.ctxMenu.Open {
+	if !s.ctxMenu.Open().Get() {
 		s.ctxMenu = nil
 	}
 	s.touch()
