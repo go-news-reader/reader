@@ -481,7 +481,8 @@ func (s *Scene) drawBrowse(buf []byte) {
 	band.Draw(p, th)
 
 	invTheme := invertedTopbarTheme(th, onAccent)
-	back := &toolkit.Button{Label: "‹ Back", Style: toolkit.ButtonProminent}
+	back := toolkit.NewButton("‹ Back", nil)
+	back.Style = toolkit.ButtonProminent
 	back.Font = m.tab.font
 	back.SetBounds(s.browseBackR)
 	back.Draw(p, invTheme)

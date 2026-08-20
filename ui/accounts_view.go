@@ -434,7 +434,8 @@ func (s *Scene) drawAccounts(buf []byte) {
 	// Entry (with the toolkit's own secret Mask for the masked credentials).
 	pillFont := ttFont(true, rpxOf(s, 12))
 	for _, b := range s.accProvBtns {
-		w := &toolkit.Button{Label: b.label, Selected: b.active}
+		w := toolkit.NewButton(b.label, nil)
+		w.Selected().Set(b.active)
 		w.Font = pillFont
 		w.SetBounds(b.rect)
 		w.Draw(p, th)
@@ -446,7 +447,8 @@ func (s *Scene) drawAccounts(buf []byte) {
 			if on {
 				lbl = "On"
 			}
-			w := &toolkit.Button{Label: lbl, Selected: on}
+			w := toolkit.NewButton(lbl, nil)
+			w.Selected().Set(on)
 			w.Font = pillFont
 			w.SetBounds(f.rect)
 			w.Draw(p, th)
@@ -465,25 +467,25 @@ func (s *Scene) drawAccounts(buf []byte) {
 
 	// Reddit's "Sign in to Reddit in browser" + "Import session from Firefox" buttons.
 	if s.accSignInR.W > 0 {
-		w := &toolkit.Button{Label: redditSignInLabel}
+		w := toolkit.NewButton(redditSignInLabel, nil)
 		w.Font = pillFont
 		w.SetBounds(s.accSignInR)
 		w.Draw(p, th)
 	}
 	if s.accImportR.W > 0 {
-		w := &toolkit.Button{Label: redditImportLabel}
+		w := toolkit.NewButton(redditImportLabel, nil)
 		w.Font = pillFont
 		w.SetBounds(s.accImportR)
 		w.Draw(p, th)
 	}
 	if s.accImportSubsR.W > 0 {
-		w := &toolkit.Button{Label: redditImportSubsLabel}
+		w := toolkit.NewButton(redditImportSubsLabel, nil)
 		w.Font = pillFont
 		w.SetBounds(s.accImportSubsR)
 		w.Draw(p, th)
 	}
 	if s.accImportSessionR.W > 0 {
-		w := &toolkit.Button{Label: importSessionLabel}
+		w := toolkit.NewButton(importSessionLabel, nil)
 		w.Font = pillFont
 		w.SetBounds(s.accImportSessionR)
 		w.Draw(p, th)
@@ -498,7 +500,8 @@ func (s *Scene) drawAccounts(buf []byte) {
 	band.Draw(p, th)
 
 	invTheme := invertedTopbarTheme(th, onAccent)
-	back := &toolkit.Button{Label: "‹ Back", Style: toolkit.ButtonProminent}
+	back := toolkit.NewButton("‹ Back", nil)
+	back.Style = toolkit.ButtonProminent
 	back.Font = m.tab.font
 	back.SetBounds(s.accBackR)
 	back.Draw(p, invTheme)
@@ -511,7 +514,8 @@ func (s *Scene) drawAccounts(buf []byte) {
 	})
 	title.Draw(p, th)
 
-	done := &toolkit.Button{Label: "Done", Style: toolkit.ButtonProminent}
+	done := toolkit.NewButton("Done", nil)
+	done.Style = toolkit.ButtonProminent
 	done.Font = m.tab.font
 	done.SetBounds(s.accDoneR)
 	done.Draw(p, invTheme)
