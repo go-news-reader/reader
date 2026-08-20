@@ -26,7 +26,7 @@ require (
 	github.com/go-webengine/engine v0.3.11
 	github.com/go-widgets/mvvm v0.8.0
 	github.com/go-widgets/painter v0.11.0
-	github.com/go-widgets/toolkit v0.223.0
+	github.com/go-widgets/toolkit v0.224.0
 	github.com/go-widgets/window v0.44.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
@@ -47,7 +47,7 @@ require (
 	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-crdt/collab v0.18.0 // indirect
-	github.com/go-crdt/crdt v0.22.0 // indirect
+	github.com/go-crdt/crdt v0.25.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
