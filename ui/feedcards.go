@@ -455,7 +455,7 @@ func (s *Scene) feedGroupCard(g *itemGroup) *toolkit.GroupCard {
 		members[i] = memberLine(mem)
 	}
 
-	return &toolkit.GroupCard{
+	c := &toolkit.GroupCard{
 		Pill:        sourceLabel(source.Usenet),
 		PillColor:   pillFill,
 		PillInk:     onAccentFor(pillFill),
@@ -464,11 +464,9 @@ func (s *Scene) feedGroupCard(g *itemGroup) *toolkit.GroupCard {
 		StatusInk:   onAccentFor(statusFill),
 		Title:       g.Base,
 		Meta:        groupMeta(g),
-		Expanded:    s.GroupExpanded(g.Base),
 		Members:     members,
 		Actionable:  complete,
 		Action:      "Reconstruct",
-		Checked:     s.IsDownloadQueued(g.Base),
 		// Device-pixel faces (GroupCard renders these verbatim); the box metrics scale
 		// themselves through the pinned global scale, so passing rpxOf here is correct
 		// and does NOT double-scale (fonts and metrics are separate axes).
@@ -476,6 +474,9 @@ func (s *Scene) feedGroupCard(g *itemGroup) *toolkit.GroupCard {
 		MetaFont:  ttFont(false, rpxOf(s, 12)),
 		PillFont:  ttFont(true, rpxOf(s, 10)),
 	}
+	c.Expanded().Set(s.GroupExpanded(g.Base))
+	c.Checked().Set(s.IsDownloadQueued(g.Base))
+	return c
 }
 
 // groupThreadSummary is the collapsed body of a Usenet group's summary card:

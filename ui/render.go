@@ -545,11 +545,11 @@ func (c *countChip) Draw(p painter.Painter, th *toolkit.Theme) {
 func (s *Scene) drawAuthBanner(p *painter.PixelPainter, img *image.RGBA, ap AuthPrompt, x, y, w int, onAccent toolkit.RGBA) {
 	m := s.m
 	bn := &toolkit.Banner{
-		Revealed: true,
 		Icon: func(ip painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
 			drawLockIcon(ip, r, ink, s.iconStroke())
 		},
 	}
+	bn.Revealed().Set(true)
 	bn.SetBounds(toolkit.Rect{X: x, Y: y, W: w, H: m.bannerH})
 	bn.Draw(p, s.theme)
 
