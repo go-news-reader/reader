@@ -66,6 +66,56 @@ func TestShouldRepaintSpinnerThrottle(t *testing.T) {
 	}
 }
 
+// TestShouldRepaintSpinnerCadenceStepsDown checks the adaptive spinner cadence:
+// a load blits at the warm spinnerTicks rate through spinnerWarmTicks, then
+// steps down to the sustained spinnerSlowTicks rate, and the age counter that
+// drives the step-down keeps climbing across the load (it is not reset by the
+// warm-phase blits).
+func TestShouldRepaintSpinnerCadenceStepsDown(t *testing.T) {
+	var st presentState
+	np := fakePresenter{need: true, throttle: true}
+	// Drive the whole warm window. Every spinnerTicks-th tick blits; spinner
+	// resets on each blit but spinnerAge accumulates every tick.
+	for tick := 1; tick <= spinnerWarmTicks; tick++ {
+		blit := shouldRepaint(true, np, &st)
+		if want := tick%spinnerTicks == 0; blit != want {
+			t.Fatalf("warm tick %d: blit=%v, want %v", tick, blit, want)
+		}
+		if st.spinnerAge != tick {
+			t.Fatalf("warm tick %d: spinnerAge=%d, want %d (age must not reset on a spinner blit)", tick, st.spinnerAge, tick)
+		}
+	}
+	// Past the warm window the cadence widens to spinnerSlowTicks. spinner was
+	// reset by the last warm blit (spinnerWarmTicks is a multiple of spinnerTicks),
+	// so a fresh run of spinnerSlowTicks skips must precede the next blit.
+	for i := 1; i < spinnerSlowTicks; i++ {
+		if shouldRepaint(true, np, &st) {
+			t.Fatalf("sustained tick %d should be skipped at the slow cadence", i)
+		}
+	}
+	if !shouldRepaint(true, np, &st) {
+		t.Fatal("the spinnerSlowTicks-th sustained tick should blit")
+	}
+}
+
+// TestShouldRepaintSpinnerAgeResetsWhenStateBreaks checks that leaving the
+// spinner-only state resets spinnerAge, so a later load reopens at the warm
+// cadence instead of inheriting a stale age and starting slow.
+func TestShouldRepaintSpinnerAgeResetsWhenStateBreaks(t *testing.T) {
+	st := presentState{spinnerAge: spinnerWarmTicks + 50}
+	// A non-throttleable present (a GIF, a debounce) breaks the spinner state.
+	shouldRepaint(true, fakePresenter{need: true, throttle: false}, &st)
+	if st.spinnerAge != 0 {
+		t.Fatalf("a non-throttle present must reset spinnerAge, got %d", st.spinnerAge)
+	}
+	// So must going idle.
+	st.spinnerAge = spinnerWarmTicks + 50
+	shouldRepaint(true, fakePresenter{need: false}, &st)
+	if st.spinnerAge != 0 {
+		t.Fatalf("going idle must reset spinnerAge, got %d", st.spinnerAge)
+	}
+}
+
 // TestShouldRepaintGatedHeartbeat checks the idle backstop: while the handler
 // needs nothing, ticks are skipped until the heartbeat forces one, then reset.
 func TestShouldRepaintGatedHeartbeat(t *testing.T) {

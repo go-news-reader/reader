@@ -154,6 +154,24 @@ const heartbeatTicks = 15
 // clears the throttle and blits every tick.
 const spinnerTicks = 4
 
+// spinnerWarmTicks is how long — in consecutive spinner-only ticks — the loop
+// holds the snappy spinnerTicks cadence before it steps down to spinnerSlowTicks.
+// At the 60 Hz tick that is the first ~3 s of a load, so a short load (a fast
+// source: HN, a warm cache) turns at full 15/s smoothness and never slows. Only
+// a SUSTAINED load — a session-less Reddit's OAuth back-off, a large set of slow
+// NNTP subs whose tail is minutes away — outlives it and drops to the cheaper
+// rate, where the whole-window redraw per spinner tick would otherwise burn CPU
+// for the length of the load (profiled at ~29 % over an 18 s load at 15/s).
+const spinnerWarmTicks = 180
+
+// spinnerSlowTicks is the spinner cadence once a load has run past
+// spinnerWarmTicks: at the 60 Hz tick, ~5 blits a second. The spinner's clock
+// stays real-time so it still turns at full speed; only its redraw rate drops,
+// cutting the per-tick full-window re-rasterisation to a third of the warm rate
+// for the long tail of a slow load. The step back up is automatic: when the load
+// ends the counters reset, so the next load opens at the warm cadence again.
+const spinnerSlowTicks = 12
+
 // presenter is the handler contract the gated present loop needs: whether a
 // present is wanted at all (NeedsPresent), whether one is queued content that
 // must not be throttled (PresentImmediate), and whether the only motion is the
@@ -165,11 +183,16 @@ type presenter interface {
 }
 
 // presentState is the gated loop's per-tick bookkeeping: consecutive idle ticks
-// (for the heartbeat) and consecutive throttled spinner ticks (for the spinner
-// cadence). Both reset whenever the loop blits.
+// (for the heartbeat), consecutive throttled spinner ticks since the last blit
+// (for the spinner cadence), and how long the spinner-only state has run
+// unbroken (spinnerAge, for stepping the cadence down on a sustained load).
+// idle and spinner reset whenever the loop blits; spinnerAge does NOT reset on a
+// spinner blit — it tracks the length of the load, not the gap between blits, so
+// it resets only when the spinner-only state itself ends.
 type presentState struct {
-	idle    int
-	spinner int
+	idle       int
+	spinner    int
+	spinnerAge int
 }
 
 // shouldRepaint decides whether the gated ticker blits on this tick. An ungated
@@ -178,8 +201,10 @@ type presentState struct {
 //   - blits at once when content is queued (PresentImmediate), so a streamed
 //     source reaches the screen without throttle delay;
 //   - while only the loading spinner moves (PresentThrottle), blits every
-//     spinnerTicks-th tick, holding the spinner's real-time speed at a quarter of
-//     the blit cost;
+//     spinnerTicks-th tick for the first spinnerWarmTicks of the load (a short
+//     load stays fully smooth), then every spinnerSlowTicks-th tick for a
+//     sustained one, holding the spinner's real-time speed while dropping the
+//     whole-window redraw rate that dominates the reader's load-time CPU;
 //   - while something else needs the full cadence (a GIF, a debounce) blits every
 //     tick, as before;
 //   - while fully idle, blits only on the heartbeatTicks-th tick.
@@ -188,27 +213,32 @@ type presentState struct {
 // blit, so a state change takes effect on the next tick.
 func shouldRepaint(gated bool, np presenter, st *presentState) bool {
 	if !gated {
-		st.idle, st.spinner = 0, 0
+		st.idle, st.spinner, st.spinnerAge = 0, 0, 0
 		return true
 	}
 	if np.PresentImmediate() {
-		st.idle, st.spinner = 0, 0
+		st.idle, st.spinner, st.spinnerAge = 0, 0, 0
 		return true
 	}
 	if np.NeedsPresent() {
 		st.idle = 0
 		if !np.PresentThrottle() {
-			st.spinner = 0
+			st.spinner, st.spinnerAge = 0, 0
 			return true
 		}
 		st.spinner++
-		if st.spinner >= spinnerTicks {
+		st.spinnerAge++
+		cadence := spinnerTicks
+		if st.spinnerAge > spinnerWarmTicks {
+			cadence = spinnerSlowTicks
+		}
+		if st.spinner >= cadence {
 			st.spinner = 0
 			return true
 		}
 		return false
 	}
-	st.spinner = 0
+	st.spinner, st.spinnerAge = 0, 0
 	st.idle++
 	if st.idle >= heartbeatTicks {
 		st.idle = 0
