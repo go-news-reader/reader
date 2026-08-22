@@ -144,11 +144,41 @@ func loggedClient(rec *httplog.Recorder) *http.Client {
 // handshake exactly as the API hosts do, so a stock http.Client would silently
 // fetch nothing. Unlike loggedClient it always returns a usable client, because
 // a caller without a recorder still has to download.
+//
+// Its transport is wrapped so every media request carries a desktop-browser
+// User-Agent (browserUATransport): browserhttp impersonates Chrome's TLS
+// handshake but, by its own documented contract, leaves the User-Agent to the
+// caller, and media hosts that gate on it — reddit's preview.redd.it and
+// i.redd.it among them — answer a stock Go client's default UA with 403, so the
+// thumbnail silently never loads. Wrapping here fixes every media fetch at once
+// (card thumbnails and animated GIFs alike) rather than at each call site, and,
+// because the wrap sits outside the logging transport, the Network log records
+// the real UA that went out.
 func MediaClient(rec *httplog.Recorder) *http.Client {
-	if hc := loggedClient(rec); hc != nil {
-		return hc
+	hc := loggedClient(rec)
+	if hc == nil {
+		hc = browserhttp.NewClient(30 * time.Second)
 	}
-	return browserhttp.NewClient(30 * time.Second)
+	hc.Transport = browserUATransport{base: hc.Transport}
+	return hc
+}
+
+// browserUATransport sets a desktop-browser User-Agent on every request that
+// does not already carry one, then defers to base. A request that already sets
+// its own User-Agent is left untouched. It clones before mutating, honouring the
+// RoundTripper contract that the argument request must not be modified.
+type browserUATransport struct{ base http.RoundTripper }
+
+func (t browserUATransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("User-Agent") == "" {
+		req = req.Clone(req.Context())
+		req.Header.Set("User-Agent", browserhttp.DefaultUserAgent)
+	}
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(req)
 }
 
 // newX registers provider X on the shared logged client hc when present, else on
