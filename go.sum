@@ -89,8 +89,8 @@ github.com/go-opentype/shape v0.5.0 h1:jHNaOMHNBdDj5EixOevlrrsi92svMxvVMKN7GYaPf
 github.com/go-opentype/shape v0.5.0/go.mod h1:3ImRYNIj6zpwWQ/DV3BWhgMFfmzDITH6XpZw2auQHTo=
 github.com/go-reddit/reddit v0.9.0 h1:oO6GghKLEYnvFmqg8aApixD0CZOj2r2K0drUezrtPqk=
 github.com/go-reddit/reddit v0.9.0/go.mod h1:/zGZliQ8lN+iGyVAiGzeGGkY+rQBZNlF4JwAnRaYEGI=
-github.com/go-richdoc/richdoc v0.1.0 h1:77dh0m2/Q6cHIgDMY63zy9cUTsGKTdbszT1gtrZUFz4=
-github.com/go-richdoc/richdoc v0.1.0/go.mod h1:aCX8ulqg5CoKqSWgWeEWul1Oj0d2VxQeaQNI0+jsm7c=
+github.com/go-richdoc/richdoc v0.2.0 h1:z9cLox9MoInZL6fIlweMzgDT/VqgnB2ZucSIEaRFglY=
+github.com/go-richdoc/richdoc v0.2.0/go.mod h1:aCX8ulqg5CoKqSWgWeEWul1Oj0d2VxQeaQNI0+jsm7c=
 github.com/go-sourcemap/sourcemap v2.1.3+incompatible h1:W1iEw64niKVGogNgBN3ePyLFfuisuzeidWPMPWmECqU=
 github.com/go-sourcemap/sourcemap v2.1.3+incompatible/go.mod h1:F8jJfvm2KbVjc5NqelyYJmf/v5J0dwNLS2mL4sNA1Jg=
 github.com/go-syndication/feed v0.1.1 h1:nB//8Cp9K3HQvZBqN1jsir8jVqmnxU5SPk14MYwmlvw=
@@ -109,8 +109,8 @@ github.com/go-widgets/mvvm v0.8.0 h1:DqyNiNNTdITkMOdAwGvWFuCd6xpTaDRS2S+LNxd8inA
 github.com/go-widgets/mvvm v0.8.0/go.mod h1:GuGxC1kVTiPWANsAfKBPFb2YlmoG55J3NmZauvyqJ6w=
 github.com/go-widgets/painter v0.11.0 h1:xsj4zTz8B43rOZnWrx7ZsaUBMgJyvgaE/Pq2FfcG2Sw=
 github.com/go-widgets/painter v0.11.0/go.mod h1:IPRLqdUJuJX8sfuHeYLZCzjoLvA0ApbOlyIAVmguJDQ=
-github.com/go-widgets/toolkit v0.230.0 h1:6Z0x8QgYZDGmWyJTCWd7UuzRn46uIvx8mwiAChRz78g=
-github.com/go-widgets/toolkit v0.230.0/go.mod h1:dtu0LE6KVnV7U9R85LkCMiZ5bUL1vRT++OSGAUp8IEQ=
+github.com/go-widgets/toolkit v0.236.0 h1:YdVHkiYDfdTybYCYlpLAzN+QPNq51wGaE0ZipA8mAB8=
+github.com/go-widgets/toolkit v0.236.0/go.mod h1:KmLIi/12B6E/+wAA0xbGvQWmKMVSzvFv6Y7WwhEr29o=
 github.com/go-widgets/window v0.44.0 h1:0tId+z1kxDO4DuNwk/noR6qjDdTTHMJZJL5f9dZyREE=
 github.com/go-widgets/window v0.44.0/go.mod h1:v+6OSvJHsmXJ1w8rIfybWTy5oX5LDKzOWijm8Dhhz74=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
