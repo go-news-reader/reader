@@ -26,7 +26,7 @@ require (
 	github.com/go-webengine/engine v0.3.11
 	github.com/go-widgets/mvvm v0.8.0
 	github.com/go-widgets/painter v0.11.0
-	github.com/go-widgets/toolkit v0.230.0
+	github.com/go-widgets/toolkit v0.236.0
 	github.com/go-widgets/window v0.44.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
@@ -57,7 +57,7 @@ require (
 	github.com/go-mswin/win32 v0.1.0 // indirect
 	github.com/go-opentype/opentype v0.6.0 // indirect
 	github.com/go-opentype/shape v0.5.0 // indirect
-	github.com/go-richdoc/richdoc v0.1.0 // indirect
+	github.com/go-richdoc/richdoc v0.2.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-typeset/bidi v0.3.0 // indirect
 	github.com/go-widgets/android v0.12.1 // indirect

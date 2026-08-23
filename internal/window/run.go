@@ -182,6 +182,16 @@ type presenter interface {
 	PresentThrottle() bool
 }
 
+// damager is the optional Handler capability that reports which framebuffer
+// rectangles changed since the last frame, in framebuffer pixel coordinates. A
+// handler that implements it drives incremental (damage-region) present through
+// toolkit.Surface.Damage; one that does not keeps whole-surface present. It is a
+// separate interface, like presenter and Accessible, so adding it breaks no
+// existing handler.
+type damager interface {
+	DamageRects() []toolkit.Rect
+}
+
 // presentState is the gated loop's per-tick bookkeeping: consecutive idle ticks
 // (for the heartbeat), consecutive throttled spinner ticks since the last blit
 // (for the spinner cadence), and how long the spinner-only state has run
@@ -294,6 +304,14 @@ func bind(surf *toolkit.Surface, h Handler, scaleOf func() float64, ap *appearan
 	surf.OnInput = func(ev toolkit.Event) { route(h, ev) }
 	if a, ok := h.(Accessible); ok {
 		surf.Elements = func() []toolkit.SurfaceElement { return elements(a) }
+	}
+	// A handler that can say which framebuffer rectangles changed lets the
+	// surface present incrementally: only those rectangles are re-blitted and
+	// re-presented instead of the whole window, which during a streaming load
+	// (the spinner animating over an otherwise static feed) is the reader's
+	// biggest cost. A handler that cannot answer keeps whole-surface present.
+	if d, ok := h.(damager); ok {
+		surf.Damage = d.DamageRects
 	}
 	return surf
 }
