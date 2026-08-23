@@ -216,6 +216,10 @@ type App struct {
 	bufs    [2][]byte
 	cur     int
 	lastRev int
+	// frameAnimOnly records that the last drawn frame's only change was the
+	// animation (the spinner), so DamageRects knows a cheap incremental present
+	// is worth it; a content/input frame clears it and presents in full.
+	frameAnimOnly bool
 
 	// Scene mutations arriving from background goroutines — the streaming
 	// aggregation (RefreshStreaming) and the async reconstruct/refresh — must not
@@ -1136,6 +1140,13 @@ func (a *App) Frame() (buf []byte, changed bool) {
 	a.tickGIF()         // advance the playing animated-GIF preview (if any) to its due frame
 	a.tickWebDebounce() // fire a debounced page render once the selection settles
 	s := a.scene
+	// Whether the ONLY thing that changed since the last drawn frame is the
+	// animation about to be stepped below: drainScene (a queued content write),
+	// tickGIF (a real GIF frame), tickWebDebounce (a page render) and any input
+	// handled since have all run and bumped Rev already, so if Rev still equals
+	// the last drawn frame's, nothing but the spinner moves this frame. Only then
+	// is a damage diff worth it — see DamageRects.
+	animOnly := s.Rev() == a.lastRev
 	// Advance the animation clock by the real time elapsed since it last stepped,
 	// so the indeterminate spinner keeps a steady speed no matter how often the
 	// present loop redraws it (it throttles the spinner's redraws — see the
@@ -1196,6 +1207,7 @@ func (a *App) Frame() (buf []byte, changed bool) {
 	s.Draw(a.bufs[back])
 	a.cur = back
 	a.lastRev = s.Rev()
+	a.frameAnimOnly = animOnly
 	return a.bufs[a.cur], true
 }
 
