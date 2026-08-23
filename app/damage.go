@@ -26,6 +26,16 @@ import (
 // host reads as "assume everything changed" and presents in full. Nothing
 // changed returns no rectangles.
 func (a *App) DamageRects() []toolkit.Rect {
+	// Only when the last drawn frame changed nothing but the animation is a diff
+	// worth its cost. On a content or input frame most of the surface changed
+	// anyway, so scanning the whole buffer to discover that — and presenting it as
+	// scattered rectangles — is pure overhead over a single full present; return
+	// nil so the host presents in full. This gate is a performance choice only:
+	// whatever it returns, the host renders correct pixels, because a nil is a
+	// full present and a diff is the exact set of changed pixels.
+	if !a.frameAnimOnly {
+		return nil
+	}
 	s := a.scene
 	w, h := s.W, s.H
 	cur, prev := a.bufs[a.cur], a.bufs[1-a.cur]
