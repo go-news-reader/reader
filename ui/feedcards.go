@@ -14,6 +14,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/go-widgets/mvvm"
@@ -57,6 +58,13 @@ type feedCards struct {
 	sig     feedSig        // inputs the model was last built from
 	synced  bool           // whether the model has been built at least once
 	heights map[string]int // memoised row heights keyed by feedEntryKey, cleared on a width change
+	// gen is bumped whenever something that changes a card's PIXELS but not its
+	// row index changes across the whole feed: the model rebuilt (content), the
+	// theme swapped, the density (scale) changed. The raster-cache key folds it in
+	// so those invalidate every tile at once; per-card state that varies by row
+	// (selection, read/dimmed veil, thumbnail arrival) is read live in the key
+	// instead. See ensureFeed.
+	gen int
 }
 
 // feedEntryKey identifies a feed row's CONTENT for the height memo: same key ⇒
@@ -180,6 +188,14 @@ func (s *Scene) ensureFeed() {
 	fc.list.Dimmed = func(i int) bool { return s.feedDimmed(i) }
 	fc.list.OnSelect = func(i int) { s.feedSelect(i) }
 	fc.list.OnActivate = func(i int) { s.feedActivate(i) }
+	// Raster-cache the cards: a card is expensive to paint (a rounded, anti-aliased
+	// frame + laid-out text) and stays put while the loading spinner ticks, so the
+	// CardList blits a cached tile instead of re-rasterising every unchanged card
+	// each frame. Its text-run collection moves to OnVisibleRow so selection keeps
+	// working over cached cards; CacheBackground (the window ground the cards sit
+	// on) is refreshed each layout in syncFeed so it tracks a theme switch.
+	fc.list.CacheKey = func(i int, item source.Item) string { return s.feedCardCacheKey(i, item) }
+	fc.list.OnVisibleRow = func(i int, r toolkit.Rect, item source.Item) { s.feedCardVisit(i, r, item) }
 	s.feed = fc
 }
 
@@ -364,7 +380,55 @@ func (s *Scene) feedCardRender(p painter.Painter, th *toolkit.Theme, r toolkit.R
 	card := s.feedRowCard(s.feed.display[i])
 	card.SetBounds(r)
 	card.Draw(p, th)
+	// NOTE: text-run collection deliberately does NOT live here. This callback is
+	// the CardList's paint, which the raster cache may serve from a tile without
+	// calling it; collecting selection runs here would drop them for cached cards.
+	// It happens every frame in feedCardVisit (CardList.OnVisibleRow) instead.
+}
+
+// feedCardVisit runs once per frame for every card in the viewport, via
+// CardList.OnVisibleRow — REGARDLESS of the raster cache — so cross-card text
+// selection keeps working even when the card's pixels came from a cached tile. It
+// rebuilds the card only to lift its text runs (no painting) at the row's real
+// on-screen rect, mirroring what feedCardRender used to do inline.
+func (s *Scene) feedCardVisit(i int, r toolkit.Rect, _ source.Item) {
+	if i < 0 || i >= len(s.feed.display) {
+		return
+	}
+	card := s.feedRowCard(s.feed.display[i])
+	card.SetBounds(r)
 	s.addSelectableRuns(toolkit.CollectRuns(card), 0, 0)
+}
+
+// invalidateFeedTiles drops every cached card tile on the next frame, for a
+// change that alters all cards' pixels at once (a theme swap, a density change).
+// A no-op before the feed exists.
+func (s *Scene) invalidateFeedTiles() {
+	if s.feed != nil {
+		s.feed.gen++
+	}
+}
+
+// feedCardCacheKey is the raster-cache key for row i: its index, the feed
+// generation (content / theme / density — see feedCards.gen), and the per-card
+// state that changes a card's pixels without a generation bump, read live so it
+// can never go stale — the selection ring, the read/dimmed veil, and whether the
+// thumbnail has arrived.
+func (s *Scene) feedCardCacheKey(i int, item source.Item) string {
+	sel := 0
+	if s.feed.list != nil && s.feed.list.Selected == i {
+		sel = 1
+	}
+	dim := 0
+	if s.feedDimmed(i) {
+		dim = 1
+	}
+	thumb := 0
+	if s.Thumbs != nil && s.Thumbs[item.ID] != nil {
+		thumb = 1
+	}
+	return strconv.Itoa(i) + "|" + strconv.Itoa(s.feed.gen) + "|" +
+		strconv.Itoa(sel) + strconv.Itoa(dim) + strconv.Itoa(thumb)
 }
 
 // feedPostCard maps one feed item onto a toolkit.PostCard — the shared rich feed
@@ -574,7 +638,11 @@ func (s *Scene) syncFeed() {
 	// re-measure the whole feed for nothing. The width is part of the signature so
 	// a resize re-measures the variable-height cards.
 	sig := feedSig{width: cardW, active: s.Active, search: s.searchEntry.Text().Get(), itemsRev: s.subsRev, loading: s.loading}
+	// The window ground the cards composite over, kept current so a theme switch
+	// (which also bumps gen) refills cache tiles with the new backdrop.
+	s.feed.list.CacheBackground = s.theme.Background
 	if !s.feed.synced || s.feed.sig != sig {
+		s.feed.gen++ // content/width changed → invalidate every cached card tile
 		if cardW != s.feed.width {
 			s.feed.heights = nil // width changed → measured heights are stale
 		}

@@ -775,6 +775,7 @@ func (s *Scene) ptPx(base int) int {
 func (s *Scene) SetTheme(t *toolkit.Theme) {
 	if t != nil {
 		s.theme = t
+		s.invalidateFeedTiles() // every card's colours change → drop cached tiles
 		s.touch()
 	}
 }
@@ -1098,6 +1099,7 @@ func (s *Scene) SetScale(f float64) {
 		f = MaxZoom
 	}
 	if f != s.Scale {
+		s.invalidateFeedTiles() // card metrics scale with density → drop cached tiles
 		s.touch()
 	}
 	s.Scale = f
