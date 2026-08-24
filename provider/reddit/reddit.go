@@ -42,6 +42,9 @@ type RedgifsResolver interface {
 	GifByID(ctx context.Context, id string) (*redgifs.Gif, error)
 }
 
+// Provider implements source.Searcher (channel discovery).
+var _ source.Searcher = (*Provider)(nil)
+
 // Provider fetches Reddit posts as normalized source items.
 type Provider struct {
 	client fetcher
@@ -285,6 +288,29 @@ func (p *Provider) SearchSubreddits(ctx context.Context, query string) ([]source
 			Subscribers: si.Subscribers,
 			NSFW:        si.Over18,
 		})
+	}
+	return out, nil
+}
+
+// SearchChannels implements source.Searcher: it discovers subreddits matching
+// query (via SearchSubreddits) and maps each onto the platform-agnostic
+// source.ChannelResult the generic search UI renders — a Reddit result subscribes
+// as r/<name>.
+func (p *Provider) SearchChannels(ctx context.Context, query string) ([]source.ChannelResult, error) {
+	subs, err := p.SearchSubreddits(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]source.ChannelResult, len(subs))
+	for i, s := range subs {
+		out[i] = source.ChannelResult{
+			Source:      source.Reddit,
+			Channel:     "r/" + s.Name,
+			Title:       s.Title,
+			Description: s.Description,
+			Subscribers: s.Subscribers,
+			NSFW:        s.NSFW,
+		}
 	}
 	return out, nil
 }
