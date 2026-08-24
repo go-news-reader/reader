@@ -85,3 +85,13 @@ func TestBrowserUATransportKeepsExplicitUA(t *testing.T) {
 		t.Fatalf("outgoing UA = %q, want the caller's own", got)
 	}
 }
+
+// TestBrowserUATransportNilBaseUsesDefault covers the base==nil fallback: the
+// wrap defers to http.DefaultTransport, which rejects an unsupported scheme
+// synchronously (no network), proving the default path ran.
+func TestBrowserUATransportNilBaseUsesDefault(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "unsupported://x", nil)
+	if _, err := (browserUATransport{base: nil}).RoundTrip(req); err == nil {
+		t.Fatal("nil base should defer to http.DefaultTransport, which errors on an unsupported scheme")
+	}
+}

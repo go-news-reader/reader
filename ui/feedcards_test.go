@@ -665,3 +665,17 @@ func TestEnsureFeedIdempotent(t *testing.T) {
 		t.Fatal("ensureFeed must not rebuild the feed")
 	}
 }
+
+// TestFeedCardVisitOutOfRange covers feedCardVisit's guard: an index outside the
+// display range returns without panicking and collects no runs.
+func TestFeedCardVisitOutOfRange(t *testing.T) {
+	s := New(1000, 700, ThemeFor(OSMac, false))
+	s.SetScale(1)
+	s.ensureFeed() // s.feed must exist for the guard to read s.feed.display
+	before := len(s.selAccum)
+	s.feedCardVisit(9999, toolkit.Rect{X: 0, Y: 0, W: 100, H: 50}, source.Item{}) // i >= len
+	s.feedCardVisit(-1, toolkit.Rect{}, source.Item{})                            // i < 0
+	if len(s.selAccum) != before {
+		t.Fatalf("out-of-range visit collected runs: %d", len(s.selAccum))
+	}
+}
