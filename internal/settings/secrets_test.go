@@ -436,7 +436,7 @@ func TestKeyringSecretsBackend(t *testing.T) {
 	t.Cleanup(func() {
 		keyringSet, keyringGet, keyringDelete, keyringAvailable = origSet, origGet, origDel, origAvail
 	})
-	keyringSet = func(service, account string, secret []byte) error {
+	keyringSet = func(service, account string, secret []byte, _ ...keyring.Option) error {
 		if service != secretService {
 			t.Errorf("Set service = %q, want %q", service, secretService)
 		}
@@ -524,5 +524,34 @@ func TestKeyringSecretsOnDevice(t *testing.T) {
 	}
 	if _, err := ks.Get(ref); !errors.Is(err, ErrSecretNotFound) {
 		t.Fatalf("Get(after delete) = %v, want ErrSecretNotFound", err)
+	}
+}
+
+// TestKeyringSecretsUserPresence proves the biometric setting threads
+// keyring.WithUserPresence into the vault write: an option is passed when it is
+// on, none when it is off, and the toggle restores cleanly.
+func TestKeyringSecretsUserPresence(t *testing.T) {
+	orig := keyringSet
+	defer func() { keyringSet = orig }()
+	gotOpts := -1
+	keyringSet = func(_, _ string, _ []byte, opts ...keyring.Option) error {
+		gotOpts = len(opts)
+		return nil
+	}
+
+	restore := SetSecretUserPresence(true)
+	if err := (keyringSecrets{}).Set("acct", []byte("s")); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if gotOpts != 1 {
+		t.Fatalf("biometric on: opts = %d, want 1 (WithUserPresence)", gotOpts)
+	}
+	restore() // back to the previous (off) value
+	gotOpts = -1
+	if err := (keyringSecrets{}).Set("acct", []byte("s")); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if gotOpts != 0 {
+		t.Fatalf("biometric off: opts = %d, want 0", gotOpts)
 	}
 }

@@ -91,7 +91,30 @@ func SetDefaultSecretStore(store SecretStore) (restore func()) {
 type keyringSecrets struct{}
 
 func (keyringSecrets) Set(account string, secret []byte) error {
+	if secretUserPresence {
+		// Store the secret behind an interactive user-presence gate, so reading it
+		// back (at startup) prompts the platform biometric/consent check — Touch ID
+		// on macOS, Windows Hello / the desktop's authentication agent elsewhere —
+		// instead of nothing (or the login-password prompt).
+		return keyringSet(secretService, account, secret, keyring.WithUserPresence())
+	}
 	return keyringSet(secretService, account, secret)
+}
+
+// secretUserPresence gates whether new secrets are stored behind an interactive
+// user-presence check (biometric unlock). Off by default; SetSecretUserPresence
+// flips it from the persisted setting before the vault is written.
+var secretUserPresence bool
+
+// SetSecretUserPresence turns biometric-gated secret storage on or off for
+// subsequent writes and returns a function restoring the previous value. The app
+// calls it from the persisted "biometric unlock" preference before pushing
+// secrets; existing secrets pick up (or drop) the gate the next time they are
+// re-written (a settings save re-pushes them).
+func SetSecretUserPresence(v bool) (restore func()) {
+	prev := secretUserPresence
+	secretUserPresence = v
+	return func() { secretUserPresence = prev }
 }
 
 func (keyringSecrets) Get(account string) ([]byte, error) {

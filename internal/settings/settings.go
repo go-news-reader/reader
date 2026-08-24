@@ -98,6 +98,14 @@ type Settings struct {
 	// (nav / zoom / URL), rendering the page chrome-free. Default false (shown).
 	HideBrowserChrome bool `json:"hideBrowserChrome,omitempty"`
 
+	// BiometricUnlock stores the account secrets (session cookies, tokens) behind
+	// an interactive user-presence gate, so unlocking them at startup uses the
+	// platform biometric/consent check — Touch ID on macOS, Windows Hello on
+	// Windows, the desktop's authentication agent on Linux — instead of a typed
+	// password (or nothing). Default false (off). Toggling it on re-writes the
+	// secrets with the gate on the next settings save.
+	BiometricUnlock bool `json:"biometricUnlock,omitempty"`
+
 	// SignInBrowser names the browser the reader launches for a provider's
 	// browser sign-in flow (today: Reddit) — one of default|firefox|chrome|
 	// safari|edge. Blank means the default (Firefox); Normalize backfills it.
