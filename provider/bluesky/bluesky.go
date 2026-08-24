@@ -26,7 +26,11 @@ var ErrNoChannel = errors.New("bluesky: specify an actor handle or a #query to s
 type client interface {
 	AuthorFeed(ctx context.Context, actor string, limit int, cursor string) (*goat.Feed, error)
 	SearchPosts(ctx context.Context, q string, limit int, cursor string) (*goat.Feed, error)
+	SearchActors(ctx context.Context, q string, limit int, cursor string) (*goat.ActorPage, error)
 }
+
+// Provider implements source.Searcher (account discovery).
+var _ source.Searcher = (*Provider)(nil)
 
 // Provider fetches Bluesky posts as normalized items.
 type Provider struct {
@@ -47,6 +51,36 @@ func NewWithClient(c client) *Provider { return &Provider{client: c} }
 
 // Kind reports source.Bluesky.
 func (p *Provider) Kind() source.Kind { return source.Bluesky }
+
+// SearchChannels implements source.Searcher: it discovers Bluesky accounts
+// matching query (via the public app.bsky.actor.searchActors read) and maps each
+// onto a source.ChannelResult — a Bluesky result subscribes as @<handle>. No
+// follower count is returned by the search, so Subscribers is -1 (unknown).
+func (p *Provider) SearchChannels(ctx context.Context, query string) ([]source.ChannelResult, error) {
+	page, err := p.client.SearchActors(ctx, query, 0, "")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]source.ChannelResult, 0, len(page.Actors))
+	for _, a := range page.Actors {
+		if a.Handle == "" {
+			continue
+		}
+		title := a.DisplayName
+		if title == "" {
+			title = a.Handle
+		}
+		out = append(out, source.ChannelResult{
+			Source:      source.Bluesky,
+			Channel:     "@" + a.Handle,
+			Title:       title,
+			Description: a.Description,
+			Subscribers: -1,
+			IconURL:     a.Avatar,
+		})
+	}
+	return out, nil
+}
 
 // Feed returns a page of posts for the query's channel.
 func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, error) {

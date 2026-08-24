@@ -14,11 +14,17 @@ import (
 
 type fakeClient struct {
 	feed   *goat.Feed
+	actors *goat.ActorPage
 	err    error
 	called string
 	gotArg string
 	gotCur string
 	gotLim int
+}
+
+func (f *fakeClient) SearchActors(_ context.Context, q string, limit int, cursor string) (*goat.ActorPage, error) {
+	f.called, f.gotArg = "searchActors", q
+	return f.actors, f.err
 }
 
 func (f *fakeClient) AuthorFeed(_ context.Context, actor string, limit int, cursor string) (*goat.Feed, error) {
@@ -113,5 +119,42 @@ func TestFeedAuthError(t *testing.T) {
 	_, err = p2.Feed(context.Background(), source.Query{Channel: "@alice"})
 	if _, ok := source.AsAuthError(err); ok {
 		t.Fatalf("transient error misclassified as auth: %v", err)
+	}
+}
+
+func TestSearchChannelsMapsActors(t *testing.T) {
+	f := &fakeClient{actors: &goat.ActorPage{Actors: []goat.Actor{
+		{Handle: "alice.bsky.social", DisplayName: "Alice", Description: "hi", Avatar: "https://cdn/av.jpg"},
+		{Handle: "bob.bsky.social"}, // no display name → title falls back to handle
+		{Handle: ""},                // empty handle → skipped
+	}}}
+	p := &Provider{client: f}
+
+	rs, err := p.SearchChannels(context.Background(), "al")
+	if err != nil {
+		t.Fatalf("SearchChannels: %v", err)
+	}
+	if f.called != "searchActors" || f.gotArg != "al" {
+		t.Fatalf("client call = %q %q", f.called, f.gotArg)
+	}
+	if len(rs) != 2 {
+		t.Fatalf("results = %d, want 2 (empty handle skipped)", len(rs))
+	}
+	want := source.ChannelResult{Source: source.Bluesky, Channel: "@alice.bsky.social", Title: "Alice", Description: "hi", Subscribers: -1, IconURL: "https://cdn/av.jpg"}
+	if rs[0] != want {
+		t.Fatalf("result[0] = %+v, want %+v", rs[0], want)
+	}
+	if rs[1].Title != "bob.bsky.social" { // display-name fallback
+		t.Fatalf("result[1] title = %q, want the handle", rs[1].Title)
+	}
+	if got := rs[0].Subscription(); got.Source != source.Bluesky || got.Channel != "@alice.bsky.social" {
+		t.Fatalf("Subscription() = %+v", got)
+	}
+}
+
+func TestSearchChannelsPropagatesError(t *testing.T) {
+	f := &fakeClient{err: errors.New("boom")}
+	if _, err := (&Provider{client: f}).SearchChannels(context.Background(), "x"); err == nil {
+		t.Fatal("client error should propagate")
 	}
 }
