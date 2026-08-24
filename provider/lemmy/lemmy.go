@@ -7,6 +7,7 @@ package lemmy
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	golem "github.com/go-lemmy/lemmy"
@@ -17,7 +18,11 @@ import (
 // client is the slice of *golem.Client the adapter uses; an interface for tests.
 type client interface {
 	Posts(ctx context.Context, opts golem.PostsOptions) (*golem.PostList, error)
+	SearchCommunities(ctx context.Context, query string, limit int) (*golem.CommunityList, error)
 }
+
+// Provider implements source.Searcher (community discovery).
+var _ source.Searcher = (*Provider)(nil)
 
 // Provider fetches Lemmy posts as normalized items.
 type Provider struct {
@@ -42,6 +47,51 @@ func NewWithClient(c client) *Provider { return &Provider{client: c} }
 
 // Kind reports source.Lemmy.
 func (p *Provider) Kind() source.Kind { return source.Lemmy }
+
+// SearchChannels implements source.Searcher: it discovers communities matching
+// query (via the public /api/v3/search) and maps each onto a source.ChannelResult.
+// The search federates, so results span instances; each subscribes by its
+// unambiguous "<name>@<instance>" handle (derived from the community's actor_id).
+func (p *Provider) SearchChannels(ctx context.Context, query string) ([]source.ChannelResult, error) {
+	list, err := p.client.SearchCommunities(ctx, query, 0)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]source.ChannelResult, 0, len(list.Communities))
+	for _, c := range list.Communities {
+		if c.Name == "" {
+			continue
+		}
+		channel := c.Name
+		if host := actorHost(c.ActorID); host != "" {
+			channel = c.Name + "@" + host
+		}
+		title := c.Title
+		if title == "" {
+			title = c.Name
+		}
+		out = append(out, source.ChannelResult{
+			Source:      source.Lemmy,
+			Channel:     channel,
+			Title:       title,
+			Description: c.Description,
+			Subscribers: int64(c.Subscribers),
+			NSFW:        c.NSFW,
+			IconURL:     c.Icon,
+		})
+	}
+	return out, nil
+}
+
+// actorHost extracts the instance host from a Lemmy community actor_id URL
+// ("https://lemmy.world/c/golang" → "lemmy.world"); "" when unparseable.
+func actorHost(actorID string) string {
+	u, err := url.Parse(actorID)
+	if err != nil {
+		return ""
+	}
+	return u.Host
+}
 
 // Feed returns a page of posts for the query's community.
 func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, error) {

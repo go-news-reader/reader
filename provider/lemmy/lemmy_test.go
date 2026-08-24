@@ -13,14 +13,21 @@ import (
 )
 
 type fakeClient struct {
-	list *golem.PostList
-	err  error
-	got  golem.PostsOptions
+	list        *golem.PostList
+	communities *golem.CommunityList
+	err         error
+	got         golem.PostsOptions
+	gotQuery    string
 }
 
 func (f *fakeClient) Posts(_ context.Context, opts golem.PostsOptions) (*golem.PostList, error) {
 	f.got = opts
 	return f.list, f.err
+}
+
+func (f *fakeClient) SearchCommunities(_ context.Context, query string, _ int) (*golem.CommunityList, error) {
+	f.gotQuery = query
+	return f.communities, f.err
 }
 
 func TestNewWithHTTPClient(t *testing.T) {
@@ -115,5 +122,62 @@ func TestFeedAuthError(t *testing.T) {
 	_, err = p2.Feed(context.Background(), source.Query{Channel: "tech"})
 	if _, ok := source.AsAuthError(err); ok {
 		t.Fatalf("transient error misclassified as auth: %v", err)
+	}
+}
+
+func TestSearchChannelsMapsCommunities(t *testing.T) {
+	f := &fakeClient{communities: &golem.CommunityList{Communities: []golem.Community{
+		{Name: "golang", Title: "Go", Description: "gophers", Icon: "https://i/ic.png", ActorID: "https://lemmy.world/c/golang", Subscribers: 1234},
+		{Name: "rust", ActorID: "https://lemmy.ml/c/rust"}, // no title → title falls back to name; different instance
+		{Name: ""}, // skipped
+	}}}
+	p := NewWithClient(f)
+
+	rs, err := p.SearchChannels(context.Background(), "prog")
+	if err != nil {
+		t.Fatalf("SearchChannels: %v", err)
+	}
+	if f.gotQuery != "prog" {
+		t.Fatalf("query passed = %q", f.gotQuery)
+	}
+	if len(rs) != 2 {
+		t.Fatalf("results = %d, want 2 (empty name skipped)", len(rs))
+	}
+	want := source.ChannelResult{Source: source.Lemmy, Channel: "golang@lemmy.world", Title: "Go", Description: "gophers", Subscribers: 1234, IconURL: "https://i/ic.png"}
+	if rs[0] != want {
+		t.Fatalf("result[0] = %+v, want %+v", rs[0], want)
+	}
+	if rs[1].Channel != "rust@lemmy.ml" || rs[1].Title != "rust" { // federated handle + title fallback
+		t.Fatalf("result[1] = %+v", rs[1])
+	}
+	if got := rs[0].Subscription(); got.Source != source.Lemmy || got.Channel != "golang@lemmy.world" {
+		t.Fatalf("Subscription() = %+v", got)
+	}
+}
+
+func TestSearchChannelsBareNameWhenNoActor(t *testing.T) {
+	f := &fakeClient{communities: &golem.CommunityList{Communities: []golem.Community{
+		{Name: "local"}, // no actor_id → bare name
+	}}}
+	rs, err := NewWithClient(f).SearchChannels(context.Background(), "l")
+	if err != nil || len(rs) != 1 || rs[0].Channel != "local" {
+		t.Fatalf("bare-name channel failed: rs=%+v err=%v", rs, err)
+	}
+}
+
+func TestSearchChannelsPropagatesError(t *testing.T) {
+	f := &fakeClient{err: errors.New("boom")}
+	if _, err := NewWithClient(f).SearchChannels(context.Background(), "x"); err == nil {
+		t.Fatal("client error should propagate")
+	}
+}
+
+func TestSearchChannelsInvalidActorFallsBackToBareName(t *testing.T) {
+	f := &fakeClient{communities: &golem.CommunityList{Communities: []golem.Community{
+		{Name: "weird", ActorID: "http://%zz"}, // unparseable actor_id (bad %-escape)
+	}}}
+	rs, err := NewWithClient(f).SearchChannels(context.Background(), "w")
+	if err != nil || len(rs) != 1 || rs[0].Channel != "weird" {
+		t.Fatalf("invalid actor_id should fall back to the bare name: rs=%+v err=%v", rs, err)
 	}
 }
