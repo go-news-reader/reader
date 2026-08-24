@@ -465,6 +465,21 @@ func (s *Scene) layoutSettings() {
 	})
 	y += btnH + pad
 
+	// SECURITY: biometric unlock of the credential vault. Fully enforced on macOS
+	// today (Touch ID); on Windows/Linux the write-side gate is stored and the
+	// interactive prompt (Windows Hello / a desktop authentication agent) follows
+	// once their verifiers land, so the switch is forward-compatible everywhere.
+	label(pad, y, "SECURITY")
+	y += m.side.height + gap
+	label(pad, y, "Unlock the saved sign-ins with your fingerprint or face (Touch ID / Windows Hello) instead of a password")
+	y += m.side.height + gap
+	bio := s.BiometricUnlock()
+	s.layoutBtnRow(pad, y, []sButton{
+		{label: "Biometric unlock on", kind: HitBiometricUnlock, value: "on", active: bio},
+		{label: "Biometric unlock off", kind: HitBiometricUnlock, value: "off", active: !bio},
+	})
+	y += btnH + pad
+
 	// The editor can be taller than the surface (many subscriptions, high zoom, a
 	// short window); the whole body scrolls, with the topbar + Done painted over
 	// the overflow. Everything above was laid out unscrolled; clamp the offset
