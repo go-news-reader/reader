@@ -462,6 +462,7 @@ func New(cfg Config) *App {
 	a.scene.SetBrowserZoomKeys(set.ZoomInKey, set.ZoomOutKey) // apply the persisted browser zoom keybindings
 	a.scene.SetBookmarks(set.Bookmarks)                       // apply the persisted bookmarks
 	a.scene.SetInfiniteScroll(set.InfiniteScrollEnabled())    // apply the persisted infinite-scroll preference (default on)
+	settings.SetSecretUserPresence(set.BiometricUnlock)       // gate secret writes behind biometric unlock when enabled
 	a.groupStatsFetch = func(name string) {
 		go a.loadGroupStats(context.Background(), name)
 	}

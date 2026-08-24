@@ -27,7 +27,7 @@ import (
 // still override these vars themselves and restore them.
 func TestMain(m *testing.M) {
 	vault := NewMemorySecrets()
-	keyringSet = func(_, account string, secret []byte) error { return vault.Set(account, secret) }
+	keyringSet = func(_, account string, secret []byte, _ ...keyring.Option) error { return vault.Set(account, secret) }
 	keyringGet = func(_, account string) ([]byte, error) {
 		b, err := vault.Get(account)
 		if err != nil {
