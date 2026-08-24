@@ -9,7 +9,9 @@ package mastodon
 
 import (
 	"context"
+	"html"
 	"net/http"
+	"regexp"
 	"strings"
 
 	gomasto "github.com/go-mastodon/mastodon"
@@ -26,7 +28,11 @@ type client interface {
 	HomeTimeline(ctx context.Context, opts gomasto.TimelineOptions) (*gomasto.Timeline, error)
 	VerifyCredentials(ctx context.Context) (*gomasto.Account, error)
 	Following(ctx context.Context, accountID string, opts gomasto.TimelineOptions) (*gomasto.FollowingPage, error)
+	SearchAccounts(ctx context.Context, q string, limit int) ([]gomasto.Account, error)
 }
+
+// Provider implements source.Searcher (account discovery).
+var _ source.Searcher = (*Provider)(nil)
 
 // homeChannel is the reserved subscription channel that maps to the
 // authenticated user's home timeline (the statuses of the accounts they
@@ -76,6 +82,46 @@ func NewWithClientAuthed(c client) *Provider { return &Provider{client: c, authe
 
 // Kind reports source.Mastodon.
 func (p *Provider) Kind() source.Kind { return source.Mastodon }
+
+// SearchChannels implements source.Searcher: it discovers accounts matching
+// query (via the public /api/v2/search accounts read) and maps each onto a
+// source.ChannelResult — a Mastodon result subscribes as @<acct> (the acct is
+// "user@instance" for a remote account, "user" for a local one), with the
+// display name, plain-text bio, avatar and follower count.
+func (p *Provider) SearchChannels(ctx context.Context, query string) ([]source.ChannelResult, error) {
+	accts, err := p.client.SearchAccounts(ctx, query, 0)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]source.ChannelResult, 0, len(accts))
+	for _, a := range accts {
+		if a.Acct == "" {
+			continue
+		}
+		title := a.DisplayName
+		if title == "" {
+			title = a.Acct
+		}
+		out = append(out, source.ChannelResult{
+			Source:      source.Mastodon,
+			Channel:     "@" + a.Acct,
+			Title:       title,
+			Description: stripHTML(a.Note),
+			Subscribers: int64(a.FollowersCount),
+			IconURL:     a.Avatar,
+		})
+	}
+	return out, nil
+}
+
+// htmlTag matches an HTML tag; stripHTML turns a Mastodon HTML bio into a
+// single-line plain-text preview (tags removed, entities unescaped, runs of
+// whitespace collapsed) for the discovery row's description.
+var htmlTag = regexp.MustCompile(`<[^>]*>`)
+
+func stripHTML(s string) string {
+	return strings.Join(strings.Fields(html.UnescapeString(htmlTag.ReplaceAllString(s, " "))), " ")
+}
 
 // Feed returns a page of statuses for the query's channel.
 func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, error) {

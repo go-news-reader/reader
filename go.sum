@@ -67,8 +67,8 @@ github.com/go-macos/keychain v0.1.0 h1:QkKT97eeJ5m/FloDcoi4UmxIvZIosIwinRjexs3ic
 github.com/go-macos/keychain v0.1.0/go.mod h1:sR+WtyxxCqldTpbPizjLa/pFd0RPme+VSa5C3Qa4NE8=
 github.com/go-macos/objc v0.1.1 h1:fcuSplZNWzpZjimxMN3HkDHW7XnHFaGaEDIwrTbhdxs=
 github.com/go-macos/objc v0.1.1/go.mod h1:00GJyieLzPcb65rPLVWNPPUCVm79nmmiEXUDsslRpOs=
-github.com/go-mastodon/mastodon v0.2.0 h1:fB75XP83P6kIDBL1qPKINfRyh4DXICwdkmQZLx/FGks=
-github.com/go-mastodon/mastodon v0.2.0/go.mod h1:BUNMTzBrelZtGi6qLuQ7s6mffxsETf1htxiquA3yuDU=
+github.com/go-mastodon/mastodon v0.3.0 h1:h+iNNhOza6IACq5Ubx2aGw5qv9hC9+vXBtcrLqTwwSo=
+github.com/go-mastodon/mastodon v0.3.0/go.mod h1:BUNMTzBrelZtGi6qLuQ7s6mffxsETf1htxiquA3yuDU=
 github.com/go-mswin/win32 v0.1.0 h1:A5Qfrix2eACXXskaIALrwu2+OWpmkRrpdw68yp8EoSw=
 github.com/go-mswin/win32 v0.1.0/go.mod h1:ypmW4zosl3mXhy0O39EDbHk+AUjgaXGyFgY5UpX3AxI=
 github.com/go-newsgroups/newznab v0.1.0 h1:KJNaCoaE2coPaU8wvQzYF7aJ2UXmUp4qlnXfaVl+5hs=
