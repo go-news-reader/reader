@@ -443,7 +443,7 @@ func TestKeyringSecretsBackend(t *testing.T) {
 		store[account] = append([]byte(nil), secret...)
 		return nil
 	}
-	keyringGet = func(service, account string) ([]byte, error) {
+	keyringGet = func(service, account string, _ ...keyring.Option) ([]byte, error) {
 		if b, ok := store[account]; ok {
 			return b, nil
 		}
@@ -469,7 +469,7 @@ func TestKeyringSecretsBackend(t *testing.T) {
 	}
 	// Error passthrough on a non-NotFound failure.
 	boom := errors.New("keyring boom")
-	keyringGet = func(string, string) ([]byte, error) { return nil, boom }
+	keyringGet = func(string, string, ...keyring.Option) ([]byte, error) { return nil, boom }
 	if _, err := ks.Get("acct"); !errors.Is(err, boom) {
 		t.Fatalf("Get passthrough = %v, want %v", err, boom)
 	}
@@ -553,5 +553,34 @@ func TestKeyringSecretsUserPresence(t *testing.T) {
 	}
 	if gotOpts != 0 {
 		t.Fatalf("biometric off: opts = %d, want 0", gotOpts)
+	}
+}
+
+// TestKeyringSecretsGetUserPresence proves the read side threads
+// keyring.WithUserPresence when biometric unlock is on, and none when off — the
+// read half of the gate.
+func TestKeyringSecretsGetUserPresence(t *testing.T) {
+	origGet := keyringGet
+	defer func() { keyringGet = origGet }()
+	gotOpts := -1
+	keyringGet = func(_, _ string, opts ...keyring.Option) ([]byte, error) {
+		gotOpts = len(opts)
+		return []byte("s"), nil
+	}
+
+	restore := SetSecretUserPresence(true)
+	if _, err := (keyringSecrets{}).Get("acct"); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if gotOpts != 1 {
+		t.Fatalf("biometric on: Get opts = %d, want 1", gotOpts)
+	}
+	restore()
+	gotOpts = -1
+	if _, err := (keyringSecrets{}).Get("acct"); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if gotOpts != 0 {
+		t.Fatalf("biometric off: Get opts = %d, want 0", gotOpts)
 	}
 }

@@ -28,7 +28,7 @@ import (
 func TestMain(m *testing.M) {
 	vault := NewMemorySecrets()
 	keyringSet = func(_, account string, secret []byte, _ ...keyring.Option) error { return vault.Set(account, secret) }
-	keyringGet = func(_, account string) ([]byte, error) {
+	keyringGet = func(_, account string, _ ...keyring.Option) ([]byte, error) {
 		b, err := vault.Get(account)
 		if err != nil {
 			// The façade's own sentinel, so keyringSecrets.Get maps it the way it
