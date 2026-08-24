@@ -37,8 +37,8 @@ github.com/go-browserhttp/browserhttp v0.2.0 h1:3RcjOQVHgqhSOmI5cfsURpexw/vetoDU
 github.com/go-browserhttp/browserhttp v0.2.0/go.mod h1:VJiwBxLetXdc8eDadOcNbiO0EelNQPny0cLZhg1hTKU=
 github.com/go-crdt/collab v0.18.0 h1:/2o4Sv1hgYVgXu+8MPaDR1sXGBqS7OJ4f7lMDYXNCUg=
 github.com/go-crdt/collab v0.18.0/go.mod h1:aewsJvSDKC1gculiUJsrkwOTsf78w1TVj7OiUnerti0=
-github.com/go-crdt/crdt v0.25.0 h1:BZsr5sKnjGmwyXd82WJ3SjDK+Ehhutr9qhvbXFFm8XM=
-github.com/go-crdt/crdt v0.25.0/go.mod h1:vbfvns9B9FUaMi2sPKzMYttKmbxfgO7EK3Yu82SrlYw=
+github.com/go-crdt/crdt v0.29.0 h1:Atuq10zhvcTuvLfg0trqw5KB8UFRxw8xhOXfEdH3XU4=
+github.com/go-crdt/crdt v0.29.0/go.mod h1:vbfvns9B9FUaMi2sPKzMYttKmbxfgO7EK3Yu82SrlYw=
 github.com/go-datetime/dates v0.1.0 h1:Uj8TaTZ09DXdq75EGQ/teFdrXpfVAC3ZDHAPQvPTnaA=
 github.com/go-datetime/dates v0.1.0/go.mod h1:KeZ1wUeMScJD6HOvj3hINwbsB+GCSFjJLWcJhrBlwIo=
 github.com/go-erasure/reedsolomon v0.3.0 h1:A+qrLr3OdHOftL+EyoqrdUu1sFiCb23PDWxgvc9foxU=
@@ -109,8 +109,8 @@ github.com/go-widgets/mvvm v0.8.0 h1:DqyNiNNTdITkMOdAwGvWFuCd6xpTaDRS2S+LNxd8inA
 github.com/go-widgets/mvvm v0.8.0/go.mod h1:GuGxC1kVTiPWANsAfKBPFb2YlmoG55J3NmZauvyqJ6w=
 github.com/go-widgets/painter v0.11.0 h1:xsj4zTz8B43rOZnWrx7ZsaUBMgJyvgaE/Pq2FfcG2Sw=
 github.com/go-widgets/painter v0.11.0/go.mod h1:IPRLqdUJuJX8sfuHeYLZCzjoLvA0ApbOlyIAVmguJDQ=
-github.com/go-widgets/toolkit v0.236.0 h1:YdVHkiYDfdTybYCYlpLAzN+QPNq51wGaE0ZipA8mAB8=
-github.com/go-widgets/toolkit v0.236.0/go.mod h1:KmLIi/12B6E/+wAA0xbGvQWmKMVSzvFv6Y7WwhEr29o=
+github.com/go-widgets/toolkit v0.238.0 h1:vbq3qdFhiFFeYV7VWem2pvoUrPo2BPspfzZqB4Ikfmo=
+github.com/go-widgets/toolkit v0.238.0/go.mod h1:R8KEk0Hp5TIsUYnoJ1OnptS6TZ0KwxqSx06Xg9yLyzQ=
 github.com/go-widgets/window v0.44.0 h1:0tId+z1kxDO4DuNwk/noR6qjDdTTHMJZJL5f9dZyREE=
 github.com/go-widgets/window v0.44.0/go.mod h1:v+6OSvJHsmXJ1w8rIfybWTy5oX5LDKzOWijm8Dhhz74=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
