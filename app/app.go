@@ -462,6 +462,7 @@ func New(cfg Config) *App {
 	a.scene.SetBrowserZoomKeys(set.ZoomInKey, set.ZoomOutKey) // apply the persisted browser zoom keybindings
 	a.scene.SetBookmarks(set.Bookmarks)                       // apply the persisted bookmarks
 	a.scene.SetInfiniteScroll(set.InfiniteScrollEnabled())    // apply the persisted infinite-scroll preference (default on)
+	a.scene.SetBiometricUnlock(set.BiometricUnlock)           // reflect the persisted biometric-unlock preference in the settings toggle
 	settings.SetSecretUserPresence(set.BiometricUnlock)       // gate secret writes behind biometric unlock when enabled
 	a.groupStatsFetch = func(name string) {
 		go a.loadGroupStats(context.Background(), name)
@@ -1077,6 +1078,16 @@ func (a *App) DeleteProfile(i int) {
 // a store is configured), reselects the active profile's subscriptions and
 // theme, and triggers a re-aggregate. Front-ends call it after any profile
 // switch or settings-view edit.
+// SetBiometricUnlock toggles biometric-gated secret storage: it records the
+// preference on the scene, flips the vault-write gate, then persists and
+// re-applies — which re-writes every secret through the (now gated or ungated)
+// vault, so the change takes effect on the next read.
+func (a *App) SetBiometricUnlock(v bool) {
+	a.scene.SetBiometricUnlock(v)
+	settings.SetSecretUserPresence(v)
+	a.ApplySceneSettings()
+}
+
 func (a *App) ApplySceneSettings() {
 	set := a.scene.Settings()
 	a.set = set

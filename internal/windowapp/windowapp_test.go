@@ -357,6 +357,17 @@ func TestMouseDownProfileAndSettings(t *testing.T) {
 	if !s.InfiniteScroll() {
 		t.Fatal("infinite scroll still off after clicking on")
 	}
+	// The SECURITY biometric-unlock toggle sits below infinite scroll; re-pin the
+	// bottom and flip it on then off, asserting the route reached SetBiometricUnlock.
+	s.Scroll(1 << 20)
+	clickValue(t, h, ui.HitBiometricUnlock, "on")
+	if !s.BiometricUnlock() {
+		t.Fatal("biometric unlock still off after clicking on")
+	}
+	clickValue(t, h, ui.HitBiometricUnlock, "off")
+	if s.BiometricUnlock() {
+		t.Fatal("biometric unlock still on after clicking off")
+	}
 	// Close the editor -> back to the feed.
 	click(t, h, ui.HitCloseSettings)
 	if s.Mode() != ui.ModeFeed {

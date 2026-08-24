@@ -542,3 +542,23 @@ func TestSidebarProfileTabsAndDraw(t *testing.T) {
 	// Draw with tabs + an active tab highlight.
 	renderPNG(t, s, "feed-profiles")
 }
+
+// TestBiometricUnlockToggle covers the scene-level biometric-unlock preference:
+// the setter/getter and that it round-trips through Settings().
+func TestBiometricUnlockToggle(t *testing.T) {
+	s := searchScene()
+	if s.BiometricUnlock() {
+		t.Fatal("default should be off")
+	}
+	s.SetBiometricUnlock(true)
+	if !s.BiometricUnlock() {
+		t.Fatal("setter did not enable it")
+	}
+	if !s.Settings().BiometricUnlock {
+		t.Fatal("Settings() did not carry the biometric-unlock preference")
+	}
+	s.SetBiometricUnlock(false)
+	if s.BiometricUnlock() || s.Settings().BiometricUnlock {
+		t.Fatal("setter did not disable it")
+	}
+}

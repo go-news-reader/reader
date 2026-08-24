@@ -1052,3 +1052,20 @@ func TestCookieValue(t *testing.T) {
 		t.Errorf("malformed pair should yield empty, got %q", v)
 	}
 }
+
+// TestSetBiometricUnlock covers the app-level biometric toggle: it updates the
+// scene preference (and persists + re-applies without error).
+func TestSetBiometricUnlock(t *testing.T) {
+	a := New(Config{Registry: newReg(), Width: 400, Height: 300})
+	a.SetRefreshHook(func() {})
+	defer settings.SetSecretUserPresence(false)() // reset the process-wide gate
+
+	a.SetBiometricUnlock(true)
+	if !a.Scene().BiometricUnlock() {
+		t.Fatal("SetBiometricUnlock(true) did not update the scene")
+	}
+	a.SetBiometricUnlock(false)
+	if a.Scene().BiometricUnlock() {
+		t.Fatal("SetBiometricUnlock(false) did not clear the scene")
+	}
+}

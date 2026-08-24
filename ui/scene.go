@@ -127,6 +127,7 @@ const (
 	HitBrowserTabs       // Value = "multi"|"single" (web-preview browser tab mode)
 	HitBrowserChrome     // Value = "shown"|"hidden" (web-preview toolbar/urlbar visibility)
 	HitInfiniteScroll    // Value = "on"|"off" (fetch next page on scroll-to-bottom)
+	HitBiometricUnlock   // Value = "on"|"off" (store/read secrets behind a biometric gate)
 	HitClearRenderCache  // empty the web-preview render cache
 	HitCloseSettings     // leave the settings view
 
@@ -211,9 +212,10 @@ type Scene struct {
 	// the list's OnReachBottom (a pull past the newest re-aggregates). Both are
 	// nil-safe (only called when installed). infiniteScroll gates whether the
 	// next-page trigger is offered.
-	OnReachBottom  func()
-	OnPullRefresh  func()
-	infiniteScroll bool
+	OnReachBottom   func()
+	OnPullRefresh   func()
+	infiniteScroll  bool
+	biometricUnlock bool // secrets stored/read behind a biometric user-presence gate
 
 	// Live-loading feedback (streaming aggregation). loading is set while a
 	// refresh is in progress; loadDone/loadTotal track how many sources have
@@ -706,6 +708,14 @@ func (s *Scene) SetInfiniteScroll(v bool) { s.infiniteScroll = v; s.touch() }
 // InfiniteScroll reports whether the bottom-of-feed next-page trigger is enabled.
 func (s *Scene) InfiniteScroll() bool { return s.infiniteScroll }
 
+// SetBiometricUnlock records whether the account secrets are stored/read behind a
+// biometric user-presence gate (Touch ID on macOS). The app persists it and
+// re-writes the secrets so the gate takes effect.
+func (s *Scene) SetBiometricUnlock(v bool) { s.biometricUnlock = v; s.touch() }
+
+// BiometricUnlock reports whether biometric-gated secret storage is enabled.
+func (s *Scene) BiometricUnlock() bool { return s.biometricUnlock }
+
 // SetBrowserChromeHidden hides (v=true) or shows the embedded browser's toolbar
 // + tab strip, so a page can render chrome-free in the preview.
 func (s *Scene) SetBrowserChromeHidden(v bool) { s.browser.HideChrome = v; s.touch() }
@@ -1020,6 +1030,7 @@ func (s *Scene) Settings() *settings.Settings {
 		Accounts:          s.EditedAccounts(),
 		BrowserSingleTab:  &singleTab,
 		InfiniteScroll:    &infinite,
+		BiometricUnlock:   s.biometricUnlock,
 		HideBrowserChrome: s.BrowserChromeHidden(),
 		SignInBrowser:     s.signInBrowser,
 		ZoomInKey:         s.BrowserZoomInKey(),
