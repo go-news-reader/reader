@@ -13,7 +13,7 @@ require (
 	github.com/go-instagram/instagram v0.2.0
 	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.2.0
-	github.com/go-mastodon/mastodon v0.2.0
+	github.com/go-mastodon/mastodon v0.3.0
 	github.com/go-newsgroups/newznab v0.1.0
 	github.com/go-newsgroups/nntp v0.2.2
 	github.com/go-newsgroups/nzb v0.1.0

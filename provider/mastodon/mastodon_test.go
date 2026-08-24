@@ -27,6 +27,7 @@ type fakeClient struct {
 	followPages  []*gomasto.FollowingPage // returned in sequence, one per call
 	followErr    error
 	followCalls  int
+	accounts     []gomasto.Account
 	gotFollowID  string
 	gotFollowMax []string
 }
@@ -46,6 +47,10 @@ func (f *fakeClient) AccountStatuses(_ context.Context, acct string, o gomasto.T
 func (f *fakeClient) HomeTimeline(_ context.Context, o gomasto.TimelineOptions) (*gomasto.Timeline, error) {
 	f.called, f.gotLimit, f.gotMax = "home", o.Limit, o.MaxID
 	return f.tl, f.err
+}
+func (f *fakeClient) SearchAccounts(_ context.Context, q string, _ int) ([]gomasto.Account, error) {
+	f.called, f.gotAcct = "searchAccounts", q
+	return f.accounts, f.err
 }
 func (f *fakeClient) VerifyCredentials(_ context.Context) (*gomasto.Account, error) {
 	return f.me, f.meErr
@@ -269,5 +274,43 @@ func TestFeedAuthError(t *testing.T) {
 	}
 	if _, ok := source.AsAuthError(err); ok {
 		t.Fatalf("transient error misclassified as auth: %v", err)
+	}
+}
+
+func TestSearchChannelsMapsAccounts(t *testing.T) {
+	f := &fakeClient{accounts: []gomasto.Account{
+		{Acct: "golang@hachyderm.io", DisplayName: "Go", Note: "<p>Official &amp;   cool</p>", Avatar: "https://cdn/av.png", FollowersCount: 2299},
+		{Acct: "bob"}, // no display name → title falls back to acct
+		{Acct: ""},    // skipped
+	}}
+	p := NewWithClient(f)
+
+	rs, err := p.SearchChannels(context.Background(), "go")
+	if err != nil {
+		t.Fatalf("SearchChannels: %v", err)
+	}
+	if f.called != "searchAccounts" || f.gotAcct != "go" {
+		t.Fatalf("client call = %q %q", f.called, f.gotAcct)
+	}
+	if len(rs) != 2 {
+		t.Fatalf("results = %d, want 2 (empty acct skipped)", len(rs))
+	}
+	// Note stripped of HTML, entities unescaped, whitespace collapsed.
+	want := source.ChannelResult{Source: source.Mastodon, Channel: "@golang@hachyderm.io", Title: "Go", Description: "Official & cool", Subscribers: 2299, IconURL: "https://cdn/av.png"}
+	if rs[0] != want {
+		t.Fatalf("result[0] = %+v, want %+v", rs[0], want)
+	}
+	if rs[1].Channel != "@bob" || rs[1].Title != "bob" { // acct fallback for title
+		t.Fatalf("result[1] = %+v", rs[1])
+	}
+	if got := rs[0].Subscription(); got.Source != source.Mastodon || got.Channel != "@golang@hachyderm.io" {
+		t.Fatalf("Subscription() = %+v", got)
+	}
+}
+
+func TestSearchChannelsPropagatesError(t *testing.T) {
+	f := &fakeClient{err: errors.New("boom")}
+	if _, err := NewWithClient(f).SearchChannels(context.Background(), "x"); err == nil {
+		t.Fatal("client error should propagate")
 	}
 }
