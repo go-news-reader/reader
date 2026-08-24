@@ -148,7 +148,7 @@ const (
 	HitFocusSearchQuery    // focus the search-query input
 	HitFocusSearchRegex    // focus the subreddit-results regexp filter input
 	HitRunSearch           // run the search for the current query + tab
-	HitSubscribeSubreddit  // subscribe to a subreddit result — Value = subreddit name
+	HitSubscribeChannel    // subscribe to a channel result — Item.Source = platform, Value = channel handle
 	HitSubscribePostSearch // save the post keyword search as a live channel — Value = query
 )
 

@@ -477,7 +477,7 @@ func New(cfg Config) *App {
 	// The Reddit search view runs its query off the render thread; a field so tests
 	// drive it synchronously.
 	a.searchFetch = func(query string, posts bool) {
-		go a.RunRedditSearch(context.Background(), query, posts)
+		go a.RunSearchFetch(context.Background(), query, posts)
 	}
 	a.dl = newDownloader(a)
 	a.fdl = newFileDownloader(a)
