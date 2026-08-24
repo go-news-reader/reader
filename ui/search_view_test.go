@@ -15,12 +15,12 @@ func searchScene() *Scene {
 	return s
 }
 
-// subSample is a small set of subreddit results with varied fields.
-func subSample() []source.SubredditResult {
-	return []source.SubredditResult{
-		{Name: "golang", Title: "The Go Programming Language", Description: "Gophers unite", Subscribers: 250000},
-		{Name: "rust", Title: "Rust", Description: "systems programming", Subscribers: 1_500_000, NSFW: false},
-		{Name: "cpp", Title: "C++", Description: "", Subscribers: 500},
+// subSample is a small set of channel-discovery results with varied fields.
+func subSample() []source.ChannelResult {
+	return []source.ChannelResult{
+		{Source: source.Reddit, Channel: "r/golang", Title: "The Go Programming Language", Description: "Gophers unite", Subscribers: 250000},
+		{Source: source.Reddit, Channel: "r/rust", Title: "Rust", Description: "systems programming", Subscribers: 1_500_000, NSFW: false},
+		{Source: source.Reddit, Channel: "r/cpp", Title: "C++", Description: "", Subscribers: 500},
 	}
 }
 
@@ -94,11 +94,11 @@ func TestSearchSidebarEntry(t *testing.T) {
 
 func TestSearchSubredditResultsAndSubscribe(t *testing.T) {
 	s := searchScene()
-	s.SetSubredditResults(subSample())
+	s.SetChannelResults(subSample())
 	if s.SearchTabPosts() {
 		t.Fatal("delivering subreddits should select the subreddits tab")
 	}
-	if got := s.SubredditResults(); len(got) != 3 {
+	if got := s.ChannelResults(); len(got) != 3 {
 		t.Fatalf("results = %d", len(got))
 	}
 	renderPNG(t, s, "search-subreddits")
@@ -108,16 +108,16 @@ func TestSearchSubredditResultsAndSubscribe(t *testing.T) {
 	}
 	// Each row's Subscribe button is laid out with a positive rect.
 	for i, r := range s.search.rows {
-		if r.sub == nil || r.subscribe.W <= 0 || r.subscribe.H <= 0 {
+		if r.channel == nil || r.subscribe.W <= 0 || r.subscribe.H <= 0 {
 			t.Fatalf("row %d subscribe rect not laid out: %+v", i, r)
 		}
 	}
-	// A click inside the first row's Subscribe button returns HitSubscribeSubreddit
+	// A click inside the first row's Subscribe button returns HitSubscribeChannel
 	// carrying the subreddit name.
 	btn := s.search.rows[0].subscribe
 	h := s.searchHitTest(btn.X+btn.W/2, btn.Y+btn.H/2)
-	if h.Kind != HitSubscribeSubreddit || h.Value != "golang" {
-		t.Fatalf("subscribe hit = %+v, want HitSubscribeSubreddit golang", h)
+	if h.Kind != HitSubscribeChannel || h.Value != "r/golang" {
+		t.Fatalf("subscribe hit = %+v, want HitSubscribeChannel r/golang", h)
 	}
 	// After subscribing, the same button no longer offers Subscribe (it shows ✓).
 	if !s.SubscribeActive(source.Reddit, "r/golang") {
@@ -125,7 +125,7 @@ func TestSearchSubredditResultsAndSubscribe(t *testing.T) {
 	}
 	s.layoutSearch()
 	btn = s.search.rows[0].subscribe
-	if h := s.searchHitTest(btn.X+btn.W/2, btn.Y+btn.H/2); h.Kind == HitSubscribeSubreddit {
+	if h := s.searchHitTest(btn.X+btn.W/2, btn.Y+btn.H/2); h.Kind == HitSubscribeChannel {
 		t.Fatal("subscribed subreddit must not offer Subscribe again")
 	}
 	renderPNG(t, s, "search-subreddits-subscribed")
@@ -133,7 +133,7 @@ func TestSearchSubredditResultsAndSubscribe(t *testing.T) {
 
 func TestSearchRegexFilter(t *testing.T) {
 	s := searchScene()
-	s.SetSubredditResults(subSample())
+	s.SetChannelResults(subSample())
 	// Focus the regex field and type a pattern matching only "rust".
 	s.FocusSearchRegex(true)
 	if !s.SearchRegexFocused() || s.SearchQueryFocused() {
@@ -149,8 +149,8 @@ func TestSearchRegexFilter(t *testing.T) {
 	if s.search.filterN != 1 || len(s.search.rows) != 1 {
 		t.Fatalf("filtered rows = %d (filterN=%d), want 1", len(s.search.rows), s.search.filterN)
 	}
-	if s.search.rows[0].sub.Name != "rust" {
-		t.Fatalf("filtered row = %q, want rust", s.search.rows[0].sub.Name)
+	if s.search.rows[0].channel.Channel != "r/rust" {
+		t.Fatalf("filtered row = %q, want r/rust", s.search.rows[0].channel.Channel)
 	}
 	renderPNG(t, s, "search-regex")
 	// A pattern that matches the description of golang ("Gophers") but no name.
@@ -162,14 +162,14 @@ func TestSearchRegexFilter(t *testing.T) {
 		s.TypeRune(r)
 	}
 	s.layoutSearch()
-	if s.search.filterN != 1 || s.search.rows[0].sub.Name != "golang" {
+	if s.search.filterN != 1 || s.search.rows[0].channel.Channel != "r/golang" {
 		t.Fatalf("description match failed: filterN=%d rows=%+v", s.search.filterN, s.search.rows)
 	}
 }
 
 func TestSearchInvalidRegexShowsAll(t *testing.T) {
 	s := searchScene()
-	s.SetSubredditResults(subSample())
+	s.SetChannelResults(subSample())
 	s.FocusSearchRegex(true)
 	s.TypeRune('(') // unterminated group: invalid
 	s.layoutSearch()
@@ -280,7 +280,7 @@ func TestSearchStatusLineBranches(t *testing.T) {
 		t.Fatalf("explicit status = %q", msg)
 	}
 	// Subreddit count.
-	s.SetSubredditResults(subSample())
+	s.SetChannelResults(subSample())
 	s.layoutSearch()
 	if msg, _ := s.searchStatusLine(muteC); msg != "3 subreddits" {
 		t.Fatalf("subreddit count status = %q", msg)
@@ -295,9 +295,9 @@ func TestSearchStatusLineBranches(t *testing.T) {
 
 func TestSearchEmptyResultsStatus(t *testing.T) {
 	s := searchScene()
-	s.SetSubredditResults(nil)
-	if s.SearchStatus() != "No subreddits found" {
-		t.Fatalf("empty subreddit status = %q", s.SearchStatus())
+	s.SetChannelResults(nil)
+	if s.SearchStatus() != "No channels found" {
+		t.Fatalf("empty channel status = %q", s.SearchStatus())
 	}
 	s.SetPostResults(nil)
 	if s.SearchStatus() != "No posts found" {
@@ -328,11 +328,11 @@ func TestSearchTypeIntoQuery(t *testing.T) {
 
 func TestSearchScrollClamps(t *testing.T) {
 	s := searchScene()
-	many := make([]source.SubredditResult, 0, 200)
+	many := make([]source.ChannelResult, 0, 200)
 	for i := 0; i < 200; i++ {
-		many = append(many, source.SubredditResult{Name: "sub" + itoaTest(i), Subscribers: int64(i)})
+		many = append(many, source.ChannelResult{Source: source.Reddit, Channel: "r/sub" + itoaTest(i), Subscribers: int64(i)})
 	}
-	s.SetSubredditResults(many)
+	s.SetChannelResults(many)
 	s.Scroll(100000) // clamp to bottom
 	if s.search.scroll.offset <= 0 {
 		t.Fatalf("scroll did not advance: %d", s.search.scroll.offset)
@@ -343,7 +343,7 @@ func TestSearchScrollClamps(t *testing.T) {
 		t.Fatalf("scroll not clamped to 0: %d", s.search.scroll.offset)
 	}
 	// A click above the list viewport (in the control chrome) hits no result row.
-	if h := s.searchHitTest(s.W/2, s.search.listTop-2); h.Kind == HitSubscribeSubreddit {
+	if h := s.searchHitTest(s.W/2, s.search.listTop-2); h.Kind == HitSubscribeChannel {
 		t.Fatal("a click in the chrome must not subscribe")
 	}
 }
@@ -351,7 +351,7 @@ func TestSearchScrollClamps(t *testing.T) {
 func TestSearchHitTestRowRegions(t *testing.T) {
 	s := searchScene()
 	s.SetSearchTab(false) // exercise the subreddits (else) arm explicitly
-	s.SetSubredditResults(subSample())
+	s.SetChannelResults(subSample())
 	s.layoutSearch()
 	if len(s.search.rows) < 3 {
 		t.Fatalf("need >=3 rows, got %d", len(s.search.rows))
@@ -371,16 +371,16 @@ func TestSearchHitTestRowRegions(t *testing.T) {
 
 func TestSearchHitTestSkipsOffscreenRows(t *testing.T) {
 	s := searchScene()
-	many := make([]source.SubredditResult, 0, 200)
+	many := make([]source.ChannelResult, 0, 200)
 	for i := 0; i < 200; i++ {
-		many = append(many, source.SubredditResult{Name: "sub" + itoaTest(i)})
+		many = append(many, source.ChannelResult{Source: source.Reddit, Channel: "r/sub" + itoaTest(i)})
 	}
-	s.SetSubredditResults(many)
+	s.SetChannelResults(many)
 	s.Scroll(4000) // push the early rows above the list viewport
 	s.layoutSearch()
 	// Hit-test a visible row: the loop must skip the scrolled-off rows first.
 	got := s.searchHitTest(s.m.pad+2, s.search.listTop+2)
-	if got.Kind != HitNone && got.Kind != HitSubscribeSubreddit {
+	if got.Kind != HitNone && got.Kind != HitSubscribeChannel {
 		t.Fatalf("visible-row hit after scroll = %+v", got)
 	}
 	// Confirm at least one row is scrolled off the top (its screen top < listTop).
@@ -426,29 +426,29 @@ func TestFormatSubscribers(t *testing.T) {
 func TestSearchDescriptionFallsBackToTitle(t *testing.T) {
 	// The "cpp" result has an empty description, so its row falls back to the title.
 	s := searchScene()
-	s.SetSubredditResults(subSample())
+	s.SetChannelResults(subSample())
 	renderPNG(t, s, "search-desc-fallback") // exercises the fallback + NSFW-absent branch
 	s.layoutSearch()
 	var cpp *searchRowLayout
 	for i := range s.search.rows {
-		if s.search.rows[i].sub != nil && s.search.rows[i].sub.Name == "cpp" {
+		if s.search.rows[i].channel != nil && s.search.rows[i].channel.Channel == "r/cpp" {
 			cpp = &s.search.rows[i]
 		}
 	}
 	if cpp == nil {
 		t.Fatal("cpp row missing")
 	}
-	if cpp.sub.Description != "" {
+	if cpp.channel.Description != "" {
 		t.Fatalf("cpp description should be empty for the fallback test")
 	}
 }
 
 func TestSearchNSFWBadge(t *testing.T) {
 	s := searchScene()
-	s.SetSubredditResults([]source.SubredditResult{{Name: "spicy", Title: "Spicy", NSFW: true, Subscribers: 10}})
+	s.SetChannelResults([]source.ChannelResult{{Source: source.Reddit, Channel: "r/spicy", Title: "Spicy", NSFW: true, Subscribers: 10}})
 	renderPNG(t, s, "search-nsfw") // exercises the NSFW-present branch of drawSubredditRow
 	s.layoutSearch()
-	if len(s.search.rows) != 1 || !s.search.rows[0].sub.NSFW {
+	if len(s.search.rows) != 1 || !s.search.rows[0].channel.NSFW {
 		t.Fatalf("nsfw row not laid out: %+v", s.search.rows)
 	}
 }

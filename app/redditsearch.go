@@ -7,11 +7,10 @@ import (
 	"github.com/go-news-reader/reader/source"
 )
 
-// redditSearcher is the narrow slice of the Reddit provider the search view
-// drives: discover subreddits by keyword and search posts by keyword. The
-// provider registry's Reddit entry implements it.
+// redditSearcher is the slice of the Reddit provider the posts tab drives:
+// keyword post-search. Channel discovery goes through the platform-agnostic
+// source.Searcher instead, so it is not part of this interface.
 type redditSearcher interface {
-	SearchSubreddits(ctx context.Context, query string) ([]source.SubredditResult, error)
 	SearchPosts(ctx context.Context, query, subreddit string) ([]source.Item, error)
 }
 
@@ -30,23 +29,25 @@ func (a *App) RunSearch() {
 	a.searchFetch(query, posts)
 }
 
-// RunRedditSearch performs a subreddit- or post-search against the Reddit
-// provider and delivers the results to the search view on the render thread (via
-// a.post). A missing/incompatible Reddit provider, or a search error, is reported
-// on the view's status line. The default searchFetch runs this on its own
-// goroutine; tests call it directly.
-func (a *App) RunRedditSearch(ctx context.Context, query string, posts bool) {
-	prov, ok := a.reg.Get(source.Reddit)
-	se, isSe := prov.(redditSearcher)
-	if !ok || !isSe {
-		a.post(func() { a.scene.SetSearchStatus("Reddit is not configured") })
-		return
-	}
+// RunSearchFetch performs the active search and delivers the results to the
+// search view on the render thread (via a.post): on the posts tab a Reddit
+// keyword post-search; otherwise channel discovery across EVERY provider that
+// implements source.Searcher (Reddit subreddits, X accounts/hashtags, Instagram
+// accounts/tags, ...), merged into one list — each source.ChannelResult carries
+// its own platform, so a mixed list stays unambiguous. The default searchFetch
+// runs this on its own goroutine; tests call it directly.
+func (a *App) RunSearchFetch(ctx context.Context, query string, posts bool) {
 	if strings.TrimSpace(query) == "" {
 		a.post(func() { a.scene.SetSearchStatus("Type something to search for") })
 		return
 	}
 	if posts {
+		prov, ok := a.reg.Get(source.Reddit)
+		se, isSe := prov.(redditSearcher)
+		if !ok || !isSe {
+			a.post(func() { a.scene.SetSearchStatus("Reddit is not configured") })
+			return
+		}
 		items, err := se.SearchPosts(ctx, query, "")
 		a.post(func() {
 			if err != nil {
@@ -57,22 +58,44 @@ func (a *App) RunRedditSearch(ctx context.Context, query string, posts bool) {
 		})
 		return
 	}
-	subs, err := se.SearchSubreddits(ctx, query)
-	a.post(func() {
-		if err != nil {
-			a.scene.SetSearchStatus("Search failed: " + err.Error())
-			return
+	var merged []source.ChannelResult
+	var firstErr error
+	found := false
+	for _, k := range a.reg.Kinds() {
+		prov, _ := a.reg.Get(k)
+		se, ok := prov.(source.Searcher)
+		if !ok {
+			continue
 		}
-		a.scene.SetSubredditResults(subs)
+		found = true
+		rs, err := se.SearchChannels(ctx, query)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		merged = append(merged, rs...)
+	}
+	a.post(func() {
+		switch {
+		case !found:
+			a.scene.SetSearchStatus("No searchable sources are configured")
+		case len(merged) == 0 && firstErr != nil:
+			a.scene.SetSearchStatus("Search failed: " + firstErr.Error())
+		default:
+			a.scene.SetChannelResults(merged)
+		}
 	})
 }
 
-// SubscribeSubreddit adds a subreddit result as an r/<name> subscription on the
-// active profile (dedup + normalization handled by the scene), then persists and
+// SubscribeChannel adds a channel-discovery result — its handle already carrying
+// the platform form (r/<name>, @account, #tag) — as a subscription on the active
+// profile (dedup + normalization handled by the scene), then persists and
 // re-aggregates. A no-op (already subscribed / no active profile) skips the
 // re-aggregate.
-func (a *App) SubscribeSubreddit(name string) {
-	if a.scene.SubscribeActive(source.Reddit, "r/"+name) {
+func (a *App) SubscribeChannel(src source.Kind, channel string) {
+	if a.scene.SubscribeActive(src, channel) {
 		a.ApplySceneSettings()
 	}
 }

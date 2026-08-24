@@ -1,12 +1,14 @@
 package ui
 
-// The in-canvas Reddit search / discover view (ModeSearch). Reddit does not let
-// its subreddits be enumerated, so a keyword query against its search endpoint is
-// the only way to discover them; this view runs that search and, on a second tab,
-// searches posts by keyword. Each subreddit result carries a Subscribe affordance
-// that adds an r/<name> subscription; a post keyword search can be saved as a
-// live "search:<query>" subscription so fresh matches keep flowing into the feed.
-// A client-side regexp field narrows the subreddit results locally. It is drawn
+// The in-canvas search / discover view (ModeSearch). Its Channels tab discovers
+// subscribable channels across every provider that implements source.Searcher —
+// Reddit subreddits, and (as those providers gain it) X accounts/hashtags,
+// Instagram accounts/tags, Lemmy communities, ... — each result carrying a
+// Subscribe affordance that adds it to the active profile by its own handle
+// (r/<name>, @account, #tag). Its Posts tab searches Reddit posts by keyword,
+// which can be saved as a live "search:<query>" subscription so fresh matches
+// keep flowing into the feed. A client-side regexp field narrows the channel
+// results locally. It is drawn
 // with the same painter + anti-aliased text and toolkit widgets as the rest of
 // the app (following browse_view.go), so its layout / hit-testing is
 // snapshot-verifiable under native `go test`.
@@ -36,7 +38,7 @@ const (
 // per-row Subscribe button rect (zero for a post row, which is preview-only).
 type searchRowLayout struct {
 	top       int
-	sub       *source.SubredditResult
+	channel   *source.ChannelResult
 	post      *source.Item
 	subscribe toolkit.Rect
 }
@@ -46,16 +48,16 @@ type searchRowLayout struct {
 // toolkit.SearchEntry widgets (mvvm-bindable and self-caret-drawing), lazily
 // built so a bare Scene need not allocate them.
 type searchState struct {
-	tab         searchTab
-	queryEntry  *toolkit.SearchEntry
-	regexEntry  *toolkit.SearchEntry
-	queryFocus  bool
-	regexFocus  bool
-	loading     bool
-	status      string
-	subResults  []source.SubredditResult
-	postResults []source.Item
-	scroll      panelScroll
+	tab            searchTab
+	queryEntry     *toolkit.SearchEntry
+	regexEntry     *toolkit.SearchEntry
+	queryFocus     bool
+	regexFocus     bool
+	loading        bool
+	status         string
+	channelResults []source.ChannelResult
+	postResults    []source.Item
+	scroll         panelScroll
 
 	// Laid-out rects (screen coords), filled by layoutSearch and read by drawSearch
 	// / searchHitTest so a click maps to exactly what was drawn.
@@ -203,15 +205,16 @@ func (s *Scene) SetSearchStatus(v string) {
 // SearchStatus returns the current search status line.
 func (s *Scene) SearchStatus() string { return s.search.status }
 
-// SetSubredditResults delivers subreddit-search results, switches to the
-// subreddits tab, clears loading and resets the scroll.
-func (s *Scene) SetSubredditResults(rs []source.SubredditResult) {
-	s.search.subResults = rs
+// SetChannelResults delivers channel-discovery results (subreddits, accounts,
+// hashtags — whatever the searched platforms returned), switches to the channels
+// tab, clears loading and resets the scroll.
+func (s *Scene) SetChannelResults(rs []source.ChannelResult) {
+	s.search.channelResults = rs
 	s.search.tab = searchTabSubreddits
 	s.search.loading = false
 	s.search.scroll.offset = 0
 	if len(rs) == 0 {
-		s.search.status = "No subreddits found"
+		s.search.status = "No channels found"
 	} else {
 		s.search.status = ""
 	}
@@ -233,32 +236,32 @@ func (s *Scene) SetPostResults(items []source.Item) {
 	s.touch()
 }
 
-// SubredditResults / PostResults expose the delivered results (front-ends/tests).
-func (s *Scene) SubredditResults() []source.SubredditResult { return s.search.subResults }
-func (s *Scene) PostResults() []source.Item                 { return s.search.postResults }
+// ChannelResults / PostResults expose the delivered results (front-ends/tests).
+func (s *Scene) ChannelResults() []source.ChannelResult { return s.search.channelResults }
+func (s *Scene) PostResults() []source.Item             { return s.search.postResults }
 
-// filteredSubResults applies the client-side regexp filter to the subreddit
-// results, matching (case-insensitively) against the name, title or description.
-// An empty filter returns everything; an invalid pattern records an inline hint
-// and, rather than crashing or hiding everything, returns everything so a partial
-// pattern being typed never blanks the list.
-func (ss *searchState) filteredSubResults() []source.SubredditResult {
+// filteredChannelResults applies the client-side regexp filter to the channel
+// results, matching (case-insensitively) against the handle, title or
+// description. An empty filter returns everything; an invalid pattern records an
+// inline hint and, rather than crashing or hiding everything, returns everything
+// so a partial pattern being typed never blanks the list.
+func (ss *searchState) filteredChannelResults() []source.ChannelResult {
 	ss.filterMsg = ""
 	filter := ""
 	if ss.regexEntry != nil {
 		filter = strings.TrimSpace(ss.regexEntry.Text().Get())
 	}
 	if filter == "" {
-		return ss.subResults
+		return ss.channelResults
 	}
 	re, err := regexp.Compile("(?i)" + filter)
 	if err != nil {
 		ss.filterMsg = "bad regexp: " + err.Error()
-		return ss.subResults
+		return ss.channelResults
 	}
-	out := make([]source.SubredditResult, 0, len(ss.subResults))
-	for _, r := range ss.subResults {
-		if re.MatchString(r.Name) || re.MatchString(r.Title) || re.MatchString(r.Description) {
+	out := make([]source.ChannelResult, 0, len(ss.channelResults))
+	for _, r := range ss.channelResults {
+		if re.MatchString(r.Channel) || re.MatchString(r.Title) || re.MatchString(r.Description) {
 			out = append(out, r)
 		}
 	}
@@ -331,10 +334,10 @@ func (s *Scene) layoutSearch() {
 	top := 0
 	switch ss.tab {
 	case searchTabSubreddits:
-		fs := ss.filteredSubResults()
+		fs := ss.filteredChannelResults()
 		ss.filterN = len(fs)
 		for i := range fs {
-			ss.rows = append(ss.rows, searchRowLayout{top: top, sub: &fs[i], subscribe: s.searchSubscribeRect(ss.listTop+top, s.W)})
+			ss.rows = append(ss.rows, searchRowLayout{top: top, channel: &fs[i], subscribe: s.searchSubscribeRect(ss.listTop+top, s.W)})
 			top += rowH
 		}
 	case searchTabPosts:
@@ -426,7 +429,7 @@ func (s *Scene) drawSearchControls(p *painter.PixelPainter, muteS toolkit.RGBA) 
 		b.SetBounds(r)
 		b.Draw(p, th)
 	}
-	drawTab(ss.tabSubR, "Subreddits", ss.tab == searchTabSubreddits)
+	drawTab(ss.tabSubR, "Channels", ss.tab == searchTabSubreddits)
 	drawTab(ss.tabPostR, "Posts", ss.tab == searchTabPosts)
 
 	// Third control row.
@@ -495,8 +498,8 @@ func (s *Scene) drawSearchRows(p *painter.PixelPainter, muteS toolkit.RGBA) {
 			continue
 		}
 		switch {
-		case r.sub != nil:
-			s.drawSubredditRow(p, *r.sub, r.subscribe, m.pad, y, rowW, muteS)
+		case r.channel != nil:
+			s.drawChannelRow(p, *r.channel, r.subscribe, m.pad, y, rowW, muteS)
 		case r.post != nil:
 			s.drawPostRow(p, *r.post, m.pad, y, rowW, muteS)
 		}
@@ -507,13 +510,13 @@ func (s *Scene) drawSearchRows(p *painter.PixelPainter, muteS toolkit.RGBA) {
 	}
 }
 
-// drawSubredditRow paints one subreddit result: r/<name> + subscriber count on
-// the first line, the description on the second, and a Subscribe (or subscribed
-// ✓) affordance on the right.
-func (s *Scene) drawSubredditRow(p *painter.PixelPainter, sr source.SubredditResult, btn toolkit.Rect, x, y, w int, muteS toolkit.RGBA) {
+// drawChannelRow paints one channel-discovery result: its handle (r/<name>,
+// @account, #tag) + subscriber count on the first line, the description on the
+// second, and a Subscribe (or subscribed ✓) affordance on the right.
+func (s *Scene) drawChannelRow(p *painter.PixelPainter, cr source.ChannelResult, btn toolkit.Rect, x, y, w int, muteS toolkit.RGBA) {
 	m := s.m
 	th := s.theme
-	subscribed := s.IsSubscribed(source.Reddit, "r/"+sr.Name)
+	subscribed := s.IsSubscribed(cr.Source, cr.Channel)
 	if subscribed {
 		drawCheckIcon(p, toolkit.Rect{X: btn.X + btn.W - m.navIcon - rpxOf(s, 4), Y: btn.Y + (btn.H-m.navIcon)/2, W: m.navIcon, H: m.navIcon}, successColor(th), s.iconStroke())
 	} else {
@@ -527,8 +530,8 @@ func (s *Scene) drawSubredditRow(p *painter.PixelPainter, sr source.SubredditRes
 	}
 	right := btn.X - rpxOf(s, 8)
 
-	name := "r/" + sr.Name
-	if sr.NSFW {
+	name := cr.Channel
+	if cr.NSFW {
 		name += "  (NSFW)"
 	}
 	nameLbl := toolkit.NewLabel(m.title.clipRight(name, right-x))
@@ -536,7 +539,7 @@ func (s *Scene) drawSubredditRow(p *painter.PixelPainter, sr source.SubredditRes
 	nameLbl.SetBounds(toolkit.Rect{X: x, Y: y + rpxOf(s, 8), W: right - x, H: m.title.height})
 	nameLbl.Draw(p, th)
 
-	subs := formatSubscribers(sr.Subscribers)
+	subs := formatSubscribers(cr.Subscribers)
 	if subs != "" {
 		// Right-aligned subscriber count, its right edge at the row content edge.
 		subsLbl := toolkit.NewLabel(subs)
@@ -544,9 +547,9 @@ func (s *Scene) drawSubredditRow(p *painter.PixelPainter, sr source.SubredditRes
 		subsLbl.SetBounds(toolkit.Rect{X: x, Y: y + rpxOf(s, 10), W: right - x, H: m.meta.height})
 		subsLbl.Draw(p, th)
 	}
-	desc := strings.TrimSpace(sr.Description)
+	desc := strings.TrimSpace(cr.Description)
 	if desc == "" {
-		desc = strings.TrimSpace(sr.Title)
+		desc = strings.TrimSpace(cr.Title)
 	}
 	if desc != "" {
 		dy := y + rpxOf(s, 8) + m.title.height + rpxOf(s, 2)
@@ -632,10 +635,11 @@ func (s *Scene) searchHitTest(x, y int) Hit {
 		if y < top || y >= top+rowH {
 			continue
 		}
-		// A subreddit row's Subscribe button subscribes to r/<name> (unless already
-		// subscribed). Post rows are preview only.
-		if r.sub != nil && inRect(r.subscribe, x, y) && !s.IsSubscribed(source.Reddit, "r/"+r.sub.Name) {
-			return Hit{Kind: HitSubscribeSubreddit, Value: r.sub.Name}
+		// A channel row's Subscribe button subscribes to its handle on its platform
+		// (unless already subscribed). Post rows are preview only. The Hit carries
+		// the platform in Item.Source and the handle in Value.
+		if r.channel != nil && inRect(r.subscribe, x, y) && !s.IsSubscribed(r.channel.Source, r.channel.Channel) {
+			return Hit{Kind: HitSubscribeChannel, Item: source.Item{Source: r.channel.Source}, Value: r.channel.Channel}
 		}
 		return Hit{Kind: HitNone}
 	}

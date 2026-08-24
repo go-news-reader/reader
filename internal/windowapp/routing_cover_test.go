@@ -91,9 +91,9 @@ func TestRouteRedditSearch(t *testing.T) {
 	if !searchFired {
 		t.Fatal("Run did not fire the search seam")
 	}
-	// Subscribe to a subreddit result.
-	s.SetSubredditResults([]source.SubredditResult{{Name: "golang"}})
-	click(t, h, ui.HitSubscribeSubreddit)
+	// Subscribe to a channel result.
+	s.SetChannelResults([]source.ChannelResult{{Source: source.Reddit, Channel: "r/golang"}})
+	click(t, h, ui.HitSubscribeChannel)
 	if !routeHasSub(s, "r/golang") {
 		t.Fatalf("r/golang not subscribed: %+v", s.ActiveProfile().Subs)
 	}

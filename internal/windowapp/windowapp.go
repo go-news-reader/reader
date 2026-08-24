@@ -297,8 +297,8 @@ func (h *Handler) runHit(hit ui.Hit) {
 		s.FocusSearchQuery(false)
 		s.FocusSearchRegex(false)
 		h.a.RunSearch() // run the query against the Reddit provider (async)
-	case ui.HitSubscribeSubreddit:
-		h.a.SubscribeSubreddit(hit.Value) // add r/<name> to the active profile
+	case ui.HitSubscribeChannel:
+		h.a.SubscribeChannel(hit.Item.Source, hit.Value) // subscribe to the channel handle on its platform
 	case ui.HitSubscribePostSearch:
 		h.a.SubscribePostSearch(hit.Value) // save search:<query> as a live subscription
 	case ui.HitCloseSettings:

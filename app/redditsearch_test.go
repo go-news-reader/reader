@@ -10,13 +10,14 @@ import (
 	"github.com/go-news-reader/reader/source"
 )
 
-// fakeSearchProv is a Reddit provider that also implements redditSearcher.
+// fakeSearchProv is a provider that implements both source.Searcher (channel
+// discovery) and the posts-search seam.
 type fakeSearchProv struct {
-	subs       []source.SubredditResult
-	subErr     error
+	channels   []source.ChannelResult
+	chanErr    error
 	posts      []source.Item
 	postErr    error
-	sawSubQ    string
+	sawChanQ   string
 	sawPostQ   string
 	sawPostSub string
 	done       chan struct{}
@@ -26,12 +27,12 @@ func (f *fakeSearchProv) Kind() source.Kind { return source.Reddit }
 func (f *fakeSearchProv) Feed(context.Context, source.Query) (source.Result, error) {
 	return source.Result{}, nil
 }
-func (f *fakeSearchProv) SearchSubreddits(_ context.Context, q string) ([]source.SubredditResult, error) {
-	f.sawSubQ = q
+func (f *fakeSearchProv) SearchChannels(_ context.Context, q string) ([]source.ChannelResult, error) {
+	f.sawChanQ = q
 	if f.done != nil {
 		close(f.done)
 	}
-	return f.subs, f.subErr
+	return f.channels, f.chanErr
 }
 func (f *fakeSearchProv) SearchPosts(_ context.Context, q, sub string) ([]source.Item, error) {
 	f.sawPostQ, f.sawPostSub = q, sub
@@ -50,25 +51,25 @@ func searchApp(prov source.Provider) *App {
 	return a
 }
 
-func TestRunRedditSearchSubreddits(t *testing.T) {
-	prov := &fakeSearchProv{subs: []source.SubredditResult{{Name: "golang", Subscribers: 5}}}
+func TestRunSearchFetchChannels(t *testing.T) {
+	prov := &fakeSearchProv{channels: []source.ChannelResult{{Source: source.Reddit, Channel: "r/golang", Subscribers: 5}}}
 	a := searchApp(prov)
-	a.RunRedditSearch(context.Background(), "go", false)
-	if prov.sawSubQ != "go" {
-		t.Fatalf("provider saw query %q", prov.sawSubQ)
+	a.RunSearchFetch(context.Background(), "go", false)
+	if prov.sawChanQ != "go" {
+		t.Fatalf("provider saw query %q", prov.sawChanQ)
 	}
-	if got := a.Scene().SubredditResults(); len(got) != 1 || got[0].Name != "golang" {
-		t.Fatalf("subreddit results not delivered: %+v", got)
+	if got := a.Scene().ChannelResults(); len(got) != 1 || got[0].Channel != "r/golang" {
+		t.Fatalf("channel results not delivered: %+v", got)
 	}
 	if a.Scene().SearchTabPosts() {
-		t.Fatal("delivering subreddits should select the subreddits tab")
+		t.Fatal("delivering channels should select the channels tab")
 	}
 }
 
-func TestRunRedditSearchPosts(t *testing.T) {
+func TestRunSearchFetchPosts(t *testing.T) {
 	prov := &fakeSearchProv{posts: []source.Item{{ID: "p1", Source: source.Reddit, Title: "hit"}}}
 	a := searchApp(prov)
-	a.RunRedditSearch(context.Background(), "generics", true)
+	a.RunSearchFetch(context.Background(), "generics", true)
 	if prov.sawPostQ != "generics" || prov.sawPostSub != "" {
 		t.Fatalf("provider saw q=%q sub=%q", prov.sawPostQ, prov.sawPostSub)
 	}
@@ -80,45 +81,44 @@ func TestRunRedditSearchPosts(t *testing.T) {
 	}
 }
 
-func TestRunRedditSearchErrors(t *testing.T) {
-	// Subreddit search error → status line.
-	a := searchApp(&fakeSearchProv{subErr: errors.New("boom")})
-	a.RunRedditSearch(context.Background(), "go", false)
+func TestRunSearchFetchErrors(t *testing.T) {
+	// A channel search whose only searcher errors → status line.
+	a := searchApp(&fakeSearchProv{chanErr: errors.New("boom")})
+	a.RunSearchFetch(context.Background(), "go", false)
 	if a.Scene().SearchStatus() == "" {
-		t.Fatal("subreddit search error should set a status")
+		t.Fatal("channel search error should set a status")
 	}
 	// Post search error → status line.
 	a2 := searchApp(&fakeSearchProv{postErr: errors.New("nope")})
-	a2.RunRedditSearch(context.Background(), "go", true)
+	a2.RunSearchFetch(context.Background(), "go", true)
 	if a2.Scene().SearchStatus() == "" {
 		t.Fatal("post search error should set a status")
 	}
 }
 
-func TestRunRedditSearchNoProvider(t *testing.T) {
-	// A Reddit provider that is not a searcher.
+func TestRunSearchFetchNoSearcher(t *testing.T) {
+	// Channels: a provider that is not a Searcher → no searchable sources.
 	a := searchApp(fakeProv{kind: source.Reddit})
-	a.RunRedditSearch(context.Background(), "go", false)
-	if a.Scene().SearchStatus() != "Reddit is not configured" {
+	a.RunSearchFetch(context.Background(), "go", false)
+	if a.Scene().SearchStatus() != "No searchable sources are configured" {
 		t.Fatalf("status = %q", a.Scene().SearchStatus())
 	}
-	// No Reddit provider at all.
-	b := New(Config{Registry: newReg()})
-	b.SetRefreshHook(func() {})
-	b.RunRedditSearch(context.Background(), "go", false)
+	// Posts: a Reddit provider that cannot search posts → Reddit-specific message.
+	b := searchApp(fakeProv{kind: source.Reddit})
+	b.RunSearchFetch(context.Background(), "go", true)
 	if b.Scene().SearchStatus() != "Reddit is not configured" {
-		t.Fatalf("no-provider status = %q", b.Scene().SearchStatus())
+		t.Fatalf("posts status = %q", b.Scene().SearchStatus())
 	}
 }
 
-func TestRunRedditSearchBlankQuery(t *testing.T) {
+func TestRunSearchFetchBlankQuery(t *testing.T) {
 	prov := &fakeSearchProv{}
 	a := searchApp(prov)
-	a.RunRedditSearch(context.Background(), "   ", false)
+	a.RunSearchFetch(context.Background(), "   ", false)
 	if a.Scene().SearchStatus() == "" {
 		t.Fatal("blank query should set a status")
 	}
-	if prov.sawSubQ != "" {
+	if prov.sawChanQ != "" {
 		t.Fatal("blank query must not hit the provider")
 	}
 }
@@ -156,11 +156,11 @@ func TestRunSearchBlankQuery(t *testing.T) {
 	}
 }
 
-func TestSubscribeSubredditAddsAndReaggregates(t *testing.T) {
+func TestSubscribeChannelAddsAndReaggregates(t *testing.T) {
 	a := searchApp(&fakeSearchProv{})
 	refreshed := 0
 	a.SetRefreshHook(func() { refreshed++ })
-	a.SubscribeSubreddit("golang")
+	a.SubscribeChannel(source.Reddit, "r/golang")
 	subs := a.Scene().ActiveProfile().Subs
 	if !hasSub(subs, source.Reddit, "r/golang") {
 		t.Fatalf("r/golang not added: %+v", subs)
@@ -169,7 +169,7 @@ func TestSubscribeSubredditAddsAndReaggregates(t *testing.T) {
 		t.Fatalf("re-aggregate fired %d times, want 1", refreshed)
 	}
 	// A duplicate is a no-op (no extra re-aggregate).
-	a.SubscribeSubreddit("golang")
+	a.SubscribeChannel(source.Reddit, "r/golang")
 	if refreshed != 1 {
 		t.Fatalf("duplicate subscribe re-aggregated (%d)", refreshed)
 	}
@@ -195,15 +195,15 @@ func TestSubscribePostSearchAddsChannel(t *testing.T) {
 }
 
 // TestSearchFetchDefaultAsync exercises the default (unhooked) searchFetch
-// closure — the `go a.RunRedditSearch` line in New — with a fake provider.
+// closure — the `go a.RunSearchFetch` line in New — with a fake provider.
 func TestSearchFetchDefaultAsync(t *testing.T) {
 	done := make(chan struct{})
-	prov := &fakeSearchProv{subs: []source.SubredditResult{{Name: "golang"}}, done: done}
+	prov := &fakeSearchProv{channels: []source.ChannelResult{{Source: source.Reddit, Channel: "r/golang"}}, done: done}
 	a := New(Config{Registry: newReg(prov), Subscriptions: []source.Subscription{{Source: source.Reddit, Channel: "r/seed"}}})
 	a.SetRefreshHook(func() {})
 	a.DeferSceneWrites()
 	a.Scene().OpenSearch()
-	a.searchFetch("go", false) // default closure → go a.RunRedditSearch
+	a.searchFetch("go", false) // default closure → go a.RunSearchFetch
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -212,7 +212,7 @@ func TestSearchFetchDefaultAsync(t *testing.T) {
 	ok := false
 	for i := 0; i < 200 && !ok; i++ {
 		a.drainScene()
-		ok = len(a.Scene().SubredditResults()) == 1
+		ok = len(a.Scene().ChannelResults()) == 1
 		if !ok {
 			time.Sleep(time.Millisecond)
 		}
