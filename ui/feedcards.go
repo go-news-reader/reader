@@ -391,13 +391,31 @@ func (s *Scene) feedCardRender(p painter.Painter, th *toolkit.Theme, r toolkit.R
 // selection keeps working even when the card's pixels came from a cached tile. It
 // rebuilds the card only to lift its text runs (no painting) at the row's real
 // on-screen rect, mirroring what feedCardRender used to do inline.
-func (s *Scene) feedCardVisit(i int, r toolkit.Rect, _ source.Item) {
+func (s *Scene) feedCardVisit(i int, r toolkit.Rect, item source.Item) {
 	if i < 0 || i >= len(s.feed.display) {
+		return
+	}
+	// A card's text runs change only with its content (the feed generation) and its
+	// on-screen Y (a scroll) — never with a spinner tick — so memoise them and skip
+	// rebuilding the PostCard every frame just to lift its text. The runs are
+	// already in screen space (the card was laid out at r), so a hit appends them
+	// verbatim.
+	key := item.ID + "|" + strconv.Itoa(s.feed.gen) + "@" + strconv.Itoa(r.Y)
+	if runs, ok := s.feedRunCache[key]; ok {
+		s.selAccum = append(s.selAccum, runs...)
+		s.feedRunHit[key] = true
 		return
 	}
 	card := s.feedRowCard(s.feed.display[i])
 	card.SetBounds(r)
-	s.addSelectableRuns(toolkit.CollectRuns(card), 0, 0)
+	runs := append([]toolkit.TextRun(nil), toolkit.CollectRuns(card)...)
+	if s.feedRunCache == nil {
+		s.feedRunCache = make(map[string][]toolkit.TextRun)
+		s.feedRunHit = make(map[string]bool)
+	}
+	s.feedRunCache[key] = runs
+	s.feedRunHit[key] = true
+	s.selAccum = append(s.selAccum, runs...)
 }
 
 // invalidateFeedTiles drops every cached card tile on the next frame, for a

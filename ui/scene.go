@@ -398,6 +398,13 @@ type Scene struct {
 	// surface — the sidebar labels, the visible cards and the preview text — so
 	// one commit (commitSelectableRuns) lets a single selection span them all.
 	selAccum []toolkit.TextRun
+	// feedRunCache memoises each visible card's selectable text runs, keyed by
+	// content generation + on-screen Y, so a spinner tick reuses them instead of
+	// rebuilding the PostCard every frame purely to read its text. feedRunHit
+	// marks the keys used this frame; beginSelectableFrame sweeps the rest, so the
+	// cache stays bounded to the working set (mirrors the toolkit tile cache).
+	feedRunCache map[string][]toolkit.TextRun
+	feedRunHit   map[string]bool
 
 	// Download manager: a docked panel across the bottom of the feed/preview area
 	// showing queued/active/finished downloads. Populated by the app via

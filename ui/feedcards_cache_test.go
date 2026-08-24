@@ -48,3 +48,35 @@ func TestFeedCacheRastersIdenticallyToUncached(t *testing.T) {
 		}
 	}
 }
+
+// The per-card run cache populates for the visible cards and stays bounded to
+// the working set across frames (swept in beginSelectableFrame), so a long feed
+// does not grow it without bound — and text selection still sees runs (the
+// existing selection tests exercise that the runs are correct).
+func TestFeedRunCacheBounded(t *testing.T) {
+	s := New(1000, 700, ThemeFor(OSMac, false))
+	s.SetScale(1)
+	s.SetSubs(nil)
+	items := make([]source.Item, 200)
+	for i := range items {
+		items[i] = source.Item{ID: "id" + string(rune('a'+i%26)) + string(rune('a'+i/26)), Source: source.HackerNews, Title: "Post", Score: -1, Comments: -1}
+	}
+	s.SetItems(items)
+
+	buf := make([]byte, s.W*s.H*4)
+	// A few frames to let the initial scroll (newest at the bottom) settle, after
+	// which the on-screen row positions — and so the run-cache keys — are stable.
+	for i := 0; i < 4; i++ {
+		s.Draw(buf)
+	}
+	n := len(s.feedRunCache)
+	if n == 0 || n > 40 {
+		t.Fatalf("run cache holds %d entries once settled, want ~the visible few", n)
+	}
+	// A further unchanged frame reuses the cache and does not grow it (the sweep
+	// keeps it bounded to the working set).
+	s.Draw(buf)
+	if got := len(s.feedRunCache); got != n {
+		t.Fatalf("run cache changed from %d to %d on a settled, unchanged frame", n, got)
+	}
+}

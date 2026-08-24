@@ -23,7 +23,19 @@ func (s *Scene) setSelectableRuns(runs []toolkit.TextRun) { s.textSel.SetRuns(ru
 // addSelectableRuns, and commitSelectableRuns hands the flat set to the
 // selection. Because the runs are all in screen space, the selection then spans
 // the surfaces in document order (top→bottom, left→right).
-func (s *Scene) beginSelectableFrame() { s.selAccum = s.selAccum[:0] }
+func (s *Scene) beginSelectableFrame() {
+	s.selAccum = s.selAccum[:0]
+	// Sweep the per-card run cache to the working set: drop entries not used in the
+	// frame just gone, then reset the hit marks for the frame about to be drawn.
+	for k := range s.feedRunCache {
+		if !s.feedRunHit[k] {
+			delete(s.feedRunCache, k)
+		}
+	}
+	for k := range s.feedRunHit {
+		delete(s.feedRunHit, k)
+	}
+}
 
 // addSelectableRuns appends runs to the accumulator, translated by (dx, dy) into
 // screen space. Callers pass surface-local runs (a card's local sprite runs, the
