@@ -15,3 +15,4 @@
 cov.out
 *.cov
 coverage.out
+app.test
