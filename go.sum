@@ -55,8 +55,8 @@ github.com/go-images/images v0.0.0-20260815210351-4a50ef5ab734 h1:nU+MGeyJzidGvC
 github.com/go-images/images v0.0.0-20260815210351-4a50ef5ab734/go.mod h1:ObuOBKDEidGX0LqLKY/5nqj7JVN/hsCzHMAJd0TNc0k=
 github.com/go-instagram/instagram v0.2.0 h1:93vT55kKHYtLtNWXolNVo3CAMSaKH5qNF1ZmE+RFVsQ=
 github.com/go-instagram/instagram v0.2.0/go.mod h1:FNtFVnKzf/mUyFS3St/C2wrUeuR+1c2AmlMf/ICsnj8=
-github.com/go-keyring/keyring v0.2.0 h1:dq3ddb3lgBqkiP9Ty2lVR5NpFJKRH4XRuVfooqzd57Q=
-github.com/go-keyring/keyring v0.2.0/go.mod h1:zIjubD0nB04n0SOYJsWuEwp7h9uanqLbUwsiJF9FITk=
+github.com/go-keyring/keyring v0.3.0 h1:UYRL8mdHDn+xl7XFQ5RTkIuyvGCl0sD42HT43yIJhmU=
+github.com/go-keyring/keyring v0.3.0/go.mod h1:zIjubD0nB04n0SOYJsWuEwp7h9uanqLbUwsiJF9FITk=
 github.com/go-lemmy/lemmy v0.1.0 h1:BTYxhsrquoFA3Ud3fH3/o7iQQKvGU/HJIWeZswuf418=
 github.com/go-lemmy/lemmy v0.1.0/go.mod h1:Dul9nVfhYUJNgodn3HCWQFLgbO3ReGNZnFiEFLDx6LM=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=

@@ -11,7 +11,7 @@ require (
 	github.com/go-iconoir/iconoir v0.2.0
 	github.com/go-images/images v0.0.0-20260815210351-4a50ef5ab734
 	github.com/go-instagram/instagram v0.2.0
-	github.com/go-keyring/keyring v0.2.0
+	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.1.0
 	github.com/go-mastodon/mastodon v0.2.0
 	github.com/go-newsgroups/newznab v0.1.0

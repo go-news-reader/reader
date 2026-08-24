@@ -118,7 +118,16 @@ func SetSecretUserPresence(v bool) (restore func()) {
 }
 
 func (keyringSecrets) Get(account string) ([]byte, error) {
-	b, err := keyringGet(secretService, account)
+	var opts []keyring.Option
+	if secretUserPresence {
+		// Read the biometric-gated half: on macOS the item's own SecAccessControl
+		// already raises Touch ID during the read, so this is redundant-but-harmless
+		// there; on Windows/Linux it is what triggers the façade's presence check
+		// (Windows Hello / the desktop authentication agent) before the secret is
+		// returned.
+		opts = append(opts, keyring.WithUserPresence())
+	}
+	b, err := keyringGet(secretService, account, opts...)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil, ErrSecretNotFound
 	}
