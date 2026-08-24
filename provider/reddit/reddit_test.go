@@ -741,6 +741,42 @@ func TestSearchSubredditsMapsResults(t *testing.T) {
 	}
 }
 
+func TestSearchChannelsMapsToChannelResults(t *testing.T) {
+	f := &fakeFetcher{subPage: &goreddit.SubredditPage{
+		Subreddits: []goreddit.SubredditInfo{
+			{Name: "golang", Title: "The Go Programming Language", PublicDescription: "Gophers", Subscribers: 250000},
+			{Name: "nsfwsub", Title: "Spicy", Subscribers: 10, Over18: true},
+		},
+	}}
+	p := NewWithClient(f)
+
+	rs, err := p.SearchChannels(context.Background(), "go")
+	if err != nil {
+		t.Fatalf("SearchChannels: %v", err)
+	}
+	if len(rs) != 2 {
+		t.Fatalf("results = %d, want 2", len(rs))
+	}
+	want := source.ChannelResult{Source: source.Reddit, Channel: "r/golang", Title: "The Go Programming Language", Description: "Gophers", Subscribers: 250000}
+	if rs[0] != want {
+		t.Fatalf("result[0] = %+v, want %+v", rs[0], want)
+	}
+	// The channel handle is ready to subscribe as-is.
+	if got := rs[0].Subscription(); got.Source != source.Reddit || got.Channel != "r/golang" {
+		t.Fatalf("Subscription() = %+v, want reddit r/golang", got)
+	}
+	if !rs[1].NSFW || rs[1].Channel != "r/nsfwsub" {
+		t.Fatalf("result[1] = %+v, want the NSFW sub as r/nsfwsub", rs[1])
+	}
+}
+
+func TestSearchChannelsPropagatesError(t *testing.T) {
+	f := &fakeFetcher{subSearchErr: errors.New("boom")}
+	if _, err := NewWithClient(f).SearchChannels(context.Background(), "go"); err == nil {
+		t.Fatal("client error should propagate")
+	}
+}
+
 func TestSearchSubredditsBlankQuery(t *testing.T) {
 	p := NewWithClient(&fakeFetcher{})
 	if _, err := p.SearchSubreddits(context.Background(), "   "); err == nil {

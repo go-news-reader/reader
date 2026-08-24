@@ -118,6 +118,36 @@ type SubredditResult struct {
 	NSFW        bool   // over-18 flag
 }
 
+// ChannelResult is one channel-discovery hit — a subscribable place matching a
+// search, whatever the platform: a subreddit, an account, a hashtag. It carries
+// enough to render a discovery row and to subscribe in one action, so the search
+// UI can be provider-agnostic instead of Reddit-specific.
+type ChannelResult struct {
+	Source      Kind   // platform the channel lives on
+	Channel     string // the ready-to-subscribe handle: "r/golang", "@user", "#tag"
+	Title       string // display name
+	Description string // short public blurb / bio
+	Subscribers int64  // subscriber / follower count, -1 when unknown
+	NSFW        bool   // over-18 / sensitive flag
+	IconURL     string // avatar / icon URL, "" when none
+}
+
+// Subscription turns a result into the subscription that would add it, so a
+// caller subscribes without re-deriving the channel form.
+func (r ChannelResult) Subscription() Subscription {
+	return Subscription{Source: r.Source, Channel: r.Channel}
+}
+
+// Searcher is an optional [Provider] capability: discover subscribable channels
+// (subreddits, accounts, hashtags) matching a free-text query, as ready-made
+// [ChannelResult]s. A provider platform with no channel-discovery search simply
+// does not implement it, and the search UI omits its tab.
+type Searcher interface {
+	// SearchChannels returns the channels matching query. An empty query is an
+	// error; no matches is an empty (non-nil) slice.
+	SearchChannels(ctx context.Context, query string) ([]ChannelResult, error)
+}
+
 // GroupStats is a sampled estimate of a newsgroup's content mix: within the last
 // Sampled article overviews scanned, how many are binary posts (Binaries) and,
 // of those, how many name an image file (Images ⊆ Binaries). A full scan of a
