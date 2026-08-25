@@ -33,6 +33,8 @@ github.com/go-atproto/atproto v0.2.0 h1:P4iV/k9FShSrJIuYrvSwmpItVZmUS7SU9cu/xiv5
 github.com/go-atproto/atproto v0.2.0/go.mod h1:0ir15Nin/oDgaeIPBpG2ncndlITx0Z9ZFzExl48M0SM=
 github.com/go-birdsite/twitter v0.3.0 h1:NZgj6pjqovy4nQJM9YMFVxG8zKnJBQI3iTx0d6dA9Ug=
 github.com/go-birdsite/twitter v0.3.0/go.mod h1:K81gyFwTIuec82tIz/Ffo4mOqT/obIqjHhyUnbbmcOc=
+github.com/go-birdsite/twitter v0.4.0 h1:5jOjywWQITnt/8EeM2dqn0pDnFvLu8fmqQ/HuzEvfUI=
+github.com/go-birdsite/twitter v0.4.0/go.mod h1:K81gyFwTIuec82tIz/Ffo4mOqT/obIqjHhyUnbbmcOc=
 github.com/go-browserhttp/browserhttp v0.2.0 h1:3RcjOQVHgqhSOmI5cfsURpexw/vetoDUoLXKzgTCSac=
 github.com/go-browserhttp/browserhttp v0.2.0/go.mod h1:VJiwBxLetXdc8eDadOcNbiO0EelNQPny0cLZhg1hTKU=
 github.com/go-crdt/collab v0.18.0 h1:/2o4Sv1hgYVgXu+8MPaDR1sXGBqS7OJ4f7lMDYXNCUg=
