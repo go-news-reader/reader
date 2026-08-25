@@ -18,6 +18,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	gotw "github.com/go-birdsite/twitter"
@@ -36,6 +37,18 @@ const defaultTimeout = 30 * time.Second
 // client is the slice of *gotw.Client the adapter uses; an interface for tests.
 type client interface {
 	UserTweets(ctx context.Context, screenName string) (*gotw.Timeline, error)
+}
+
+// authClient is the authenticated-timeline slice of *gotw.Client, used for a
+// public account's tweets when the reader holds a logged-in session. Unlike the
+// public UserTweets (the syndication endpoint, which X rate-limits to a request or
+// two per client) these reads run under the session's own far higher quota — the
+// difference between a feed following one account and one following hundreds. The
+// real *gotw.Client satisfies it; a test client may implement it to exercise the
+// authenticated path.
+type authClient interface {
+	UserIDByScreenName(ctx context.Context, screenName string) (string, error)
+	UserTweetsByID(ctx context.Context, userID string) (*gotw.Timeline, error)
 }
 
 // follower pages the accounts the authenticated user follows via the private
@@ -62,6 +75,12 @@ type Provider struct {
 	// session (the Following query keys on it).
 	follow       follower
 	followUserID string
+
+	// idCache memoizes screen-name → numeric rest id for the authenticated
+	// timeline path, so a refresh resolves each followed account (an extra
+	// UserByScreenName call) only once — the id is permanent. Guarded by idMu.
+	idMu    sync.Mutex
+	idCache map[string]string
 }
 
 // New returns a provider. Public timelines need no auth token — the reader
@@ -105,11 +124,12 @@ func newWith(hc *http.Client, session string) *Provider {
 		homeBase:     defaultHomeBase,
 		follow:       gc,
 		followUserID: viewerID(session),
+		idCache:      map[string]string{},
 	}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
-func NewWithClient(c client) *Provider { return &Provider{client: c} }
+func NewWithClient(c client) *Provider { return &Provider{client: c, idCache: map[string]string{}} }
 
 // Kind reports source.Twitter.
 func (p *Provider) Kind() source.Kind { return source.Twitter }
@@ -126,7 +146,7 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	if name == "" {
 		return source.Result{}, ErrNoChannel
 	}
-	tl, err := p.client.UserTweets(ctx, name)
+	tl, err := p.userTweets(ctx, name)
 	if err != nil {
 		return source.Result{}, mapErr(name, err)
 	}
@@ -136,6 +156,59 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 		items = append(items, mapTweet(tw, name))
 	}
 	return source.Result{Items: items}, nil
+}
+
+// userTweets fetches a public account's tweets. With a logged-in session it reads
+// the authenticated GraphQL timeline — served under the session's own high quota,
+// so a feed following hundreds of accounts is not throttled after the first — and
+// falls back to the public syndication endpoint only when the session cannot serve
+// the read (expired, or X rotated the GraphQL query id). Without a session it uses
+// the public endpoint directly.
+func (p *Provider) userTweets(ctx context.Context, name string) (*gotw.Timeline, error) {
+	ac, ok := p.client.(authClient)
+	if ok && p.authToken != "" && p.csrf != "" {
+		tl, err := p.authUserTweets(ctx, ac, name)
+		if err == nil {
+			return tl, nil
+		}
+		// Only a broken session / rotated query id justifies dropping to the
+		// weaker public path; a real failure (429, network, protected account)
+		// is reported as-is rather than retried on an endpoint that answers 429
+		// even faster.
+		if !errors.Is(err, gotw.ErrNeedsAuth) && !errors.Is(err, gotw.ErrQueryIDRotated) {
+			return nil, err
+		}
+	}
+	return p.client.UserTweets(ctx, name)
+}
+
+// authUserTweets resolves name to its numeric id (memoized) and reads its
+// authenticated timeline.
+func (p *Provider) authUserTweets(ctx context.Context, ac authClient, name string) (*gotw.Timeline, error) {
+	id, err := p.resolveID(ctx, ac, name)
+	if err != nil {
+		return nil, err
+	}
+	return ac.UserTweetsByID(ctx, id)
+}
+
+// resolveID returns name's numeric rest id, resolving it through the API only on
+// the first request for that account (the id is permanent) and caching it.
+func (p *Provider) resolveID(ctx context.Context, ac authClient, name string) (string, error) {
+	p.idMu.Lock()
+	id := p.idCache[name]
+	p.idMu.Unlock()
+	if id != "" {
+		return id, nil
+	}
+	id, err := ac.UserIDByScreenName(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	p.idMu.Lock()
+	p.idCache[name] = id
+	p.idMu.Unlock()
+	return id, nil
 }
 
 // mapErr translates a client failure into what the user should actually do
