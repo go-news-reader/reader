@@ -471,7 +471,7 @@ func (s *Scene) layoutSettings() {
 	// once their verifiers land, so the switch is forward-compatible everywhere.
 	label(pad, y, "SECURITY")
 	y += m.side.height + gap
-	label(pad, y, "Unlock the saved sign-ins with your fingerprint or face (Touch ID / Windows Hello) instead of a password")
+	label(pad, y, "Unlock the saved sign-ins with your fingerprint or face (Touch ID / Windows Hello) instead of a password — needs a code-signed build")
 	y += m.side.height + gap
 	bio := s.BiometricUnlock()
 	s.layoutBtnRow(pad, y, []sButton{

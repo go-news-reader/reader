@@ -96,7 +96,16 @@ func (keyringSecrets) Set(account string, secret []byte) error {
 		// back (at startup) prompts the platform biometric/consent check — Touch ID
 		// on macOS, Windows Hello / the desktop's authentication agent elsewhere —
 		// instead of nothing (or the login-password prompt).
-		return keyringSet(secretService, account, secret, keyring.WithUserPresence())
+		if err := keyringSet(secretService, account, secret, keyring.WithUserPresence()); err == nil {
+			return nil
+		}
+		// The platform refused the gate. The common case is an UNSIGNED macOS build:
+		// a user-presence Keychain item needs the data-protection keychain, which
+		// requires the app to be code-signed with the keychain entitlement, so an
+		// unsigned build fails with errSecMissingEntitlement (-34018). Rather than
+		// fail the save — and risk losing the secret — fall back to storing it
+		// ungated. Biometric unlock is simply not in effect (the reader still works,
+		// with the standard credential prompt); it takes effect in a signed build.
 	}
 	return keyringSet(secretService, account, secret)
 }
