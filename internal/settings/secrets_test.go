@@ -584,3 +584,32 @@ func TestKeyringSecretsGetUserPresence(t *testing.T) {
 		t.Fatalf("biometric off: Get opts = %d, want 0", gotOpts)
 	}
 }
+
+// TestKeyringSecretsPresenceFallback proves that when the platform refuses the
+// user-presence gate (e.g. an unsigned macOS build → -34018), Set does NOT fail
+// but falls back to storing the secret ungated, so nothing is lost.
+func TestKeyringSecretsPresenceFallback(t *testing.T) {
+	origSet := keyringSet
+	defer func() { keyringSet = origSet }()
+	var gatedTries, ungatedTries int
+	keyringSet = func(_, _ string, _ []byte, opts ...keyring.Option) error {
+		if len(opts) > 0 {
+			gatedTries++
+			return errors.New("keychain: set: OSStatus -34018") // platform refuses the gate
+		}
+		ungatedTries++
+		return nil
+	}
+
+	restore := SetSecretUserPresence(true)
+	defer restore()
+	if err := (keyringSecrets{}).Set("acct", []byte("s")); err != nil {
+		t.Fatalf("Set should fall back, not fail: %v", err)
+	}
+	if gatedTries != 1 {
+		t.Fatalf("gated attempts = %d, want 1", gatedTries)
+	}
+	if ungatedTries != 1 {
+		t.Fatalf("ungated fallback = %d, want 1 (the secret must still be stored)", ungatedTries)
+	}
+}
