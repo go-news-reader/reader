@@ -10,7 +10,7 @@ require (
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-iconoir/iconoir v0.2.0
 	github.com/go-images/images v0.0.0-20260815210351-4a50ef5ab734
-	github.com/go-instagram/instagram v0.4.0
+	github.com/go-instagram/instagram v0.5.0
 	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.2.0
 	github.com/go-mastodon/mastodon v0.3.0

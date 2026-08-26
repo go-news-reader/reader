@@ -16,11 +16,25 @@ type fakeClient struct {
 	prof *goig.Profile
 	err  error
 	got  string
+
+	// UserPosts (by-id) behaviour and call counters, for the id-cache tests.
+	posts        []goig.Post
+	postsErr     error
+	gotID        string
+	profileCalls int
+	postsCalls   int
 }
 
 func (f *fakeClient) UserProfile(_ context.Context, username string) (*goig.Profile, error) {
+	f.profileCalls++
 	f.got = username
 	return f.prof, f.err
+}
+
+func (f *fakeClient) UserPosts(_ context.Context, userID, _ string) ([]goig.Post, error) {
+	f.postsCalls++
+	f.gotID = userID
+	return f.posts, f.postsErr
 }
 
 func TestNewWithHTTPClient(t *testing.T) {

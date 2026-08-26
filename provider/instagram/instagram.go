@@ -17,6 +17,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-browserhttp/browserhttp"
@@ -32,8 +33,12 @@ var ErrNoChannel = errors.New("instagram: Query.Channel must be a username")
 const defaultTimeout = 30 * time.Second
 
 // client is the slice of *goig.Client the adapter uses; an interface for tests.
+// UserPosts fetches an account's posts by its numeric id, skipping the
+// web_profile_info round-trip UserProfile makes to resolve that id — the endpoint
+// Instagram rate-limits at scale — for accounts whose id is already cached.
 type client interface {
 	UserProfile(ctx context.Context, username string) (*goig.Profile, error)
+	UserPosts(ctx context.Context, userID, profileUser string) ([]goig.Post, error)
 }
 
 // follower lists the accounts the authenticated user follows, paging the private
@@ -63,6 +68,13 @@ type Provider struct {
 	// imported session carried one (else resolved through follow.CurrentUserID).
 	follow follower
 	userID string
+
+	// idCache memoizes a followed account's screen name → its permanent numeric
+	// id, so a refresh resolves each account through web_profile_info (which
+	// Instagram rate-limits at scale) only once, then reads its posts straight
+	// from the feed endpoint. Guarded by idMu.
+	idMu    sync.Mutex
+	idCache map[string]string
 }
 
 // New returns a provider. session is an optional Instagram session for
@@ -103,11 +115,14 @@ func newWith(hc *http.Client, session string) *Provider {
 		homeBase:  goig.DefaultBaseURL,
 		follow:    gc,
 		userID:    cookieValue(session, "ds_user_id"),
+		idCache:   map[string]string{},
 	}
 }
 
 // NewWithClient wraps a preconfigured client (or a fake in tests).
-func NewWithClient(c client) *Provider { return &Provider{client: c} }
+func NewWithClient(c client) *Provider {
+	return &Provider{client: c, idCache: map[string]string{}}
+}
 
 // splitSession separates an Instagram session field into its sessionid and
 // csrftoken. A value containing "=" is treated as a full cookie string and both
@@ -147,7 +162,7 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	if user == "" {
 		return source.Result{}, ErrNoChannel
 	}
-	prof, err := p.client.UserProfile(ctx, user)
+	posts, err := p.userPosts(ctx, user)
 	if err != nil {
 		// Heuristic for this best-effort scraper: without a sessionid it cannot
 		// work at all, and Instagram also answers a blocked read with 401/403 (or
@@ -161,14 +176,60 @@ func (p *Provider) Feed(ctx context.Context, q source.Query) (source.Result, err
 	}
 
 	limit := q.Limit
-	items := make([]source.Item, 0, len(prof.Posts))
-	for _, post := range prof.Posts {
+	items := make([]source.Item, 0, len(posts))
+	for _, post := range posts {
 		if limit > 0 && len(items) >= limit {
 			break
 		}
-		items = append(items, mapPost(prof.Username, post))
+		items = append(items, mapPost(user, post))
 	}
 	return source.Result{Items: items}, nil
+}
+
+// userPosts returns a public account's recent posts. Once the account's numeric
+// id is known it reads the posts straight from the feed endpoint (one request,
+// via UserPosts); until then it resolves the id through UserProfile — the
+// web_profile_info round-trip Instagram rate-limits at scale — and caches it. A
+// cached-id read that fails re-resolves through UserProfile, so a rotated id or a
+// transient blip self-heals rather than sticking.
+func (p *Provider) userPosts(ctx context.Context, user string) ([]goig.Post, error) {
+	if id := p.cachedID(user); id != "" {
+		if posts, err := p.client.UserPosts(ctx, id, user); err == nil {
+			return posts, nil
+		}
+		p.forgetID(user)
+	}
+	prof, err := p.client.UserProfile(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	if prof.ID != "" {
+		p.cacheID(user, prof.ID)
+	}
+	return prof.Posts, nil
+}
+
+// cachedID returns the memoized numeric id for user, or "".
+func (p *Provider) cachedID(user string) string {
+	p.idMu.Lock()
+	defer p.idMu.Unlock()
+	return p.idCache[user]
+}
+
+// cacheID memoizes user's numeric id. Every constructor initializes idCache, so
+// it is never nil here.
+func (p *Provider) cacheID(user, id string) {
+	p.idMu.Lock()
+	defer p.idMu.Unlock()
+	p.idCache[user] = id
+}
+
+// forgetID drops a cached id after a read with it failed, so the next fetch
+// re-resolves through UserProfile.
+func (p *Provider) forgetID(user string) {
+	p.idMu.Lock()
+	defer p.idMu.Unlock()
+	delete(p.idCache, user)
 }
 
 func mapPost(username string, p goig.Post) source.Item {
