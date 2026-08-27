@@ -263,6 +263,11 @@ func runWindow(cfg config, stdout, stderr io.Writer) int {
 // presentWindow (present_reader.go) opens the window through internal/window, the
 // reader's adapter over the shared go-widgets/window backend's toolkit.Surface.
 func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
+	// Before anything concurrent starts, fill in any missing session for a
+	// subscribed X/Instagram/TikTok source from the browser, so a followed account
+	// works on this launch without a manual Accounts → Import (honours the
+	// AutoImportSessions setting; a no-op when the browser holds no session).
+	a.AutoImportSessions()
 	// Marshal background scene writes onto the render thread: the present loop and
 	// input handlers run on the main thread, while refreshFeed aggregates on a
 	// background goroutine. Enable it before that goroutine starts so the scene is
