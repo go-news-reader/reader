@@ -240,6 +240,7 @@ func TestFetchingStripAndPendingSidebar(t *testing.T) {
 	s.SetSubs(sampleSubs())
 	// HackerNews still pending; Reddit already returned.
 	s.SetPendingSources([]source.Subscription{{Source: source.HackerNews}})
+	s.ToggleSidebarSource(source.HackerNews) // expand its group so the pending row's spinner draws
 	s.SetLoading(true, 1, 2)
 	s.layout()
 

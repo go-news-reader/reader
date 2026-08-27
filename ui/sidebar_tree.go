@@ -23,6 +23,8 @@ import (
 
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
+
+	"github.com/go-news-reader/reader/source"
 )
 
 // sideKind classifies a sidebar TreeView node.
@@ -32,6 +34,7 @@ const (
 	sideAll          sideKind = iota // the "All Sources" filter (the tree root)
 	sideSub                          // one subscription; Sub indexes s.Subs
 	sideFolder                       // a virtual folder; Folder is its name
+	sideSource                       // an auto-group header for one source; Source is its kind
 	sideBrowse                       // the "Browse newsgroups" discovery entry
 	sideSearchReddit                 // the "Search Reddit" discovery entry
 )
@@ -40,8 +43,10 @@ const (
 // selected/clicked row back to an action.
 type sideNode struct {
 	Kind   sideKind
-	Sub    int    // sideSub: index into s.Subs
-	Folder string // sideFolder: folder name
+	Sub    int         // sideSub: index into s.Subs
+	Folder string      // sideFolder: folder name
+	Source source.Kind // sideSource: the grouped source
+	Count  int         // sideSource: how many subscriptions the group holds
 }
 
 // ensureSideTree lazily builds the sidebar TreeView (RowRenderer wired to the
@@ -110,12 +115,29 @@ func (s *Scene) buildSideTree() {
 		})
 	}
 
-	// Unclassified subscriptions at the root, in profile order.
+	// Every subscription not in a folder is grouped under a collapsible header for
+	// its source, so a profile with hundreds of subscriptions collapses to a short
+	// list of source headers. The headers behave as an accordion: only the one
+	// source in sourceOpen is expanded (sourceOpen "" means all collapsed). Sources
+	// appear in the order they first occur in the profile, which is stable.
+	var order []source.Kind
+	bySource := map[source.Kind][]*toolkit.TreeNode{}
 	for i, sub := range s.Subs {
 		if foldered[subKey(sub.Source, sub.Channel)] {
 			continue
 		}
-		root.Children = append(root.Children, s.sideSubNode(i))
+		if _, seen := bySource[sub.Source]; !seen {
+			order = append(order, sub.Source)
+		}
+		bySource[sub.Source] = append(bySource[sub.Source], s.sideSubNode(i))
+	}
+	for _, src := range order {
+		kids := bySource[src]
+		root.Children = append(root.Children, &toolkit.TreeNode{
+			Expanded: src == s.sourceOpen,
+			Data:     sideNode{Kind: sideSource, Source: src, Count: len(kids)},
+			Children: kids,
+		})
 	}
 
 	// Discovery entries last: Browse (only with a Usenet server) then Search Reddit.
@@ -180,6 +202,13 @@ func (s *Scene) sidebarA11yNodes() []A11yNode {
 			} else {
 				value = "expanded"
 			}
+		case sideSource:
+			name = sourceGroupName(d.Source) + ", " + strconv.Itoa(d.Count) + " subscriptions"
+			if d.Source == s.sourceOpen {
+				value = "expanded"
+			} else {
+				value = "collapsed"
+			}
 		case sideBrowse:
 			name = "Browse newsgroups"
 		case sideSearchReddit:
@@ -234,8 +263,61 @@ func (s *Scene) drawSideRow(p painter.Painter, th *toolkit.Theme, cr toolkit.Rec
 		s.drawSideIconLabel(p, cr, node, "Search Reddit")
 	case sideFolder:
 		s.drawSideFolderRow(p, cr, d.Folder, ink, selected)
+	case sideSource:
+		s.drawSideSourceRow(p, cr, d.Source, d.Count, sideF, ink)
 	case sideSub:
 		s.drawSideSubRow(p, cr, d.Sub, sideF, ink, selected)
+	}
+}
+
+// drawSideSourceRow draws an auto-group header: the source's brand dot, its name,
+// and — right-aligned and muted — how many subscriptions the group holds. The
+// chevron and indent the TreeView already painted mark it as an expandable row.
+func (s *Scene) drawSideSourceRow(p painter.Painter, cr toolkit.Rect, src source.Kind, count int, f toolkit.Font, ink toolkit.RGBA) {
+	gap := rpxOf(s, 4)
+	dotSlot := rpxOf(s, 14)
+	// Right-aligned muted subscription count ("1065").
+	countF := ttFont(false, rpxOf(s, 11))
+	countStr := strconv.Itoa(count)
+	rightW := 0
+	if count > 0 {
+		rightW = countF.Measure(countStr) + rpxOf(s, 2)
+	}
+	labelW := cr.W - dotSlot - gap
+	if rightW > 0 {
+		labelW -= rightW + gap
+	}
+	// Source dot, vertically centred.
+	dot := &sideDot{s: s, col: sourceColor(src)}
+	dot.SetBounds(toolkit.Rect{X: cr.X, Y: cr.Y, W: dotSlot, H: cr.H})
+	dot.Draw(p, s.theme)
+	// Source name, in the row ink.
+	lbl := toolkit.NewLabel(truncateFont(f, sourceGroupName(src), labelW))
+	lbl.Font, lbl.Ink = f, ink
+	lbl.SetBounds(toolkit.Rect{X: cr.X + dotSlot + gap, Y: cr.Y, W: labelW, H: cr.H})
+	lbl.Draw(p, s.theme)
+	if rightW > 0 {
+		c := toolkit.NewLabel(countStr)
+		c.Font, c.Ink = countF, mute(s.theme.OnSurface, s.theme.SurfaceAlt)
+		c.SetBounds(toolkit.Rect{X: cr.X + cr.W - rightW, Y: cr.Y, W: rightW, H: cr.H})
+		c.Draw(p, s.theme)
+	}
+}
+
+// sourceGroupName is the accordion header name for a source — the fuller form of
+// [sourceLabel] (which abbreviates for the compact per-post pill).
+func sourceGroupName(k source.Kind) string {
+	switch k {
+	case source.HackerNews:
+		return "Hacker News"
+	case source.Twitter:
+		return "X"
+	case source.Instagram:
+		return "Instagram"
+	case source.Syndication:
+		return "RSS"
+	default:
+		return sourceLabel(k)
 	}
 }
 

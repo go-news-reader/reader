@@ -98,6 +98,7 @@ const (
 	HitToggleDownload             // a complete post's download checkbox — Value = release base
 	HitClearDownloads             // the download panel's "Clear" button
 	HitToggleFolder               // a sidebar virtual-folder row (collapse/expand) — Value = folder name
+	HitToggleSource               // a sidebar source-group header (accordion expand/collapse) — Value = source kind
 
 	// Newsgroup browser (Mode == ModeBrowse):
 	HitBrowse           // the sidebar "＋ Browse newsgroups" entry (open the browser)
@@ -471,6 +472,12 @@ type Scene struct {
 	folders         []settings.Folder
 	folderCollapsed map[string]bool
 	foldRev         int
+	// sourceOpen is the source whose auto-group header is currently expanded in the
+	// sidebar accordion — "" means every source group is collapsed. Only one is open
+	// at a time, so a profile with hundreds of subscriptions stays a short list of
+	// source headers. Session state (not persisted), like folderCollapsed; changing
+	// it bumps foldRev so the cached sidebar sprite re-rasterises.
+	sourceOpen source.Kind
 	// renamingFolder is the folder currently being renamed inline in the sidebar
 	// (empty = none); renameFolderEntry is the focused toolkit.Entry that holds the
 	// edit buffer (its Text) and owns caret/Backspace/Arrows/Home/End behaviour.

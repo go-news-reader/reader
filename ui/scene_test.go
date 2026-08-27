@@ -344,9 +344,11 @@ func TestHitTest(t *testing.T) {
 	if h := s.HitTest(10, m.topbarH+m.sideItemH/2); h.Kind != HitSub || h.Sub != AllFilter {
 		t.Fatalf("all hit = %+v", h)
 	}
-	// Sidebar first subscription.
-	if h := s.HitTest(10, m.topbarH+m.sideItemH+m.sideItemH/2); h.Kind != HitSub || h.Sub != 0 {
-		t.Fatalf("sub hit = %+v", h)
+	// Sidebar first row below "All Sources" is a source-group header (subscriptions
+	// are grouped under a collapsible accordion header per source); clicking it
+	// toggles that group.
+	if h := s.HitTest(10, m.topbarH+m.sideItemH+m.sideItemH/2); h.Kind != HitToggleSource || h.Value != string(source.Reddit) {
+		t.Fatalf("source header hit = %+v", h)
 	}
 	// The ⚙ Settings entry is pinned to the bottom of the sidebar.
 	if s.HitTest(10, s.H-2).Kind != HitSettings {
