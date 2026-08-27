@@ -120,6 +120,17 @@ type Settings struct {
 	// it through [Settings.InfiniteScrollEnabled], which applies that default.
 	InfiniteScroll *bool `json:"infiniteScroll,omitempty"`
 
+	// AutoImportSessions, when enabled, imports a provider's logged-in session
+	// cookie from the browser at startup for any session-based source (X,
+	// Instagram, TikTok) the active profile subscribes to but has no account for
+	// yet — so a followed X/Instagram account "just works" without a manual
+	// Accounts → Import step. It only fills a MISSING account (never overwrites a
+	// configured one), and silently does nothing when the browser holds no session.
+	// A tri-state pointer like InfiniteScroll: nil defaults to on
+	// (DefaultAutoImportSessions); an explicit false persists. Read it through
+	// [Settings.AutoImportSessionsEnabled].
+	AutoImportSessions *bool `json:"autoImportSessions,omitempty"`
+
 	// CacheBackend selects the media-cache backend. Empty (the default for a fresh
 	// install or a settings file predating the field) or "local" uses the built-in
 	// on-disk cache; a filesystem path names an external cache-plugin binary the
@@ -250,6 +261,10 @@ const DefaultBrowserSingleTab = true
 // posts on scrolling to the bottom of the feed: enabled.
 const DefaultInfiniteScroll = true
 
+// DefaultAutoImportSessions is whether a fresh install imports a subscribed
+// provider's browser session at startup when it has no account yet: enabled.
+const DefaultAutoImportSessions = true
+
 // boolPtr returns a pointer to b, for the tri-state BrowserSingleTab field.
 func boolPtr(b bool) *bool { return &b }
 
@@ -269,6 +284,15 @@ func (s *Settings) InfiniteScrollEnabled() bool {
 		return DefaultInfiniteScroll
 	}
 	return *s.InfiniteScroll
+}
+
+// AutoImportSessionsEnabled reports the effective auto-import setting, applying
+// the enabled default when the preference is unset (nil).
+func (s *Settings) AutoImportSessionsEnabled() bool {
+	if s.AutoImportSessions == nil {
+		return DefaultAutoImportSessions
+	}
+	return *s.AutoImportSessions
 }
 
 // Account holds a user's credentials for one provider. Fields are keyed by the
@@ -418,17 +442,18 @@ func (s *Settings) PluginsDirOrDefault() string {
 // includes Reddit and Hacker News, the system theme, and the OS media cache.
 func Default() *Settings {
 	return &Settings{
-		Profiles:         []Profile{{Name: "Home", Subs: defaultSubs()}},
-		Active:           0,
-		Theme:            ThemeSystem,
-		CachePath:        defaultCachePath(),
-		BrowserSingleTab: boolPtr(DefaultBrowserSingleTab),
-		InfiniteScroll:   boolPtr(DefaultInfiniteScroll),
-		ZoomInKey:        DefaultZoomInKey,
-		ZoomOutKey:       DefaultZoomOutKey,
-		SignInBrowser:    DefaultSignInBrowser,
-		PreviewTextScale: DefaultPreviewTextScale,
-		MediaCacheMB:     DefaultMediaCacheMB,
+		Profiles:           []Profile{{Name: "Home", Subs: defaultSubs()}},
+		Active:             0,
+		Theme:              ThemeSystem,
+		CachePath:          defaultCachePath(),
+		BrowserSingleTab:   boolPtr(DefaultBrowserSingleTab),
+		InfiniteScroll:     boolPtr(DefaultInfiniteScroll),
+		AutoImportSessions: boolPtr(DefaultAutoImportSessions),
+		ZoomInKey:          DefaultZoomInKey,
+		ZoomOutKey:         DefaultZoomOutKey,
+		SignInBrowser:      DefaultSignInBrowser,
+		PreviewTextScale:   DefaultPreviewTextScale,
+		MediaCacheMB:       DefaultMediaCacheMB,
 	}
 }
 
@@ -506,6 +531,11 @@ func (s *Settings) Normalize() {
 		// A settings file predating this field (or a fresh one) defaults to
 		// infinite scroll enabled.
 		s.InfiniteScroll = boolPtr(DefaultInfiniteScroll)
+	}
+	if s.AutoImportSessions == nil {
+		// A settings file predating this field (or a fresh one) defaults to
+		// auto-importing a subscribed provider's browser session.
+		s.AutoImportSessions = boolPtr(DefaultAutoImportSessions)
 	}
 	s.dedupAccounts()
 }

@@ -139,6 +139,43 @@ func TestInfiniteScrollDefaultAndRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAutoImportSessionsDefaultAndRoundTrip(t *testing.T) {
+	// Default seeds auto-import enabled.
+	d := Default()
+	if d.AutoImportSessions == nil || !*d.AutoImportSessions || !d.AutoImportSessionsEnabled() {
+		t.Fatalf("default auto-import = %v, want enabled", d.AutoImportSessions)
+	}
+	// AutoImportSessionsEnabled() on an unset field applies the enabled default.
+	s := &Settings{}
+	if s.AutoImportSessionsEnabled() != DefaultAutoImportSessions {
+		t.Fatal("AutoImportSessionsEnabled() on an unset field should apply the default")
+	}
+	// Normalize backfills an unset field to enabled.
+	s.Normalize()
+	if s.AutoImportSessions == nil || !*s.AutoImportSessions {
+		t.Fatal("Normalize should backfill an unset auto-import flag to enabled")
+	}
+	// An explicit opt-out to off survives Normalize and Save/Load.
+	off := false
+	s2 := &Settings{Profiles: []Profile{{Name: "x"}}, Theme: ThemeDark, CachePath: "/c", AutoImportSessions: &off}
+	s2.Normalize()
+	if s2.AutoImportSessions == nil || *s2.AutoImportSessions || s2.AutoImportSessionsEnabled() {
+		t.Fatal("Normalize clobbered an explicit auto-import opt-out")
+	}
+	p := filepath.Join(t.TempDir(), "s.json")
+	st := NewStore(p)
+	if err := st.Save(s2); err != nil {
+		t.Fatal(err)
+	}
+	out, err := st.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.AutoImportSessions == nil || *out.AutoImportSessions {
+		t.Fatalf("round-trip auto-import = %v, want persisted off", out.AutoImportSessions)
+	}
+}
+
 func TestSignInBrowserDefaultAndRoundTrip(t *testing.T) {
 	// A fresh install defaults to Firefox — the only browser whose session cookie
 	// the reader can subsequently import.

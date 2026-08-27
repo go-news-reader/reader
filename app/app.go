@@ -768,6 +768,82 @@ func (a *App) ImportSessionFromFirefox() (bool, error) {
 	return true, nil
 }
 
+// sessionImportKinds are the providers whose per-account feeds a logged-in
+// browser session unlocks, in the order AutoImportSessions fills them.
+var sessionImportKinds = []source.Kind{source.Twitter, source.Instagram, source.TikTok}
+
+// AutoImportSessions imports a browser session for every session-based source the
+// active profile subscribes to but has no account for yet, so a followed X /
+// Instagram / TikTok account works on launch without a manual Accounts → Import
+// step. The window front-end calls it once at startup (before the lazy first
+// load), gated by the AutoImportSessions setting.
+//
+// It only ever FILLS a missing account — it never touches a configured one, so a
+// working session already in the vault is left alone — and silently skips a
+// provider whose session the browser does not hold. It persists straight to the
+// vault and rebuilds the registry (so the authenticated providers are live for the
+// first load) WITHOUT triggering a refresh, leaving the front-end's lazy per-tab
+// load to fetch; it reports what it imported on the status line.
+func (a *App) AutoImportSessions() {
+	// a.set and a.scene are always set (New builds a default when Config.Settings is
+	// nil), so only the preference is checked here.
+	if !a.set.AutoImportSessionsEnabled() {
+		return
+	}
+	// Seed the editor buffer from the persisted (vault-hydrated) accounts so the
+	// SetAccountField writes below ADD to them: EditedAccounts projects the buffer
+	// back, and an unseeded buffer would drop every other configured account.
+	a.scene.SetAccounts(a.set.Accounts)
+	var imported []string
+	for _, kind := range sessionImportKinds {
+		if !a.profileSubscribesTo(kind) || a.hasConfiguredAccount(kind) {
+			continue
+		}
+		value, label, err := a.importSessionFor(kind)
+		if err != nil || value == "" {
+			continue
+		}
+		if kind == source.TikTok {
+			// TikTok's client wants the sessionid and msToken as separate fields.
+			a.scene.SetAccountField(kind, "session", cookieValue(value, "sessionid"))
+			a.scene.SetAccountField(kind, "ms_token", cookieValue(value, "msToken"))
+		} else {
+			a.scene.SetAccountField(kind, "session", value)
+		}
+		imported = append(imported, label)
+	}
+	if len(imported) == 0 {
+		return
+	}
+	a.set = a.scene.Settings() // now carries the newly filled accounts
+	if a.store != nil {
+		_ = a.store.Save(a.set) // pushes the session secrets into the vault
+	}
+	a.rebuildRegistry() // providers rebuilt authenticated; no refresh — the lazy load follows
+	a.vm.SetStatus("Imported your " + strings.Join(imported, ", ") + " session from the browser")
+}
+
+// profileSubscribesTo reports whether the active profile has any subscription for
+// kind. Normalize (run by New) guarantees Active indexes a real profile.
+func (a *App) profileSubscribesTo(kind source.Kind) bool {
+	for _, sub := range a.set.Profiles[a.set.Active].Subs {
+		if sub.Source == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// hasConfiguredAccount reports whether an account of kind is already stored.
+func (a *App) hasConfiguredAccount(kind source.Kind) bool {
+	for _, acc := range a.set.Accounts {
+		if acc.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
 // cookieValue extracts the value of the named cookie from a "k=v; k=v" cookie
 // string (as produced by the browser-cookie importers), or "" if it is absent.
 func cookieValue(cookies, name string) string {
