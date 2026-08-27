@@ -261,6 +261,8 @@ func (h *Handler) runHit(hit ui.Hit) {
 		h.a.ClearDownloads() // drop finished rows from the download panel
 	case ui.HitToggleFolder:
 		s.ToggleSidebarFolder(hit.Value) // collapse/expand a sidebar virtual folder
+	case ui.HitToggleSource:
+		s.ToggleSidebarSource(source.Kind(hit.Value)) // accordion-toggle a sidebar source group
 	case ui.HitBrowse:
 		vm.OpenBrowse.Execute() // open the newsgroup browser
 		h.a.LoadGroups()        // fetch the server's full group list (cached)

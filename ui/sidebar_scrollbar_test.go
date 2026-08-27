@@ -18,6 +18,7 @@ func TestSidebarScrollbar(t *testing.T) {
 			subs[i] = Subscription{Source: source.Usenet, Channel: ch, Label: ch}
 		}
 		s.SetSubs(subs)
+		s.ToggleSidebarSource(source.Usenet) // expand the group so its rows fill the band
 		return s
 	}
 	// Few subs: fits, no overflow → no scrollbar.

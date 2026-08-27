@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-widgets/toolkit"
@@ -50,12 +51,14 @@ func TestSidebarTreeStructure(t *testing.T) {
 		t.Fatal("the sidebar tree must hide its synthetic root")
 	}
 	root := s.sideTree.Root
-	// Children: All Sources, Langs folder, r/rust, HN, Browse, Search Reddit.
+	// Children: All Sources, Langs folder, then the unclassified subs grouped
+	// under a source header each (Reddit → r/rust, Hacker News → HN), then the
+	// discovery nodes.
 	var kinds []sideKind
 	for _, c := range root.Children {
 		kinds = append(kinds, sideData(c).Kind)
 	}
-	want := []sideKind{sideAll, sideFolder, sideSub, sideSub, sideBrowse, sideSearchReddit}
+	want := []sideKind{sideAll, sideFolder, sideSource, sideSource, sideBrowse, sideSearchReddit}
 	if len(kinds) != len(want) {
 		t.Fatalf("root children kinds = %v, want %v", kinds, want)
 	}
@@ -64,18 +67,25 @@ func TestSidebarTreeStructure(t *testing.T) {
 			t.Fatalf("child %d kind = %v, want %v", i, kinds[i], want[i])
 		}
 	}
-	// "All Sources" is the first child (depth 0), not the root.
-	if sideData(root.Children[0]).Kind != sideAll {
-		t.Fatal("the first child must be the All Sources row")
-	}
 	// The folder holds exactly the golang sub (index 0).
 	folder := root.Children[1]
 	if len(folder.Children) != 1 || sideData(folder.Children[0]).Sub != 0 {
 		t.Fatalf("folder children = %+v, want [sub 0]", folder.Children)
 	}
-	// The unclassified subs are r/rust (1) and HN (2).
-	if sideData(root.Children[2]).Sub != 1 || sideData(root.Children[3]).Sub != 2 {
-		t.Fatalf("unclassified subs = %d,%d, want 1,2", sideData(root.Children[2]).Sub, sideData(root.Children[3]).Sub)
+	// The Reddit source group holds r/rust (sub 1); Hacker News holds HN (sub 2).
+	reddit := root.Children[2]
+	if d := sideData(reddit); d.Source != source.Reddit || d.Count != 1 {
+		t.Fatalf("first source group = %+v, want Reddit count 1", d)
+	}
+	if len(reddit.Children) != 1 || sideData(reddit.Children[0]).Sub != 1 {
+		t.Fatalf("Reddit group children = %+v, want [sub 1]", reddit.Children)
+	}
+	hn := root.Children[3]
+	if d := sideData(hn); d.Source != source.HackerNews || d.Count != 1 {
+		t.Fatalf("second source group = %+v, want Hacker News count 1", d)
+	}
+	if len(hn.Children) != 1 || sideData(hn.Children[0]).Sub != 2 {
+		t.Fatalf("Hacker News group children = %+v, want [sub 2]", hn.Children)
 	}
 }
 
@@ -160,8 +170,10 @@ func TestSidebarSelectedNode(t *testing.T) {
 // entries) plus the selected-sub chip path, and asserts something painted.
 func TestSidebarDrawAllRowKinds(t *testing.T) {
 	s := foldersScene(t)
-	// Mark HN pending so its row draws the spinner slot.
+	// Mark HN pending so its row draws the spinner slot; expand its source group so
+	// the HN row (and the source-header row) are visible to paint.
 	s.SetPendingSources([]source.Subscription{{Source: source.HackerNews, Channel: ""}})
+	s.ToggleSidebarSource(source.HackerNews)
 	s.SetActive(0) // select the golang sub → its count chip renders in the row ink
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
@@ -180,6 +192,7 @@ func TestSidebarWheelScroll(t *testing.T) {
 		subs = append(subs, Subscription{Source: source.Reddit, Channel: "r/" + itoa(i)})
 	}
 	s.SetSubs(subs)
+	s.ToggleSidebarSource(source.Reddit) // expand the group so its 40 rows show
 	s.layout()
 	if !s.sidebarListOverflows() {
 		t.Fatal("40 subs should overflow")
@@ -241,6 +254,7 @@ func TestSidebarNodeHitAllKinds(t *testing.T) {
 		{&toolkit.TreeNode{Data: sideNode{Kind: sideBrowse}}, HitBrowse},
 		{&toolkit.TreeNode{Data: sideNode{Kind: sideSearchReddit}}, HitSearchReddit},
 		{&toolkit.TreeNode{Data: sideNode{Kind: sideFolder, Folder: "F"}}, HitToggleFolder},
+		{&toolkit.TreeNode{Data: sideNode{Kind: sideSource, Source: source.Reddit}}, HitToggleSource},
 		{&toolkit.TreeNode{Data: sideNode{Kind: sideKind(99)}}, HitNone},
 	}
 	for _, c := range cases {
@@ -274,29 +288,80 @@ func TestSidebarA11yTree(t *testing.T) {
 			t.Fatalf("expanded folder a11y value = %q, want expanded", n.Value)
 		}
 	}
-	s.ToggleSidebarFolder("Langs") // collapse it so the a11y value reads "collapsed"
+	s.ToggleSidebarFolder("Langs")       // collapse it so the a11y value reads "collapsed"
+	s.ToggleSidebarSource(source.Reddit) // expand the Reddit group so its rust row shows
 	tree := s.A11yTree()
-	var haveFolder, haveSub, haveBrowse, haveSearch bool
+	var haveFolder, haveSub, haveBrowse, haveSearch, haveSource bool
 	for _, n := range tree {
-		switch n.Name {
-		case "Langs":
+		switch {
+		case n.Name == "Langs":
 			haveFolder = true
 			if n.Value != "collapsed" {
 				t.Fatalf("collapsed folder a11y value = %q", n.Value)
 			}
-		case "rust":
+		case n.Name == "rust":
 			haveSub = true
 			if n.Value == "" {
 				t.Fatal("a subscription a11y node should carry its unseen/total count")
 			}
-		case "Browse newsgroups":
+		case strings.HasPrefix(n.Name, "Reddit, "):
+			haveSource = true
+			if n.Value != "expanded" {
+				t.Fatalf("expanded source-group a11y value = %q, want expanded", n.Value)
+			}
+		case n.Name == "Browse newsgroups":
 			haveBrowse = true
-		case "Search Reddit":
+		case n.Name == "Search Reddit":
 			haveSearch = true
 		}
 	}
-	if !haveFolder || !haveSub || !haveBrowse || !haveSearch {
-		t.Fatalf("a11y tree missing rows: folder=%v sub=%v browse=%v search=%v", haveFolder, haveSub, haveBrowse, haveSearch)
+	if !haveFolder || !haveSub || !haveSource || !haveBrowse || !haveSearch {
+		t.Fatalf("a11y tree missing rows: folder=%v sub=%v source=%v browse=%v search=%v", haveFolder, haveSub, haveSource, haveBrowse, haveSearch)
+	}
+}
+
+// TestSidebarSourceAccordion covers the single-open accordion state machine:
+// start collapsed, open one, switch to another (closing the first), and toggle
+// the open one shut.
+func TestSidebarSourceAccordion(t *testing.T) {
+	s := New(720, 420, ThemeFor(OSLinux, false))
+	s.SetSubs([]Subscription{
+		{Source: source.Reddit, Channel: "r/a"},
+		{Source: source.Twitter, Channel: "nasa"},
+	})
+	if s.SidebarSourceOpen() != "" {
+		t.Fatalf("accordion should start all-collapsed, got %q", s.SidebarSourceOpen())
+	}
+	s.ToggleSidebarSource(source.Reddit)
+	if s.SidebarSourceOpen() != source.Reddit {
+		t.Fatalf("open = %q, want reddit", s.SidebarSourceOpen())
+	}
+	// Opening a second source closes the first (single-open accordion).
+	s.ToggleSidebarSource(source.Twitter)
+	if s.SidebarSourceOpen() != source.Twitter {
+		t.Fatalf("open = %q, want twitter", s.SidebarSourceOpen())
+	}
+	// Toggling the open source collapses it.
+	s.ToggleSidebarSource(source.Twitter)
+	if s.SidebarSourceOpen() != "" {
+		t.Fatalf("open = %q, want collapsed", s.SidebarSourceOpen())
+	}
+}
+
+// TestSourceGroupName covers the accordion header names, including the fuller
+// forms and the sourceLabel fallback.
+func TestSourceGroupName(t *testing.T) {
+	cases := map[source.Kind]string{
+		source.HackerNews:  "Hacker News",
+		source.Twitter:     "X",
+		source.Instagram:   "Instagram",
+		source.Syndication: "RSS",
+		source.Reddit:      "Reddit", // default → sourceLabel
+	}
+	for k, want := range cases {
+		if got := sourceGroupName(k); got != want {
+			t.Errorf("sourceGroupName(%q) = %q, want %q", k, got, want)
+		}
 	}
 }
 

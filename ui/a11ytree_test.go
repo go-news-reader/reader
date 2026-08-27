@@ -118,6 +118,8 @@ func TestA11yTreeDescribesTheFeed(t *testing.T) {
 // a reader as text: unseen/total is otherwise conveyed only by an accent tint.
 func TestA11yTreeCarriesUnseenCounts(t *testing.T) {
 	s := a11yScene(t)
+	s.ToggleSidebarSource(source.Twitter) // expand the group so the nasa row is a visible a11y node
+	s.layout()
 	for _, n := range s.A11yTree() {
 		if n.Name == "nasa" {
 			if !strings.Contains(n.Value, "/") {

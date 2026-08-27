@@ -748,6 +748,8 @@ func (s *Scene) sideNodeHit(node *toolkit.TreeNode) Hit {
 		return Hit{Kind: HitSearchReddit}
 	case sideFolder:
 		return Hit{Kind: HitToggleFolder, Value: d.Folder}
+	case sideSource:
+		return Hit{Kind: HitToggleSource, Value: string(d.Source)}
 	default:
 		return Hit{Kind: HitNone}
 	}

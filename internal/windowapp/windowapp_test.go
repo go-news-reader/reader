@@ -925,6 +925,33 @@ func TestA11yElementsRectsAreInTheEventCoordinateSpace(t *testing.T) {
 	t.Fatal("no Settings element to check")
 }
 
+// TestSidebarSourceAccordionClick clicks a source-group header and checks the
+// click toggles the accordion open, then closed — covering the HitToggleSource
+// dispatch and the scene's single-open accordion.
+func TestSidebarSourceAccordionClick(t *testing.T) {
+	a := app.New(app.Config{Registry: source.NewRegistry(), Width: 1000, Height: 700})
+	h := New(a)
+	s := a.Scene()
+	s.SetSubs([]ui.Subscription{{Source: source.Reddit, Channel: "golang"}})
+
+	x, y, ok := findHit(s, ui.HitToggleSource)
+	if !ok {
+		t.Fatal("no source-group header row in the sidebar")
+	}
+	h.MouseDown(x, y)
+	if s.SidebarSourceOpen() != source.Reddit {
+		t.Fatalf("first click: SidebarSourceOpen = %q, want reddit", s.SidebarSourceOpen())
+	}
+	x, y, ok = findHit(s, ui.HitToggleSource) // the header stays put; re-find and click again
+	if !ok {
+		t.Fatal("source header vanished after expanding")
+	}
+	h.MouseDown(x, y)
+	if s.SidebarSourceOpen() != "" {
+		t.Fatalf("second click: SidebarSourceOpen = %q, want collapsed", s.SidebarSourceOpen())
+	}
+}
+
 // findSidebarSub scans for a HitSub row, returning coords for one that maps to a
 // real subscription (real=true) or to the All filter (real=false).
 func findSidebarSub(s *ui.Scene, real bool) (int, int, bool) {
@@ -948,6 +975,7 @@ func TestSecondaryClickOpensSubMenu(t *testing.T) {
 		{Source: source.HackerNews, Channel: "top"},
 		{Source: source.Reddit, Channel: "golang"},
 	})
+	s.ToggleSidebarSource(source.HackerNews) // expand a group so a real subscription row is visible
 
 	// A press off the sidebar (the feed area) opens nothing.
 	h.SecondaryClick(s.W-5, s.H-5)

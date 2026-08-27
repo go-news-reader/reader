@@ -228,6 +228,7 @@ func TestSidebarOverflowScrollAndClip(t *testing.T) {
 		subs = append(subs, Subscription{Source: source.Reddit, Channel: string(rune('a' + i%26))})
 	}
 	s.SetSubs(subs)
+	s.ToggleSidebarSource(source.Reddit) // expand the group so its 20 rows overflow the band
 	s.layout()
 	if !s.sidebarListOverflows() {
 		t.Fatal("expected the sidebar list to overflow its band")

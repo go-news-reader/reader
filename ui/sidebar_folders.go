@@ -219,6 +219,25 @@ func (s *Scene) ToggleSidebarFolder(name string) {
 // (for tests / front-ends).
 func (s *Scene) FolderCollapsed(name string) bool { return s.folderCollapsed[name] }
 
+// ToggleSidebarSource drives the sidebar's source accordion: it expands kind's
+// auto-group (collapsing whatever source was open), or collapses it if it was
+// already the open one. Session-only, the action a click on a source header row
+// runs; only one source group is ever open, keeping a huge subscription list
+// short.
+func (s *Scene) ToggleSidebarSource(kind source.Kind) {
+	if s.sourceOpen == kind {
+		s.sourceOpen = ""
+	} else {
+		s.sourceOpen = kind
+	}
+	s.foldRev++
+	s.touch()
+}
+
+// SidebarSourceOpen reports which source group is currently expanded in the
+// sidebar accordion, or "" when they are all collapsed (for tests / front-ends).
+func (s *Scene) SidebarSourceOpen() source.Kind { return s.sourceOpen }
+
 // removeKeyFromFolders drops key from every folder that lists it.
 func (s *Scene) removeKeyFromFolders(key string) {
 	for i := range s.folders {
