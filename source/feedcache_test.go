@@ -87,6 +87,37 @@ func TestFeedCacheStaleWhileError(t *testing.T) {
 	}
 }
 
+func TestPerSourceTTL(t *testing.T) {
+	c, at := testCache(time.Minute, nil) // default TTL 1 min
+	c.TTLFor = func(k Kind) time.Duration {
+		if k == Usenet {
+			return time.Hour // slow source: long freshness
+		}
+		return 0 // others fall back to the default TTL
+	}
+	if _, err := c.Feed(Usenet, Query{Channel: "g"}, okFetch("u")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Feed(Reddit, Query{Channel: "r"}, okFetch("r")); err != nil {
+		t.Fatal(err)
+	}
+	// 30 min on: Usenet is still fresh under its 1 h TTL; Reddit, on the 1 min
+	// default (TTLFor returns 0 → fall back), is stale.
+	*at = at.Add(30 * time.Minute)
+	if !c.Fresh(Usenet, "g") {
+		t.Error("Usenet should still be fresh under its per-source 1 h TTL")
+	}
+	if c.Fresh(Reddit, "r") {
+		t.Error("Reddit should be stale past the 1 min default TTL")
+	}
+	// Feed honours the per-source TTL too: a Usenet re-Feed serves cache, no fetch.
+	n := 0
+	res, _ := c.Feed(Usenet, Query{Channel: "g"}, func() (Result, error) { n++; return okFetch("u2")() })
+	if n != 0 || len(res.Items) != 1 || res.Items[0].ID != "u" {
+		t.Errorf("Usenet Feed at 30 min should serve cache: fetched=%d res=%+v", n, res)
+	}
+}
+
 func TestCachedPeek(t *testing.T) {
 	c, at := testCache(time.Minute, nil)
 	if _, ok := c.Cached(Reddit, "a"); ok {

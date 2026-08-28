@@ -49,9 +49,14 @@ func RateLimited(err error) bool {
 // It is opt-in: a Registry with a nil Cache fetches straight through, unchanged.
 // All methods are safe for concurrent use.
 type FeedCache struct {
-	// TTL is how long a fetched result is served from cache without a re-fetch.
-	// Zero means every call fetches (the stale fallback and pacing still apply).
+	// TTL is the default freshness window: how long a fetched result is served from
+	// cache without a re-fetch, for a source [TTLFor] gives no value for. Zero
+	// means every call fetches (the stale fallback and pacing still apply).
 	TTL time.Duration
+	// TTLFor optionally overrides [TTL] per source, so fast-moving feeds (social)
+	// can stay fresh while slow ones (RSS, Usenet) cache far longer and fetch far
+	// less. Nil, or a non-positive result, falls back to [TTL].
+	TTLFor func(Kind) time.Duration
 	// MinInterval returns the minimum gap between two fetches to the same source.
 	// Nil, or a non-positive result, means that source is not paced.
 	MinInterval func(Kind) time.Duration
@@ -98,16 +103,28 @@ func (c *FeedCache) clock() time.Time {
 
 func cacheKey(kind Kind, channel string) string { return string(kind) + "\x00" + channel }
 
-// Fresh reports whether kind/channel has a cached result younger than the TTL —
+// ttlFor returns kind's freshness window: its per-source [TTLFor] value when set
+// and positive, otherwise the default [TTL].
+func (c *FeedCache) ttlFor(kind Kind) time.Duration {
+	if c.TTLFor != nil {
+		if d := c.TTLFor(kind); d > 0 {
+			return d
+		}
+	}
+	return c.TTL
+}
+
+// Fresh reports whether kind/channel has a cached result younger than its TTL —
 // so a scheduler can skip pacing a fetch it will not actually make.
 func (c *FeedCache) Fresh(kind Kind, channel string) bool {
-	if c.TTL <= 0 {
+	ttl := c.ttlFor(kind)
+	if ttl <= 0 {
 		return false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.entries[cacheKey(kind, channel)]
-	return ok && c.clock().Sub(e.at) < c.TTL
+	return ok && c.clock().Sub(e.at) < ttl
 }
 
 // Cached returns kind/channel's last result regardless of age, and whether one is
@@ -128,9 +145,10 @@ func (c *FeedCache) Cached(kind Kind, channel string) (Result, bool) {
 func (c *FeedCache) Feed(kind Kind, q Query, fetch func() (Result, error)) (Result, error) {
 	key := cacheKey(kind, q.Channel)
 
+	ttl := c.ttlFor(kind)
 	c.mu.Lock()
 	e, has := c.entries[key]
-	fresh := c.TTL > 0 && has && c.clock().Sub(e.at) < c.TTL
+	fresh := ttl > 0 && has && c.clock().Sub(e.at) < ttl
 	c.mu.Unlock()
 	if fresh {
 		return e.res, nil

@@ -113,6 +113,23 @@ func socialFetchInterval(k source.Kind) time.Duration {
 	return 0
 }
 
+// feedTTLFor is the per-source cache freshness window: how long a fetched result
+// is reused before a re-fetch. Fast-moving feeds get a short window so they stay
+// current; slow ones a long one so they are fetched far less often (fewer
+// requests overall). It overrides the default [feedCacheTTL].
+func feedTTLFor(k source.Kind) time.Duration {
+	switch k {
+	case source.Twitter, source.Instagram, source.TikTok, source.Bluesky, source.Mastodon:
+		return 10 * time.Minute // social: keep it fresh
+	case source.Reddit, source.HackerNews, source.Lemmy:
+		return 15 * time.Minute
+	case source.Usenet, source.Syndication:
+		return 45 * time.Minute // slow-changing: cache long, fetch rarely
+	default:
+		return feedCacheTTL
+	}
+}
+
 // Registry builds a source.Registry with every applicable provider registered
 // according to opts.
 func Registry(opts Options) *source.Registry {
@@ -124,6 +141,7 @@ func Registry(opts Options) *source.Registry {
 	// that trips their bot detection. A fetch that rate-limits (429) backs that
 	// source off, and the feed keeps showing its last good posts.
 	r.Cache = source.NewFeedCache(feedCacheTTL, socialFetchInterval)
+	r.Cache.TTLFor = feedTTLFor // fast-moving feeds stay fresh; slow ones cache long
 	// Cap how many accounts one view actually fetches: past this many, a profile
 	// that follows thousands of accounts shows the rest from cache rather than
 	// walking the whole list — so the reader's traffic looks like a person reading
