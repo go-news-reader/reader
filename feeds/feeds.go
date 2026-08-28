@@ -95,6 +95,12 @@ type Options struct {
 // freshens within a normal session.
 const feedCacheTTL = 10 * time.Minute
 
+// maxFetchPerView caps how many accounts a single view (an aggregate refresh)
+// network-fetches; the rest are served from cache, so a follow list of thousands
+// is never walked at once. Roughly the number of feeds a person actually reads in
+// a sitting.
+const maxFetchPerView = 40
+
 // socialFetchInterval paces the scraped social sources: a minimum gap between two
 // fetches to the same one, so hundreds of subscriptions drain as a human-paced
 // trickle rather than a burst. The public APIs (Reddit, HN, RSS, …) are not
@@ -118,6 +124,11 @@ func Registry(opts Options) *source.Registry {
 	// that trips their bot detection. A fetch that rate-limits (429) backs that
 	// source off, and the feed keeps showing its last good posts.
 	r.Cache = source.NewFeedCache(feedCacheTTL, socialFetchInterval)
+	// Cap how many accounts one view actually fetches: past this many, a profile
+	// that follows thousands of accounts shows the rest from cache rather than
+	// walking the whole list — so the reader's traffic looks like a person reading
+	// tens of feeds, not a bot scraping thousands.
+	r.MaxFetchPerAggregate = maxFetchPerView
 	hc := loggedClient(opts.Recorder) // nil when no recorder is configured
 
 	// Reddit: authenticated with the user's session cookie when present, else anonymous.
