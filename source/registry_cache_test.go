@@ -30,6 +30,73 @@ func (p *countProvider) calls() int {
 	return p.n
 }
 
+// pageProvider returns a distinct item per page so a test can tell a cached first
+// page from a freshly fetched next page.
+type pageProvider struct {
+	kind Kind
+	mu   sync.Mutex
+	n    int
+}
+
+func (p *pageProvider) Kind() Kind { return p.kind }
+
+func (p *pageProvider) Feed(_ context.Context, q Query) (Result, error) {
+	p.mu.Lock()
+	p.n++
+	p.mu.Unlock()
+	if q.Cursor == "" {
+		return Result{Items: []Item{{ID: "p1"}}, Cursor: "c1"}, nil // first page + next cursor
+	}
+	return Result{Items: []Item{{ID: "p2-" + q.Cursor}}}, nil // a later page
+}
+
+// TestPaginationBypassesCache: a fresh first-page cache entry must not be served
+// for a paginated (cursor-set) read — that would stall infinite scroll.
+func TestPaginationBypassesCache(t *testing.T) {
+	r := NewRegistry()
+	p := &pageProvider{kind: Reddit}
+	r.Register(p)
+	r.Cache = NewFeedCache(time.Hour, nil) // long TTL: the first page stays fresh
+	// Prime + freshen the first page.
+	if res, err := r.Feed(context.Background(), Reddit, Query{Channel: "a"}); err != nil || res.Items[0].ID != "p1" {
+		t.Fatalf("first page = %+v, %v", res, err)
+	}
+	// A direct paginated Feed bypasses the fresh cache and returns the next page.
+	res, err := r.Feed(context.Background(), Reddit, Query{Channel: "a", Cursor: "c1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) != 1 || res.Items[0].ID != "p2-c1" {
+		t.Fatalf("paginated Feed = %+v, want the second page (cache must be bypassed)", res.Items)
+	}
+	// End to end, AggregateMore returns the next page, not the cached first page.
+	sub := Subscription{Source: Reddit, Channel: "a"}
+	items, _, errs := r.AggregateMore(context.Background(), []Subscription{sub}, map[string]string{SubKey(sub): "c1"})
+	if len(errs) != 0 {
+		t.Fatalf("AggregateMore errs: %v", errs)
+	}
+	if len(items) != 1 || items[0].ID != "p2-c1" {
+		t.Fatalf("AggregateMore = %+v, want the second page", items)
+	}
+}
+
+// TestAggregateMorePaceCancelled: AggregateMore paces next-page fetches, so a
+// cancelled context during a paced wait surfaces as that subscription's error.
+func TestAggregateMorePaceCancelled(t *testing.T) {
+	r := NewRegistry()
+	p := &pageProvider{kind: Instagram}
+	r.Register(p)
+	r.Cache = NewFeedCache(0, func(Kind) time.Duration { return time.Hour }) // long pace, real clock
+	sub := Subscription{Source: Instagram, Channel: "a"}
+	_ = r.Cache.Pace(context.Background(), Instagram) // reserve the immediate slot; next is +1h
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, errs := r.AggregateMore(ctx, []Subscription{sub}, map[string]string{SubKey(sub): "c1"})
+	if len(errs) == 0 {
+		t.Fatal("a cancelled paced fetch should surface an error, not silently drop")
+	}
+}
+
 // TestRegistryFeedThroughCache: with a cache, repeated identical fetches hit the
 // provider once.
 func TestRegistryFeedThroughCache(t *testing.T) {
