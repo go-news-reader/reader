@@ -2,6 +2,7 @@ package feeds
 
 import (
 	"testing"
+	"time"
 
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/source"
@@ -23,6 +24,30 @@ func TestRegistryWiresFeedCache(t *testing.T) {
 	}
 	if r.MaxFetchPerAggregate <= 0 {
 		t.Fatal("Registry should cap how many accounts one view fetches")
+	}
+	if r.Cache.TTLFor == nil {
+		t.Fatal("Registry should set a per-source cache TTL")
+	}
+}
+
+func TestFeedTTLFor(t *testing.T) {
+	cases := map[source.Kind]time.Duration{
+		source.Twitter:      10 * time.Minute,
+		source.Instagram:    10 * time.Minute,
+		source.TikTok:       10 * time.Minute,
+		source.Bluesky:      10 * time.Minute,
+		source.Mastodon:     10 * time.Minute,
+		source.Reddit:       15 * time.Minute,
+		source.HackerNews:   15 * time.Minute,
+		source.Lemmy:        15 * time.Minute,
+		source.Usenet:       45 * time.Minute,
+		source.Syndication:  45 * time.Minute,
+		source.Kind("nope"): feedCacheTTL, // default fallback
+	}
+	for k, want := range cases {
+		if got := feedTTLFor(k); got != want {
+			t.Errorf("feedTTLFor(%q) = %v, want %v", k, got, want)
+		}
 	}
 }
 
