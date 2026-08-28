@@ -65,10 +65,52 @@ type FeedCache struct {
 	MaxBackoff time.Duration
 	// now is the clock; nil means time.Now (tests inject a fake).
 	now func() time.Time
+	// Store, when set, persists entries across restarts: [FeedCache.Hydrate] loads
+	// them at startup and every successful fetch is written through to it. Nil
+	// keeps the cache purely in memory.
+	Store FeedStore
 
 	mu       sync.Mutex
 	entries  map[string]feedEntry
 	limiters map[Kind]*srcLimiter
+}
+
+// FeedStore persists cached feed results across process restarts, so a relaunch
+// serves a subscription's last posts (and skips re-fetching what is still fresh)
+// instead of hitting every source again. It is an interface so the on-disk format
+// and location live in the app, not this package. Implementations must be safe for
+// concurrent use.
+type FeedStore interface {
+	// Load returns every persisted entry. The cache filters them by freshness
+	// itself, so a store may return stale ones — they still back the cache's
+	// stale-while-error and over-budget peek on the first view after a restart.
+	Load() []StoredEntry
+	// Save writes one entry through. It is called on the fetch path, so it should
+	// return promptly (persist asynchronously if the medium is slow).
+	Save(StoredEntry)
+}
+
+// StoredEntry is one persisted cache entry: a subscription's result and the time
+// it was fetched.
+type StoredEntry struct {
+	Kind    Kind
+	Channel string
+	Res     Result
+	At      time.Time
+}
+
+// Hydrate loads [FeedCache.Store]'s persisted entries into the in-memory cache.
+// The app calls it once at startup after setting Store; it is a no-op without a
+// Store.
+func (c *FeedCache) Hydrate() {
+	if c.Store == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, e := range c.Store.Load() {
+		c.entries[cacheKey(e.Kind, e.Channel)] = feedEntry{res: e.Res, at: e.At}
+	}
 }
 
 // feedEntry is one cached subscription result and when it was fetched.
@@ -166,9 +208,13 @@ func (c *FeedCache) Feed(kind Kind, q Query, fetch func() (Result, error)) (Resu
 	}
 
 	c.noteOK(kind)
+	at := c.clock()
 	c.mu.Lock()
-	c.entries[key] = feedEntry{res: res, at: c.clock()}
+	c.entries[key] = feedEntry{res: res, at: at}
 	c.mu.Unlock()
+	if c.Store != nil {
+		c.Store.Save(StoredEntry{Kind: kind, Channel: q.Channel, Res: res, At: at})
+	}
 	return res, nil
 }
 

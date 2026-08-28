@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/feeds"
+	"github.com/go-news-reader/reader/internal/feedstore"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
 	"github.com/go-news-reader/reader/internal/window"
@@ -59,6 +60,7 @@ var (
 	renderPNG     = (*app.App).RenderPNG
 	openWindow    = window.Run
 	settingsStore = defaultSettingsStore
+	feedCacheDir  = feedstore.DefaultDir
 )
 
 // defaultSettingsStore returns a Store at the per-user settings path.
@@ -253,6 +255,11 @@ func runWindow(cfg config, stdout, stderr io.Writer) int {
 		set.Profiles[set.Active].Subs = cfg.subs
 	}
 	cfg.set, cfg.store = set, st
+	// Persist the feed cache across restarts (window mode only — the one-shot paths
+	// are throwaway). A dir we cannot resolve just leaves the cache in memory.
+	if dir, err := feedCacheDir(); err == nil {
+		cfg.opts.FeedCacheDir = dir
+	}
 	return emitWindow(buildApp(cfg), cfg, stdout, stderr)
 }
 
