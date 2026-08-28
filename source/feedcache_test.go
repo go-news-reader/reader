@@ -87,6 +87,22 @@ func TestFeedCacheStaleWhileError(t *testing.T) {
 	}
 }
 
+func TestCachedPeek(t *testing.T) {
+	c, at := testCache(time.Minute, nil)
+	if _, ok := c.Cached(Reddit, "a"); ok {
+		t.Fatal("no entry should peek as absent")
+	}
+	if _, err := c.Feed(Reddit, Query{Channel: "a"}, okFetch("v")); err != nil {
+		t.Fatal(err)
+	}
+	// Cached returns the entry regardless of age (even past the TTL).
+	*at = at.Add(time.Hour)
+	r, ok := c.Cached(Reddit, "a")
+	if !ok || len(r.Items) != 1 || r.Items[0].ID != "v" {
+		t.Fatalf("Cached = %+v, ok=%v", r, ok)
+	}
+}
+
 func TestFeedCacheErrorWithoutCache(t *testing.T) {
 	c, _ := testCache(time.Minute, nil)
 	sentinel := errors.New("boom")

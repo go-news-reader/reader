@@ -68,6 +68,52 @@ func TestAggregateStreamCachedAndPaced(t *testing.T) {
 	}
 }
 
+// TestAggregateStreamFetchBudget: past MaxFetchPerAggregate, stale subs are not
+// re-fetched (here they have no cache, so they contribute nothing).
+func TestAggregateStreamFetchBudget(t *testing.T) {
+	r := NewRegistry()
+	p := &countProvider{kind: Instagram}
+	r.Register(p)
+	r.Cache = NewFeedCache(0, nil) // nothing fresh → every sub is subject to the budget
+	r.MaxFetchPerAggregate = 2
+	subs := []Subscription{
+		{Source: Instagram, Channel: "a"}, {Source: Instagram, Channel: "b"},
+		{Source: Instagram, Channel: "c"}, {Source: Instagram, Channel: "d"},
+	}
+	r.AggregateStream(context.Background(), subs, func(StreamUpdate) {})
+	if p.calls() != 2 {
+		t.Fatalf("budget=2 network-fetched %d of 4 subs, want 2", p.calls())
+	}
+}
+
+// TestAggregateStreamOverBudgetServesCache: over-budget stale subs are shown from
+// their last cached result, so the merge stays complete while the network fetches
+// stay capped.
+func TestAggregateStreamOverBudgetServesCache(t *testing.T) {
+	r := NewRegistry()
+	p := &countProvider{kind: Instagram}
+	r.Register(p)
+	r.Cache = NewFeedCache(0, nil)
+	subs := []Subscription{
+		{Source: Instagram, Channel: "a"}, {Source: Instagram, Channel: "b"}, {Source: Instagram, Channel: "c"},
+	}
+	for _, s := range subs { // prime all three into the cache
+		if _, err := r.Feed(context.Background(), s.Source, Query{Channel: s.Channel}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := p.calls()
+	r.MaxFetchPerAggregate = 1
+	var merged int
+	r.AggregateStream(context.Background(), subs, func(u StreamUpdate) { merged = len(u.Items) })
+	if p.calls()-before != 1 {
+		t.Fatalf("over-budget re-fetched: %d network fetches, want 1", p.calls()-before)
+	}
+	if merged != 3 {
+		t.Fatalf("merged items = %d, want 3 (1 fetched + 2 from cache)", merged)
+	}
+}
+
 // TestAggregateStreamPaceCancelled: when a paced fetch cannot proceed before the
 // context ends, the subscription surfaces an error rather than fetching.
 func TestAggregateStreamPaceCancelled(t *testing.T) {

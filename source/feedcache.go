@@ -110,6 +110,16 @@ func (c *FeedCache) Fresh(kind Kind, channel string) bool {
 	return ok && c.clock().Sub(e.at) < c.TTL
 }
 
+// Cached returns kind/channel's last result regardless of age, and whether one is
+// held. A bounded aggregate uses it to show a subscription it chose not to
+// re-fetch this round rather than dropping it from the merge.
+func (c *FeedCache) Cached(kind Kind, channel string) (Result, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.entries[cacheKey(kind, channel)]
+	return e.res, ok
+}
+
 // Feed returns a cached result when it is younger than the TTL, otherwise calls
 // fetch and caches the result. When fetch fails it returns the last good result
 // if there is one (so a transient failure or rate limit does not blank the feed),

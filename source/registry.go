@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // Registry holds the configured providers, one per [Kind], and fans queries out
@@ -29,12 +30,31 @@ type Registry struct {
 	// hundreds of subscriptions does not burst a source's API. Nil fetches
 	// straight through, unchanged.
 	Cache *FeedCache
+
+	// MaxFetchPerAggregate caps how many subscriptions one aggregate fan-out
+	// (AggregateStream / AggregateMore) actually NETWORK-fetches: past the cap, a
+	// still-fresh subscription is served from cache as always, but a stale one is
+	// shown from its last cached result rather than re-fetched, so viewing a
+	// profile that follows thousands of accounts never walks the whole list at
+	// once (the behaviour a platform reads as a bot). Requires Cache. Zero means
+	// no cap — every subscription is fetched, as before.
+	MaxFetchPerAggregate int
 }
 
 // defaultConcurrency bounds simultaneous source fetches when a Registry sets no
 // MaxConcurrent — brisk enough to fill the feed quickly without flooding remote
 // APIs (or the local socket pool) when a profile carries many subscriptions.
 const defaultConcurrency = 8
+
+// overFetchBudget reports whether a network fetch must be skipped because the
+// aggregate has already used its MaxFetchPerAggregate network fetches; it consumes
+// one budget slot per call. A zero cap means unlimited (never over budget).
+func (r *Registry) overFetchBudget(used *int32) bool {
+	if r.MaxFetchPerAggregate <= 0 {
+		return false
+	}
+	return atomic.AddInt32(used, 1) > int32(r.MaxFetchPerAggregate)
+}
 
 // concLimit is the effective fan-out width: MaxConcurrent when positive, else the
 // default. Always at least 1.
@@ -196,12 +216,20 @@ func (r *Registry) AggregateStream(ctx context.Context, subs []Subscription, onU
 	}
 	ch := make(chan outcome, total)
 	sem := make(chan struct{}, r.concLimit())
+	var fetches int32 // network fetches used against MaxFetchPerAggregate
 	for i, sub := range subs {
 		go func(i int, sub Subscription) {
-			// Pace real fetches per source BEFORE taking a concurrency slot, so a
-			// paced wait never occupies the fan-out semaphore; a cache-fresh sub
-			// skips pacing since its Feed will not hit the network.
 			if r.Cache != nil && !r.Cache.Fresh(sub.Source, sub.Channel) {
+				// A stale sub past the per-aggregate fetch budget is served from its
+				// last cached result instead of being re-fetched, so a profile that
+				// follows thousands of accounts never walks the whole list at once.
+				if r.overFetchBudget(&fetches) {
+					res, _ := r.Cache.Cached(sub.Source, sub.Channel)
+					ch <- outcome{index: i, sub: sub, items: res.Items, cursor: res.Cursor}
+					return
+				}
+				// Pace real fetches per source BEFORE taking a concurrency slot, so a
+				// paced wait never occupies the fan-out semaphore.
 				if err := r.Cache.Pace(ctx, sub.Source); err != nil {
 					ch <- outcome{index: i, sub: sub, err: &SubscriptionError{Sub: sub, Err: err}}
 					return

@@ -17,8 +17,12 @@ func has(kinds []source.Kind, k source.Kind) bool {
 }
 
 func TestRegistryWiresFeedCache(t *testing.T) {
-	if Registry(Options{}).Cache == nil {
+	r := Registry(Options{})
+	if r.Cache == nil {
 		t.Fatal("Registry should install a FeedCache to pace + cache social sources")
+	}
+	if r.MaxFetchPerAggregate <= 0 {
+		t.Fatal("Registry should cap how many accounts one view fetches")
 	}
 }
 
