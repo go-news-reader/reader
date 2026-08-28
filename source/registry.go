@@ -107,7 +107,12 @@ func (r *Registry) Feed(ctx context.Context, kind Kind, q Query) (Result, error)
 		// report it as a typed "needs configuration" signal the UI can act on.
 		return Result{}, NeedsAuth(kind, "not configured")
 	}
-	if r.Cache != nil {
+	// The cache keys on (kind, channel) only, so it holds a channel's FIRST page. A
+	// paginated read (Cursor set) asks for a later page and must never be served —
+	// or stored — under that key, or it would return the cached first page again
+	// and stall infinite scroll; page it straight from the provider. Pacing/backoff
+	// still apply: the aggregate worker calls Pace before this.
+	if r.Cache != nil && q.Cursor == "" {
 		return r.Cache.Feed(kind, q, func() (Result, error) { return p.Feed(ctx, q) })
 	}
 	return p.Feed(ctx, q)
@@ -308,6 +313,15 @@ func (r *Registry) AggregateMore(ctx context.Context, subs []Subscription, curso
 	sem := make(chan struct{}, r.concLimit())
 	for _, p := range todo {
 		go func(p paged) {
+			// A next-page fetch always hits the network (it is never cache-served),
+			// so pace it per source before taking a slot, exactly like the first
+			// page — a scroll must not burst a source any more than a refresh does.
+			if r.Cache != nil {
+				if err := r.Cache.Pace(ctx, p.sub.Source); err != nil {
+					ch <- outcome{index: p.index, sub: p.sub, err: &SubscriptionError{Sub: p.sub, Err: err}}
+					return
+				}
+			}
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			res, err := r.Feed(ctx, p.sub.Source, Query{
