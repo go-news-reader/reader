@@ -16,6 +16,26 @@ func has(kinds []source.Kind, k source.Kind) bool {
 	return false
 }
 
+func TestRegistryWiresFeedCache(t *testing.T) {
+	if Registry(Options{}).Cache == nil {
+		t.Fatal("Registry should install a FeedCache to pace + cache social sources")
+	}
+}
+
+func TestSocialFetchInterval(t *testing.T) {
+	// The scraped social sources are paced; the public APIs are not.
+	for _, k := range []source.Kind{source.Instagram, source.Twitter, source.TikTok} {
+		if socialFetchInterval(k) <= 0 {
+			t.Errorf("%q should be paced", k)
+		}
+	}
+	for _, k := range []source.Kind{source.Reddit, source.HackerNews, source.Bluesky} {
+		if socialFetchInterval(k) != 0 {
+			t.Errorf("%q should not be paced", k)
+		}
+	}
+}
+
 func TestRegistryAlwaysOn(t *testing.T) {
 	r := Registry(Options{})
 	kinds := r.Kinds()
