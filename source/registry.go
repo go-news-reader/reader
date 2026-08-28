@@ -21,6 +21,14 @@ type Registry struct {
 	// defaultConcurrency; the fan-out still enqueues every subscription, only the
 	// number fetching at any instant is capped.
 	MaxConcurrent int
+
+	// Cache, when non-nil, adds a result cache and per-source pacing/backoff in
+	// front of every [Registry.Feed] (see [FeedCache]): a subscription re-served
+	// from cache is not re-fetched, a failed fetch falls back to the last good
+	// result, and the aggregate fan-outs pace each source so a profile with
+	// hundreds of subscriptions does not burst a source's API. Nil fetches
+	// straight through, unchanged.
+	Cache *FeedCache
 }
 
 // defaultConcurrency bounds simultaneous source fetches when a Registry sets no
@@ -78,6 +86,9 @@ func (r *Registry) Feed(ctx context.Context, kind Kind, q Query) (Result, error)
 		// instance, Usenet server, …) was subscribed to but never configured, so
 		// report it as a typed "needs configuration" signal the UI can act on.
 		return Result{}, NeedsAuth(kind, "not configured")
+	}
+	if r.Cache != nil {
+		return r.Cache.Feed(kind, q, func() (Result, error) { return p.Feed(ctx, q) })
 	}
 	return p.Feed(ctx, q)
 }
@@ -187,6 +198,15 @@ func (r *Registry) AggregateStream(ctx context.Context, subs []Subscription, onU
 	sem := make(chan struct{}, r.concLimit())
 	for i, sub := range subs {
 		go func(i int, sub Subscription) {
+			// Pace real fetches per source BEFORE taking a concurrency slot, so a
+			// paced wait never occupies the fan-out semaphore; a cache-fresh sub
+			// skips pacing since its Feed will not hit the network.
+			if r.Cache != nil && !r.Cache.Fresh(sub.Source, sub.Channel) {
+				if err := r.Cache.Pace(ctx, sub.Source); err != nil {
+					ch <- outcome{index: i, sub: sub, err: &SubscriptionError{Sub: sub, Err: err}}
+					return
+				}
+			}
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			res, err := r.Feed(ctx, sub.Source, Query{

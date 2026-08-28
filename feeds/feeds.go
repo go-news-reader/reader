@@ -89,11 +89,35 @@ type Options struct {
 	SourceConcurrency int
 }
 
+// feedCacheTTL is how long a fetched subscription result is served from cache
+// before a re-fetch — long enough that navigating and refreshing a large profile
+// re-uses results instead of re-hitting the APIs, short enough that the feed still
+// freshens within a normal session.
+const feedCacheTTL = 10 * time.Minute
+
+// socialFetchInterval paces the scraped social sources: a minimum gap between two
+// fetches to the same one, so hundreds of subscriptions drain as a human-paced
+// trickle rather than a burst. The public APIs (Reddit, HN, RSS, …) are not
+// paced (return 0).
+func socialFetchInterval(k source.Kind) time.Duration {
+	switch k {
+	case source.Instagram, source.Twitter, source.TikTok:
+		return 2 * time.Second
+	}
+	return 0
+}
+
 // Registry builds a source.Registry with every applicable provider registered
 // according to opts.
 func Registry(opts Options) *source.Registry {
 	r := source.NewRegistry()
 	r.MaxConcurrent = opts.SourceConcurrency
+	// Cache each subscription's result and pace the scraped social sources, so a
+	// profile with hundreds/thousands of X/Instagram/TikTok subscriptions does not
+	// re-fetch what it just fetched, and never bursts those APIs — the behaviour
+	// that trips their bot detection. A fetch that rate-limits (429) backs that
+	// source off, and the feed keeps showing its last good posts.
+	r.Cache = source.NewFeedCache(feedCacheTTL, socialFetchInterval)
 	hc := loggedClient(opts.Recorder) // nil when no recorder is configured
 
 	// Reddit: authenticated with the user's session cookie when present, else anonymous.
