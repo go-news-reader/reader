@@ -118,6 +118,40 @@ func TestPerSourceTTL(t *testing.T) {
 	}
 }
 
+type fakeStore struct {
+	loaded []StoredEntry
+	saved  []StoredEntry
+}
+
+func (f *fakeStore) Load() []StoredEntry { return f.loaded }
+func (f *fakeStore) Save(e StoredEntry)  { f.saved = append(f.saved, e) }
+
+func TestFeedCacheStorePersist(t *testing.T) {
+	st := &fakeStore{loaded: []StoredEntry{
+		{Kind: Reddit, Channel: "a", Res: Result{Items: []Item{{ID: "disk"}}}, At: time.Unix(1_000_000, 0)},
+	}}
+	c, _ := testCache(time.Hour, nil)
+	c.Store = st
+	// Hydrate loads the persisted entry, so a relaunch serves it straight away.
+	c.Hydrate()
+	if r, ok := c.Cached(Reddit, "a"); !ok || len(r.Items) != 1 || r.Items[0].ID != "disk" {
+		t.Fatalf("Hydrate did not load the persisted entry: %+v ok=%v", r, ok)
+	}
+	// A successful fetch is written through to the store.
+	if _, err := c.Feed(Reddit, Query{Channel: "b"}, okFetch("net")); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.saved) != 1 || st.saved[0].Channel != "b" || st.saved[0].Kind != Reddit ||
+		len(st.saved[0].Res.Items) != 1 || st.saved[0].Res.Items[0].ID != "net" {
+		t.Fatalf("fetch did not write through to the store: %+v", st.saved)
+	}
+}
+
+func TestHydrateNoStore(t *testing.T) {
+	c, _ := testCache(time.Minute, nil)
+	c.Hydrate() // no Store configured → no-op, no panic
+}
+
 func TestCachedPeek(t *testing.T) {
 	c, at := testCache(time.Minute, nil)
 	if _, ok := c.Cached(Reddit, "a"); ok {

@@ -1,6 +1,8 @@
 package feeds
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -27,6 +29,29 @@ func TestRegistryWiresFeedCache(t *testing.T) {
 	}
 	if r.Cache.TTLFor == nil {
 		t.Fatal("Registry should set a per-source cache TTL")
+	}
+}
+
+func TestRegistryPersistsFeedCache(t *testing.T) {
+	r := Registry(Options{FeedCacheDir: t.TempDir()})
+	if r.Cache == nil || r.Cache.Store == nil {
+		t.Fatal("Registry with FeedCacheDir should attach a persistent store")
+	}
+}
+
+func TestRegistryFeedCacheDirError(t *testing.T) {
+	// A directory whose parent is a regular file cannot be created: the store is
+	// skipped and the in-memory cache still works.
+	f := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := Registry(Options{FeedCacheDir: filepath.Join(f, "sub")})
+	if r.Cache == nil {
+		t.Fatal("the in-memory cache should still exist")
+	}
+	if r.Cache.Store != nil {
+		t.Fatal("a store that cannot be opened must be skipped")
 	}
 }
 

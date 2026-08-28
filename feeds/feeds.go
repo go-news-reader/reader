@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-browserhttp/browserhttp"
 
+	"github.com/go-news-reader/reader/internal/feedstore"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/provider/bluesky"
 	"github.com/go-news-reader/reader/provider/hackernews"
@@ -87,6 +88,12 @@ type Options struct {
 	// profile with many subscriptions does not open one HTTP request per
 	// subscription simultaneously.
 	SourceConcurrency int
+
+	// FeedCacheDir, when set, is the directory the feed cache persists to, so a
+	// relaunch serves each subscription's last posts and skips re-fetching what is
+	// still fresh. Empty keeps the cache in memory only (the one-shot CLI paths and
+	// tests). The window front-end sets it to the per-user cache dir.
+	FeedCacheDir string
 }
 
 // feedCacheTTL is how long a fetched subscription result is served from cache
@@ -94,6 +101,12 @@ type Options struct {
 // re-uses results instead of re-hitting the APIs, short enough that the feed still
 // freshens within a normal session.
 const feedCacheTTL = 10 * time.Minute
+
+// feedCacheMaxAge bounds how old a persisted cache entry may be to survive a
+// restart: past this, it is dropped on load rather than reused or kept on disk.
+// Comfortably longer than any per-source TTL, so a same-session relaunch reuses
+// results while nothing ancient lingers.
+const feedCacheMaxAge = 24 * time.Hour
 
 // maxFetchPerView caps how many accounts a single view (an aggregate refresh)
 // network-fetches; the rest are served from cache, so a follow list of thousands
@@ -142,6 +155,15 @@ func Registry(opts Options) *source.Registry {
 	// source off, and the feed keeps showing its last good posts.
 	r.Cache = source.NewFeedCache(feedCacheTTL, socialFetchInterval)
 	r.Cache.TTLFor = feedTTLFor // fast-moving feeds stay fresh; slow ones cache long
+	// Persist the cache across restarts when a directory is configured, so a
+	// relaunch serves each feed's last posts instead of re-fetching every source.
+	// A store that cannot be opened is skipped — the in-memory cache still works.
+	if opts.FeedCacheDir != "" {
+		if st, err := feedstore.New(opts.FeedCacheDir, feedCacheMaxAge); err == nil {
+			r.Cache.Store = st
+			r.Cache.Hydrate()
+		}
+	}
 	// Cap how many accounts one view actually fetches: past this many, a profile
 	// that follows thousands of accounts shows the rest from cache rather than
 	// walking the whole list — so the reader's traffic looks like a person reading
