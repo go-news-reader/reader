@@ -833,6 +833,16 @@ func mute(fg, bg toolkit.RGBA) toolkit.RGBA {
 	return toolkit.RGBA{R: mix(fg.R, bg.R), G: mix(fg.G, bg.G), B: mix(fg.B, bg.B), A: 0xFF}
 }
 
+// sectionBandFill is the accordion header band colour: the sidebar ground
+// (SurfaceAlt) nudged ~12% toward the text colour, so a header reads as a raised
+// band distinct from the ground in every theme — darker on a light sidebar,
+// lighter on a dark one — where SurfaceAlt and Surface may sit only a few levels
+// apart (e.g. the macOS theme's 251 vs 255).
+func sectionBandFill(th *toolkit.Theme) toolkit.RGBA {
+	mix := func(g, ink uint8) uint8 { return uint8((int(g)*88 + int(ink)*12) / 100) }
+	return toolkit.RGBA{R: mix(th.SurfaceAlt.R, th.OnSurface.R), G: mix(th.SurfaceAlt.G, th.OnSurface.G), B: mix(th.SurfaceAlt.B, th.OnSurface.B), A: 0xFF}
+}
+
 // sourceLabel is the short badge text for a source kind.
 func sourceLabel(k source.Kind) string {
 	switch k {

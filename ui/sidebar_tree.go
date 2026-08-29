@@ -347,6 +347,27 @@ func (s *Scene) drawSideSourceRow(p painter.Painter, cr toolkit.Rect, src source
 	if rightW > 0 {
 		labelW -= rightW + gap
 	}
+	// Materialise the section as a band: a fill distinct from the sidebar ground
+	// (SurfaceAlt) with top + bottom hairline borders. The band spans the whole row
+	// (the RowRenderer may paint left of its content rect, over the chevron column),
+	// so the chevron the TreeView drew first is repainted afterwards with the exact
+	// same geometry (toolkit.Scaled matches the reader's metric scale).
+	rowW := cr.X + cr.W
+	band := sectionBandFill(s.theme)
+	p.FillRect(toolkit.Rect{X: 0, Y: cr.Y, W: rowW, H: cr.H}, band)
+	bw := rpxOf(s, 1)
+	p.FillRect(toolkit.Rect{X: 0, Y: cr.Y, W: rowW, H: bw}, s.theme.Border)
+	p.FillRect(toolkit.Rect{X: 0, Y: cr.Y + cr.H - bw, W: rowW, H: bw}, s.theme.Border)
+	cx, cy := toolkit.Scaled(4), cr.Y+cr.H/2
+	if src == s.sourceOpen { // ▼ expanded
+		for q := 0; q < 4; q++ {
+			p.FillRect(toolkit.Rect{X: cx - q, Y: cy + 2 - q, W: 1 + 2*q, H: 1}, ink)
+		}
+	} else { // ▶ collapsed
+		for q := 0; q < 4; q++ {
+			p.FillRect(toolkit.Rect{X: cx + 2 - q, Y: cy - q, W: 1, H: 1 + 2*q}, ink)
+		}
+	}
 	// Brand logo: the source's Simple Icons glyph (go-icons/simple-icons), tinted
 	// with its brand colour and rendered through the toolkit's SVG icon drawer.
 	// Sources with no brand logo (Usenet, RedGIFs) keep the coloured dot.
@@ -362,14 +383,14 @@ func (s *Scene) drawSideSourceRow(p painter.Painter, cr toolkit.Rect, src source
 	// Section title: bold, small and UPPERCASE, in a muted header ink — the VS Code
 	// activity-bar section look.
 	hdrF := ttFont(true, rpxOf(s, 11))
-	hdrInk := mute(ink, s.theme.SurfaceAlt)
+	hdrInk := mute(ink, band) // muted against the band fill, not the ground
 	lbl := toolkit.NewLabel(truncateFont(hdrF, strings.ToUpper(sourceGroupName(src)), labelW))
 	lbl.Font, lbl.Ink = hdrF, hdrInk
 	lbl.SetBounds(toolkit.Rect{X: cr.X + dotSlot + gap, Y: cr.Y, W: labelW, H: cr.H})
 	lbl.Draw(p, s.theme)
 	if rightW > 0 {
 		c := toolkit.NewLabel(countStr)
-		c.Font, c.Ink = countF, mute(s.theme.OnSurface, s.theme.SurfaceAlt)
+		c.Font, c.Ink = countF, mute(s.theme.OnSurface, band)
 		c.SetBounds(toolkit.Rect{X: cr.X + cr.W - rightW, Y: cr.Y, W: rightW, H: cr.H})
 		c.Draw(p, s.theme)
 	}
