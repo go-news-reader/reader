@@ -21,20 +21,25 @@ func TestSidebarScrollbar(t *testing.T) {
 		s.ToggleSidebarSource(source.Usenet) // expand the group so its rows fill the band
 		return s
 	}
-	// Few subs: fits, no overflow → no scrollbar.
+	// Few subs: the open section fits its window, so it does not scroll → no bar.
 	s := overflowing(2)
 	s.Draw(make([]byte, s.W*s.H*4))
-	if s.sidebarListOverflows() {
-		t.Fatal("2 subs should not overflow the sidebar band")
+	if s.sourceSubTotal > s.sourceSubWindow {
+		t.Fatal("2 subs should fit the open section's window without scrolling")
 	}
 
-	// Many subs: overflows → the TreeView paints its own scrollbar (accent thumb
-	// over a SurfaceAlt track) near the sidebar's right edge, inside the band.
+	// Many subs: the open section overflows its bounded window → the scene paints a
+	// scrollbar (accent thumb over a SurfaceAlt track) spanning just that window,
+	// near the sidebar's right edge. The other headers stay pinned, so the tree
+	// itself never overflows.
 	s = overflowing(40)
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
-	if !s.sidebarListOverflows() {
-		t.Fatal("40 subs should overflow the sidebar band")
+	if s.sourceSubTotal <= s.sourceSubWindow {
+		t.Fatalf("40 subs should overflow the open section's window (total=%d window=%d)", s.sourceSubTotal, s.sourceSubWindow)
+	}
+	if s.sidebarListOverflows() {
+		t.Fatal("a windowed section must keep the tree itself within the band")
 	}
 	// The sidebar background (and the scrollbar track) is SurfaceAlt, so the only
 	// thing that paints a different colour in the right-edge column is the thumb

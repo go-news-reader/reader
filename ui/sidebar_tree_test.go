@@ -192,20 +192,150 @@ func TestSidebarWheelScroll(t *testing.T) {
 		subs = append(subs, Subscription{Source: source.Reddit, Channel: "r/" + itoa(i)})
 	}
 	s.SetSubs(subs)
-	s.ToggleSidebarSource(source.Reddit) // expand the group so its 40 rows show
+	s.ToggleSidebarSource(source.Reddit) // expand the group so its 40 accounts show
 	s.layout()
-	if !s.sidebarListOverflows() {
-		t.Fatal("40 subs should overflow")
+	// The open section overflows its bounded window, so a wheel over the sidebar
+	// scrolls that window's inner offset (keeping the headers pinned), not the tree.
+	if s.sourceSubTotal <= s.sourceSubWindow {
+		t.Fatal("40 subs should overflow the open section's window")
 	}
 	s.MouseMove(10, 150)
 	s.Scroll(200) // down
-	if s.sideTree.ScrollRow().Get() == 0 {
-		t.Fatal("wheel down did not scroll the tree")
+	if s.sourceSubScroll == 0 {
+		t.Fatal("wheel down did not scroll the open section")
 	}
-	down := s.sideTree.ScrollRow().Get()
+	down := s.sourceSubScroll
 	s.Scroll(-200) // up
-	if s.sideTree.ScrollRow().Get() >= down {
-		t.Fatalf("wheel up did not scroll back: %d !< %d", s.sideTree.ScrollRow().Get(), down)
+	if s.sourceSubScroll >= down {
+		t.Fatalf("wheel up did not scroll back: %d !< %d", s.sourceSubScroll, down)
+	}
+}
+
+// TestSidebarAccordionKeepsHeadersVisible is the accordion's contract: opening a
+// section with far more accounts than the band can hold must not push the other
+// section headers (or the discovery rows) out of view. The open section's
+// accounts are windowed instead, so every non-account row stays inside the band
+// and the second source header and "Search Reddit" remain hit-testable.
+func TestSidebarAccordionKeepsHeadersVisible(t *testing.T) {
+	s := New(760, 380, ThemeFor(OSMac, false))
+	var subs []Subscription
+	for i := 0; i < 300; i++ { // a huge Instagram section…
+		subs = append(subs, Subscription{Source: source.Instagram, Channel: "ig" + itoa(i)})
+	}
+	for i := 0; i < 3; i++ { // …then a small Reddit one, whose header sits AFTER it.
+		subs = append(subs, Subscription{Source: source.Reddit, Channel: "r" + itoa(i)})
+	}
+	s.SetSubs(subs)
+	s.ToggleSidebarSource(source.Instagram) // open the huge one
+	s.layout()
+
+	// The section is windowed, not laid out whole.
+	if s.sourceSubTotal != 300 || s.sourceSubWindow >= 300 {
+		t.Fatalf("open section not windowed: total=%d window=%d", s.sourceSubTotal, s.sourceSubWindow)
+	}
+	// Every visible row fits the band: the tree never overflows, so no header is
+	// pushed off. (flattenSide is the exact visible-row set the TreeView paints.)
+	rows := len(s.flattenSide())
+	if fit := (s.sideBandBot - s.sideBandTop) / s.m.sideItemH; rows > fit {
+		t.Fatalf("visible rows %d exceed the band's %d — a header would be hidden", rows, fit)
+	}
+	// The Reddit header, which follows the huge open section, is still a visible row.
+	var sawReddit, sawSearch bool
+	for _, n := range s.flattenSide() {
+		switch d := sideData(n); d.Kind {
+		case sideSource:
+			if d.Source == source.Reddit {
+				sawReddit = true
+			}
+		case sideSearchReddit:
+			sawSearch = true
+		}
+	}
+	if !sawReddit {
+		t.Fatal("the Reddit header after the open section was pushed out of the band")
+	}
+	if !sawSearch {
+		t.Fatal("the Search Reddit discovery row was pushed out of the band")
+	}
+}
+
+// TestSidebarFolderOverflowScrollsTree covers the non-accordion overflow path: an
+// expanded folder (folders are not windowed) can make the whole tree taller than
+// the band, and with no source section open the wheel scrolls the TreeView itself.
+func TestSidebarFolderOverflowScrollsTree(t *testing.T) {
+	s := New(700, 320, ThemeFor(OSLinux, false))
+	var subs []Subscription
+	var keys []string
+	for i := 0; i < 40; i++ {
+		ch := "r/" + itoa(i)
+		subs = append(subs, Subscription{Source: source.Reddit, Channel: ch})
+		keys = append(keys, sideKeyOf(source.Reddit, ch))
+	}
+	s.SetSubs(subs)
+	s.SetSidebarFolders([]settings.Folder{{Name: "All", Subs: keys}}) // one expanded folder holds them all
+	s.layout()
+	if s.sourceOpen != "" {
+		t.Fatal("no source section should be open in this case")
+	}
+	if !s.sidebarListOverflows() {
+		t.Fatal("an expanded 40-account folder should overflow the tree")
+	}
+	s.MouseMove(10, 150)
+	before := s.sideTree.ScrollRow().Get()
+	s.Scroll(200)
+	if s.sideTree.ScrollRow().Get() <= before {
+		t.Fatalf("wheel did not scroll the tree: %d -> %d", before, s.sideTree.ScrollRow().Get())
+	}
+}
+
+// TestWindowOpenSectionGuards covers windowOpenSection's defensive branches: an
+// open source no longer present in the profile, a non-positive row height, a band
+// too small for even one account row, and a negative inner offset.
+func TestWindowOpenSectionGuards(t *testing.T) {
+	// Open a source that has no subscriptions in this profile → no header node →
+	// the function returns without windowing anything.
+	s := New(760, 380, ThemeFor(OSMac, false))
+	s.SetSubs([]Subscription{{Source: source.Reddit, Channel: "r0"}})
+	s.ToggleSidebarSource(source.Twitter) // Twitter has no subs here
+	s.layout()
+	if s.sourceSubTotal != 0 {
+		t.Fatalf("an absent open source must not window anything, got total=%d", s.sourceSubTotal)
+	}
+
+	// A real, overflowing open section, then the edge branches.
+	var subs []Subscription
+	for i := 0; i < 40; i++ {
+		subs = append(subs, Subscription{Source: source.Instagram, Channel: "ig" + itoa(i)})
+	}
+	s.SetSubs(subs)
+	s.ToggleSidebarSource(source.Twitter) // clear the previous open source
+	s.ToggleSidebarSource(source.Instagram)
+	s.layout()
+
+	// Non-positive row height: the window falls back to the full section.
+	s.m.sideItemH = 0
+	s.buildSideTree()
+	if s.sourceSubWindow != 40 {
+		t.Fatalf("rh<=0 should window the whole section, got %d", s.sourceSubWindow)
+	}
+	s.layout() // restore a real row height
+
+	// A negative offset is clamped up to the first account.
+	s.sourceSubScroll = -5
+	s.layout()
+	if s.sourceSubScroll != 0 {
+		t.Fatalf("a negative offset must clamp to 0, got %d", s.sourceSubScroll)
+	}
+
+	// A band too short for even one account row still shows one (the list scrolls).
+	tiny := New(760, 380, ThemeFor(OSMac, false))
+	tiny.SetSubs(subs)
+	tiny.ToggleSidebarSource(source.Instagram)
+	tiny.layout()
+	tiny.sideBandBot = tiny.sideBandTop + tiny.m.sideItemH // room for a single row
+	tiny.buildSideTree()
+	if tiny.sourceSubWindow != 1 {
+		t.Fatalf("a one-row band should window a single account, got %d", tiny.sourceSubWindow)
 	}
 }
 

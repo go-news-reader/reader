@@ -20,6 +20,7 @@ package ui
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
@@ -147,6 +148,62 @@ func (s *Scene) buildSideTree() {
 	root.Children = append(root.Children, &toolkit.TreeNode{Data: sideNode{Kind: sideSearchReddit}})
 
 	s.sideTree.Root = root
+	s.windowOpenSection()
+}
+
+// windowOpenSection bounds the open source group's accounts to a scrollable
+// window so the section never pushes the other headers out of the band: every
+// other row ("All Sources", the folders, the source headers, the discovery
+// entries) always stays visible, and only the open section's accounts scroll
+// within the space left below them. It slices the open node's children to that
+// window (offset sourceSubScroll, clamped) and records the geometry the wheel
+// router and the section scrollbar need. With nothing open it clears that state.
+func (s *Scene) windowOpenSection() {
+	s.sourceSubTotal, s.sourceSubWindow, s.sourceSubHeaderRow = 0, 0, 0
+	if s.sourceOpen == "" {
+		return
+	}
+	var open *toolkit.TreeNode
+	for _, n := range s.sideTree.Root.Children {
+		if d := sideData(n); d.Kind == sideSource && d.Source == s.sourceOpen {
+			open = n
+			break
+		}
+	}
+	if open == nil || len(open.Children) == 0 {
+		return
+	}
+	full := open.Children
+	// Count every other visible row (the open header contributes one row while its
+	// accounts are withheld): that is the space the accounts must fit under.
+	open.Children = nil
+	fixed := len(s.flattenSide())
+	rh, band := s.m.sideItemH, s.sideBandBot-s.sideBandTop
+	window := len(full)
+	if rh > 0 {
+		if window = band/rh - fixed; window < 1 {
+			window = 1 // headers alone already fill the band; let the list scroll
+		}
+	}
+	if window > len(full) {
+		window = len(full)
+	}
+	off := s.sourceSubScroll
+	if maxOff := len(full) - window; off > maxOff {
+		off = maxOff
+	}
+	if off < 0 {
+		off = 0
+	}
+	s.sourceSubScroll, s.sourceSubWindow, s.sourceSubTotal = off, window, len(full)
+	open.Children = full[off : off+window]
+	// The open header's flattened index positions the section scrollbar.
+	for i, n := range s.flattenSide() {
+		if d := sideData(n); d.Kind == sideSource && d.Source == s.sourceOpen {
+			s.sourceSubHeaderRow = i
+			break
+		}
+	}
 }
 
 // flattenSide walks the sidebar tree in visible (expand-aware) order, returning
@@ -264,16 +321,18 @@ func (s *Scene) drawSideRow(p painter.Painter, th *toolkit.Theme, cr toolkit.Rec
 	case sideFolder:
 		s.drawSideFolderRow(p, cr, d.Folder, ink, selected)
 	case sideSource:
-		s.drawSideSourceRow(p, cr, d.Source, d.Count, sideF, ink)
+		s.drawSideSourceRow(p, cr, d.Source, d.Count, ink)
 	case sideSub:
 		s.drawSideSubRow(p, cr, d.Sub, sideF, ink, selected)
 	}
 }
 
-// drawSideSourceRow draws an auto-group header: the source's brand dot, its name,
-// and — right-aligned and muted — how many subscriptions the group holds. The
-// chevron and indent the TreeView already painted mark it as an expandable row.
-func (s *Scene) drawSideSourceRow(p painter.Painter, cr toolkit.Rect, src source.Kind, count int, f toolkit.Font, ink toolkit.RGBA) {
+// drawSideSourceRow draws an auto-group header in the VS Code section-header
+// idiom: the source's brand dot, then its name UPPERCASED in a bold, smaller,
+// muted face (so a header reads as a section divider, distinct from the account
+// rows beneath it), and — right-aligned and muted — how many accounts the group
+// holds. The chevron and indent the TreeView already painted mark it expandable.
+func (s *Scene) drawSideSourceRow(p painter.Painter, cr toolkit.Rect, src source.Kind, count int, ink toolkit.RGBA) {
 	gap := rpxOf(s, 4)
 	dotSlot := rpxOf(s, 14)
 	// Right-aligned muted subscription count ("1065").
@@ -291,9 +350,12 @@ func (s *Scene) drawSideSourceRow(p painter.Painter, cr toolkit.Rect, src source
 	dot := &sideDot{s: s, col: sourceColor(src)}
 	dot.SetBounds(toolkit.Rect{X: cr.X, Y: cr.Y, W: dotSlot, H: cr.H})
 	dot.Draw(p, s.theme)
-	// Source name, in the row ink.
-	lbl := toolkit.NewLabel(truncateFont(f, sourceGroupName(src), labelW))
-	lbl.Font, lbl.Ink = f, ink
+	// Section title: bold, small and UPPERCASE, in a muted header ink — the VS Code
+	// activity-bar section look.
+	hdrF := ttFont(true, rpxOf(s, 11))
+	hdrInk := mute(ink, s.theme.SurfaceAlt)
+	lbl := toolkit.NewLabel(truncateFont(hdrF, strings.ToUpper(sourceGroupName(src)), labelW))
+	lbl.Font, lbl.Ink = hdrF, hdrInk
 	lbl.SetBounds(toolkit.Rect{X: cr.X + dotSlot + gap, Y: cr.Y, W: labelW, H: cr.H})
 	lbl.Draw(p, s.theme)
 	if rightW > 0 {

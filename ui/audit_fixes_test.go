@@ -228,38 +228,43 @@ func TestSidebarOverflowScrollAndClip(t *testing.T) {
 		subs = append(subs, Subscription{Source: source.Reddit, Channel: string(rune('a' + i%26))})
 	}
 	s.SetSubs(subs)
-	s.ToggleSidebarSource(source.Reddit) // expand the group so its 20 rows overflow the band
+	s.ToggleSidebarSource(source.Reddit) // expand the group so its 20 accounts overflow the window
 	s.layout()
-	if !s.sidebarListOverflows() {
-		t.Fatal("expected the sidebar list to overflow its band")
+	if s.sourceSubTotal <= s.sourceSubWindow {
+		t.Fatal("expected the open section's accounts to overflow its bounded window")
 	}
 	// From a fresh (top) state, a wheel with the pointer over the sidebar scrolls
-	// the sub list (the TreeView's top-row index), not the feed.
+	// the open section's inner window, not the feed and not the tree (whose other
+	// headers stay pinned).
 	s.MouseMove(10, 150)
-	before := s.sideTree.ScrollRow().Get()
+	before := s.sourceSubScroll
 	s.Scroll(120)
-	if s.sideTree.ScrollRow().Get() <= before {
-		t.Fatalf("sidebar did not scroll: %d -> %d", before, s.sideTree.ScrollRow().Get())
+	if s.sourceSubScroll <= before {
+		t.Fatalf("sidebar section did not scroll: %d -> %d", before, s.sourceSubScroll)
 	}
 	// Clicking inside the pinned footer resolves to a pinned entry, never a
 	// scrolled sub row bleeding into it.
 	if h := s.HitTest(2, s.accountsR.Y+s.m.sideItemH/2); h.Kind != HitAccounts {
 		t.Fatalf("click in footer band resolved to %v, want HitAccounts", h.Kind)
 	}
-	// A click just below the last visible band row resolves to no node (the
-	// TreeView never reports a row the window did not paint).
-	if h := s.HitTest(2, s.sideBandBot-1); h.Kind != HitNone && h.Kind != HitSub && h.Kind != HitSearchReddit {
+	// A click just below the last visible band row resolves to a pinned discovery
+	// row or nothing — never a scrolled account bleeding past the window.
+	switch h := s.HitTest(2, s.sideBandBot-1); h.Kind {
+	case HitNone, HitSub, HitSearchReddit, HitBrowse, HitToggleSource:
+	default:
 		t.Fatalf("click at band bottom = %v", h.Kind)
 	}
-	// Render so the sidebar sprite draws (and clips) the overflowing rows.
+	// Render so the sidebar sprite draws (and clips) the windowed rows.
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
-	// An over-scroll is clamped back to the maximum by the TreeView.
-	s.sideTree.ScrollTo(1_000_000)
-	max := s.sideTree.ScrollRow().Get()
-	s.Scroll(120) // a further wheel down cannot advance past the clamped maximum
-	if s.sideTree.ScrollRow().Get() != max {
-		t.Fatalf("over-scroll not clamped: %d != %d", s.sideTree.ScrollRow().Get(), max)
+	// An over-scroll is clamped back to the maximum offset by buildSideTree.
+	s.sourceSubScroll = 1_000_000
+	s.layout()
+	max := s.sourceSubScroll
+	s.Scroll(120) // a further wheel down is re-clamped to the maximum on the next layout
+	s.layout()
+	if s.sourceSubScroll != max {
+		t.Fatalf("over-scroll not clamped: %d != %d", s.sourceSubScroll, max)
 	}
 	// At a high zoom on a minimum-height window the pinned footer's top falls above
 	// the sub-list top, so the band is negative before the guard clamps it to 0 —
