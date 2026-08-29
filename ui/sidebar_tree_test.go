@@ -279,6 +279,42 @@ func TestSidebarHeaderDrawsBrandIconOrDot(t *testing.T) {
 	}
 }
 
+// TestSidebarSectionBand checks a source header is materialised as a band: its
+// row carries the Surface fill (distinct from the SurfaceAlt sidebar ground) and
+// Border-coloured top/bottom hairlines.
+func TestSidebarSectionBand(t *testing.T) {
+	s := New(760, 380, ThemeFor(OSMac, false))
+	s.SetSubs([]Subscription{{Source: source.Reddit, Channel: "r0"}})
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	th := s.theme
+	band := sectionBandFill(th)
+	// The band fill must be visibly distinct from the sidebar ground.
+	if band == th.SurfaceAlt {
+		t.Fatal("the section band fill is identical to the ground")
+	}
+	// Row 0 is "All Sources"; row 1 is the Reddit header band.
+	top := s.sideBandTop + s.m.sideItemH
+	sum := func(r, g, b uint8) int { return int(r) + int(g) + int(b) }
+	var sawBand bool
+	for y := top; y < top+s.m.sideItemH; y++ {
+		for x := 0; x < s.m.sidebarW; x++ {
+			if c := px(buf, s.W, x, y); c.R == band.R && c.G == band.G && c.B == band.B {
+				sawBand = true
+			}
+		}
+	}
+	if !sawBand {
+		t.Error("the source header row has no band fill")
+	}
+	// The top edge of the header row is a border hairline: darker than the band
+	// (the alpha Border ink blended over the fill), away from the centred chevron.
+	edge := px(buf, s.W, s.m.sidebarW/2, top)
+	if sum(edge.R, edge.G, edge.B) >= sum(band.R, band.G, band.B) {
+		t.Errorf("no top border hairline: edge %v not darker than band %v", edge, band)
+	}
+}
+
 // TestSidebarAccordionKeepsHeadersVisible is the accordion's contract: opening a
 // section with far more accounts than the band can hold must not push the other
 // section headers (or the discovery rows) out of view. The open section's
