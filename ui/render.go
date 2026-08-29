@@ -863,6 +863,33 @@ func sourceLabel(k source.Kind) string {
 	}
 }
 
+// sourceIconName maps a source to its Simple Icons glyph name (go-icons/simple-icons),
+// or "" for sources with no brand logo (Usenet, RedGIFs) — those keep the dot.
+func sourceIconName(k source.Kind) string {
+	switch k {
+	case source.Reddit:
+		return "reddit"
+	case source.HackerNews:
+		return "ycombinator"
+	case source.Syndication:
+		return "rss"
+	case source.Mastodon:
+		return "mastodon"
+	case source.Lemmy:
+		return "lemmy"
+	case source.Bluesky:
+		return "bluesky"
+	case source.Twitter:
+		return "x"
+	case source.Instagram:
+		return "instagram"
+	case source.TikTok:
+		return "tiktok"
+	default:
+		return ""
+	}
+}
+
 // sourceColor is the brand-ish accent for a source badge.
 func sourceColor(k source.Kind) toolkit.RGBA {
 	switch k {

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	simpleicons "github.com/go-icons/simple-icons"
 	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/internal/settings"
@@ -208,6 +209,73 @@ func TestSidebarWheelScroll(t *testing.T) {
 	s.Scroll(-200) // up
 	if s.sourceSubScroll >= down {
 		t.Fatalf("wheel up did not scroll back: %d !< %d", s.sourceSubScroll, down)
+	}
+}
+
+// TestSourceIconName pins each source's brand-glyph name and checks that every
+// non-empty name actually resolves in the go-icons/simple-icons pack (so a header
+// never asks for a logo the pack cannot draw). Usenet and RedGIFs have no brand
+// glyph and fall back to the coloured dot.
+func TestSourceIconName(t *testing.T) {
+	branded := map[source.Kind]string{
+		source.Reddit:      "reddit",
+		source.HackerNews:  "ycombinator",
+		source.Syndication: "rss",
+		source.Mastodon:    "mastodon",
+		source.Lemmy:       "lemmy",
+		source.Bluesky:     "bluesky",
+		source.Twitter:     "x",
+		source.Instagram:   "instagram",
+		source.TikTok:      "tiktok",
+	}
+	for k, want := range branded {
+		if got := sourceIconName(k); got != want {
+			t.Errorf("sourceIconName(%v) = %q, want %q", k, got, want)
+		}
+		if !simpleicons.Has(want) {
+			t.Errorf("simple-icons pack is missing %q for %v", want, k)
+		}
+	}
+	for _, k := range []source.Kind{source.Usenet, source.Redgifs} {
+		if got := sourceIconName(k); got != "" {
+			t.Errorf("sourceIconName(%v) = %q, want \"\" (no brand glyph)", k, got)
+		}
+	}
+}
+
+// TestSidebarHeaderDrawsBrandIconOrDot renders a branded section header and an
+// unbranded one, asserting the branded header paints its logo (non-background
+// pixels in the icon slot recoloured to the brand tint) while the unbranded one
+// keeps the dot.
+func TestSidebarHeaderDrawsBrandIconOrDot(t *testing.T) {
+	s := New(760, 380, ThemeFor(OSMac, false))
+	s.SetSubs([]Subscription{
+		{Source: source.Reddit, Channel: "r0"},
+		{Source: source.Usenet, Channel: "grp0"},
+	})
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	// Both headers are collapsed rows near the top of the band; each paints
+	// something (a glyph or a dot) in its leading icon slot, so the slot is not
+	// pure sidebar SurfaceAlt.
+	th := s.theme
+	slotPainted := func(rowTop int) bool {
+		for y := rowTop; y < rowTop+s.m.sideItemH; y++ {
+			for x := 0; x < rpxOf(s, 16); x++ {
+				c := px(buf, s.W, x, y)
+				if c.R != th.SurfaceAlt.R || c.G != th.SurfaceAlt.G || c.B != th.SurfaceAlt.B {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	// Row 0 is "All Sources"; the two source headers follow it.
+	if !slotPainted(s.sideBandTop + s.m.sideItemH) {
+		t.Fatal("the Reddit header painted nothing in its icon slot")
+	}
+	if !slotPainted(s.sideBandTop + 2*s.m.sideItemH) {
+		t.Fatal("the Usenet header painted nothing in its icon slot")
 	}
 }
 
