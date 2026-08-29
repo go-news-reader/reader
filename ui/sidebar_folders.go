@@ -230,6 +230,7 @@ func (s *Scene) ToggleSidebarSource(kind source.Kind) {
 	} else {
 		s.sourceOpen = kind
 	}
+	s.sourceSubScroll = 0 // a freshly opened section starts at its first account
 	s.foldRev++
 	s.touch()
 }

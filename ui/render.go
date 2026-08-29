@@ -240,7 +240,14 @@ func (s *Scene) Draw(buf []byte) {
 		// TreeView) so it is the SAME slim rounded muted bar as the card list,
 		// not the TreeView's built-in square/accent one. Rows → pixels via the
 		// row height so drawVScrollbar's proportion math matches the feed's.
-		if off, _, total, shown := s.sideTree.ScrollExtent(); shown {
+		if s.sourceOpen != "" && s.sourceSubTotal > s.sourceSubWindow {
+			// The open section's accounts scroll within a bounded window; the bar
+			// spans just that window and reflects the inner offset, so the pinned
+			// headers around it carry no bar of their own.
+			rh := m.sideItemH
+			area := toolkit.Rect{X: 0, Y: s.sideBandTop + (s.sourceSubHeaderRow+1)*rh, W: m.sidebarW, H: s.sourceSubWindow * rh}
+			s.drawVScrollbar(p, area, m.sidebarW, s.sourceSubTotal*rh, s.sourceSubScroll*rh)
+		} else if off, _, total, shown := s.sideTree.ScrollExtent(); shown {
 			rh := m.sideItemH
 			area := toolkit.Rect{X: 0, Y: s.sideBandTop, W: m.sidebarW, H: s.sideBandBot - s.sideBandTop}
 			s.drawVScrollbar(p, area, m.sidebarW, total*rh, off*rh)
@@ -286,6 +293,7 @@ type sidebarKey struct {
 	pendRev    int
 	anim       int // animation frame, but only while a source is pending
 	sideScroll int // TreeView top-row scroll index
+	secScroll  int // open section's inner account-window offset
 	fold       int // folder/collapse revision (folder set + expand state)
 }
 type topbarKey struct {
@@ -311,7 +319,7 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	if s.PendingCount() > 0 {
 		anim = s.animFrame
 	}
-	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim, sideScroll: s.sideTree.ScrollRow().Get(), fold: s.foldRev}
+	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim, sideScroll: s.sideTree.ScrollRow().Get(), secScroll: s.sourceSubScroll, fold: s.foldRev}
 	if s.sidebarSpr != nil && s.sidebarKey == k {
 		return s.sidebarSpr
 	}

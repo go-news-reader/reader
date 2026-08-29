@@ -478,6 +478,17 @@ type Scene struct {
 	// source headers. Session state (not persisted), like folderCollapsed; changing
 	// it bumps foldRev so the cached sidebar sprite re-rasterises.
 	sourceOpen source.Kind
+	// The open source's accounts scroll within a bounded window so the other
+	// section headers stay on screen (the accordion never pushes a header out of
+	// the band). sourceSubScroll is the first shown account's offset into the open
+	// section; sourceSubWindow how many fit below the always-shown header rows;
+	// sourceSubTotal the section's full count; sourceSubHeaderRow the open header's
+	// flattened row index (for the section scrollbar). buildSideTree recomputes all
+	// four each layout and clamps sourceSubScroll; they are zero when nothing is open.
+	sourceSubScroll    int
+	sourceSubWindow    int
+	sourceSubTotal     int
+	sourceSubHeaderRow int
 	// renamingFolder is the folder currently being renamed inline in the sidebar
 	// (empty = none); renameFolderEntry is the focused toolkit.Entry that holds the
 	// edit buffer (its Text) and owns caret/Backspace/Arrows/Home/End behaviour.
@@ -1399,6 +1410,14 @@ func (s *Scene) Scroll(dy int) {
 	// wheel direction) since the TreeView scrolls by row.
 	if !s.sidebarCollapsed && s.lastMouseX < s.m.sidebarW {
 		s.layout() // refresh the tree, band + TreeView bounds before scrolling it
+		// An open source group whose accounts overflow their bounded window scrolls
+		// that window (the offset is re-clamped by buildSideTree on the next layout),
+		// keeping every section header on screen; nothing else has diverted the wheel.
+		if s.sourceOpen != "" && s.sourceSubTotal > s.sourceSubWindow {
+			s.sourceSubScroll += wheelRows(dy, s.m.sideItemH)
+			s.touch()
+			return
+		}
 		if s.sidebarListOverflows() {
 			s.sideTree.ScrollBy(wheelRows(dy, s.m.sideItemH))
 			s.touch()
