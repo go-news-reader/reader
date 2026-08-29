@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	simpleicons "github.com/go-icons/simple-icons"
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
 
@@ -346,10 +347,18 @@ func (s *Scene) drawSideSourceRow(p painter.Painter, cr toolkit.Rect, src source
 	if rightW > 0 {
 		labelW -= rightW + gap
 	}
-	// Source dot, vertically centred.
-	dot := &sideDot{s: s, col: sourceColor(src)}
-	dot.SetBounds(toolkit.Rect{X: cr.X, Y: cr.Y, W: dotSlot, H: cr.H})
-	dot.Draw(p, s.theme)
+	// Brand logo: the source's Simple Icons glyph (go-icons/simple-icons), tinted
+	// with its brand colour and rendered through the toolkit's SVG icon drawer.
+	// Sources with no brand logo (Usenet, RedGIFs) keep the coloured dot.
+	if name := sourceIconName(src); name != "" && simpleicons.Has(name) {
+		d := rpxOf(s, 15)
+		ir := toolkit.Rect{X: cr.X + (dotSlot-d)/2, Y: cr.Y + (cr.H-d)/2, W: d, H: d}
+		toolkit.SVGIcon(simpleicons.Icon(name))(p, ir, sourceColor(src))
+	} else {
+		dot := &sideDot{s: s, col: sourceColor(src)}
+		dot.SetBounds(toolkit.Rect{X: cr.X, Y: cr.Y, W: dotSlot, H: cr.H})
+		dot.Draw(p, s.theme)
+	}
 	// Section title: bold, small and UPPERCASE, in a muted header ink — the VS Code
 	// activity-bar section look.
 	hdrF := ttFont(true, rpxOf(s, 11))

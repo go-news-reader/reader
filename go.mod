@@ -9,6 +9,7 @@ require (
 	github.com/go-browserhttp/browserhttp v0.2.0
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-iconoir/iconoir v0.2.0
+	github.com/go-icons/simple-icons v0.1.0
 	github.com/go-images/images v0.0.0-20260815210351-4a50ef5ab734
 	github.com/go-instagram/instagram v0.5.0
 	github.com/go-keyring/keyring v0.3.0
@@ -26,7 +27,7 @@ require (
 	github.com/go-webengine/engine v0.3.11
 	github.com/go-widgets/mvvm v0.8.0
 	github.com/go-widgets/painter v0.11.0
-	github.com/go-widgets/toolkit v0.243.0
+	github.com/go-widgets/toolkit v0.283.0
 	github.com/go-widgets/window v0.44.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
@@ -46,12 +47,13 @@ require (
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
-	github.com/go-crdt/collab v0.18.0 // indirect
-	github.com/go-crdt/crdt v0.29.0 // indirect
+	github.com/go-crdt/collab v0.25.0 // indirect
+	github.com/go-crdt/crdt v0.31.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
-	github.com/go-gfx/gfx v0.6.0 // indirect
+	github.com/go-gfx/gfx v0.11.0 // indirect
+	github.com/go-icons/iconoir v0.2.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
 	github.com/go-macos/objc v0.1.1 // indirect
 	github.com/go-mswin/win32 v0.1.0 // indirect
