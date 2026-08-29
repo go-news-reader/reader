@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 // Registry holds the configured providers, one per [Kind], and fans queries out
@@ -46,14 +45,45 @@ type Registry struct {
 // APIs (or the local socket pool) when a profile carries many subscriptions.
 const defaultConcurrency = 8
 
-// overFetchBudget reports whether a network fetch must be skipped because the
-// aggregate has already used its MaxFetchPerAggregate network fetches; it consumes
-// one budget slot per call. A zero cap means unlimited (never over budget).
-func (r *Registry) overFetchBudget(used *int32) bool {
-	if r.MaxFetchPerAggregate <= 0 {
-		return false
+// spreadBudget chooses which stale subscriptions to network-fetch this aggregate:
+// it round-robins across the sources of the stale subs, taking one from each in
+// turn until MaxFetchPerAggregate are picked, so the budget is shared fairly
+// rather than spent on whichever source's subscriptions sit first in the list.
+// Fresh subs are excluded — they cost no fetch. It returns the set of chosen
+// subscription indices. Callers use it only when the cache and a positive cap are
+// both set.
+func (r *Registry) spreadBudget(subs []Subscription) map[int]bool {
+	var order []Kind
+	bySource := map[Kind][]int{}
+	for i, sub := range subs {
+		if r.Cache.Fresh(sub.Source, sub.Channel) {
+			continue // a cache-fresh sub is free; it does not spend the budget
+		}
+		if _, seen := bySource[sub.Source]; !seen {
+			order = append(order, sub.Source)
+		}
+		bySource[sub.Source] = append(bySource[sub.Source], i)
 	}
-	return atomic.AddInt32(used, 1) > int32(r.MaxFetchPerAggregate)
+	chosen := make(map[int]bool, r.MaxFetchPerAggregate)
+	for len(chosen) < r.MaxFetchPerAggregate {
+		progressed := false
+		for _, src := range order {
+			q := bySource[src]
+			if len(q) == 0 {
+				continue
+			}
+			chosen[q[0]] = true
+			bySource[src] = q[1:]
+			progressed = true
+			if len(chosen) >= r.MaxFetchPerAggregate {
+				break
+			}
+		}
+		if !progressed {
+			break // every source exhausted before the budget filled
+		}
+	}
+	return chosen
 }
 
 // concLimit is the effective fan-out width: MaxConcurrent when positive, else the
@@ -221,14 +251,23 @@ func (r *Registry) AggregateStream(ctx context.Context, subs []Subscription, onU
 	}
 	ch := make(chan outcome, total)
 	sem := make(chan struct{}, r.concLimit())
-	var fetches int32 // network fetches used against MaxFetchPerAggregate
+	// Decide up front which stale subscriptions to actually network-fetch: a fair
+	// round-robin across sources up to the budget, so a large "All Sources" view
+	// samples every source instead of spending the whole budget on whichever ones
+	// happen to sit first in the list (which starves the rest). fetchSet is nil when
+	// there is no cap, meaning fetch every stale sub as before.
+	budgeted := r.Cache != nil && r.MaxFetchPerAggregate > 0
+	var fetchSet map[int]bool
+	if budgeted {
+		fetchSet = r.spreadBudget(subs)
+	}
 	for i, sub := range subs {
 		go func(i int, sub Subscription) {
 			if r.Cache != nil && !r.Cache.Fresh(sub.Source, sub.Channel) {
-				// A stale sub past the per-aggregate fetch budget is served from its
-				// last cached result instead of being re-fetched, so a profile that
-				// follows thousands of accounts never walks the whole list at once.
-				if r.overFetchBudget(&fetches) {
+				// A stale sub not chosen for this round's budget is served from its
+				// last cached result instead of re-fetched, so the whole follow list
+				// is never walked at once.
+				if budgeted && !fetchSet[i] {
 					res, _ := r.Cache.Cached(sub.Source, sub.Channel)
 					ch <- outcome{index: i, sub: sub, items: res.Items, cursor: res.Cursor}
 					return

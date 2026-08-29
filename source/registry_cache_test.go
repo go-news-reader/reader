@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -178,6 +179,69 @@ func TestAggregateStreamOverBudgetServesCache(t *testing.T) {
 	}
 	if merged != 3 {
 		t.Fatalf("merged items = %d, want 3 (1 fetched + 2 from cache)", merged)
+	}
+}
+
+// TestAggregateSpreadsBudgetAcrossSources: the budget is shared fairly across
+// sources, so a source whose subscriptions sit LAST in the list is not starved.
+func TestAggregateSpreadsBudgetAcrossSources(t *testing.T) {
+	r := NewRegistry()
+	ri := &countProvider{kind: Reddit}
+	ig := &countProvider{kind: Instagram}
+	r.Register(ri)
+	r.Register(ig)
+	r.Cache = NewFeedCache(0, nil) // nothing fresh → every sub competes for the budget
+	r.MaxFetchPerAggregate = 4
+	var subs []Subscription
+	for i := 0; i < 10; i++ { // reddit first…
+		subs = append(subs, Subscription{Source: Reddit, Channel: "r" + strconv.Itoa(i)})
+	}
+	for i := 0; i < 10; i++ { // …instagram entirely after the by-order budget.
+		subs = append(subs, Subscription{Source: Instagram, Channel: "i" + strconv.Itoa(i)})
+	}
+	r.AggregateStream(context.Background(), subs, func(StreamUpdate) {})
+	if ig.calls() == 0 {
+		t.Fatalf("the spread starved instagram: reddit=%d instagram=%d", ri.calls(), ig.calls())
+	}
+	if got := ri.calls() + ig.calls(); got != 4 {
+		t.Fatalf("total fetches = %d, want 4 (the budget)", got)
+	}
+}
+
+// TestSpreadBudgetSkipsFreshSubs: a cache-fresh subscription costs no fetch and is
+// excluded from the budget, so the slot goes to a stale one.
+func TestSpreadBudgetSkipsFreshSubs(t *testing.T) {
+	r := NewRegistry()
+	p := &countProvider{kind: Reddit}
+	r.Register(p)
+	r.Cache = NewFeedCache(time.Hour, nil) // long TTL so a primed sub stays fresh
+	r.MaxFetchPerAggregate = 1
+	if _, err := r.Feed(context.Background(), Reddit, Query{Channel: "a"}); err != nil {
+		t.Fatal(err) // prime "a" fresh
+	}
+	before := p.calls()
+	// "a" is fresh (served free), "b" is stale — the single budget slot goes to "b".
+	subs := []Subscription{{Source: Reddit, Channel: "a"}, {Source: Reddit, Channel: "b"}}
+	r.AggregateStream(context.Background(), subs, func(StreamUpdate) {})
+	if got := p.calls() - before; got != 1 {
+		t.Fatalf("fetches = %d, want 1 (only the stale 'b'; 'a' was fresh)", got)
+	}
+}
+
+// TestAggregateBudgetExceedsSubs: a budget larger than the (stale) subs fetches
+// them all and stops (the round-robin's exhaustion break).
+func TestAggregateBudgetExceedsSubs(t *testing.T) {
+	r := NewRegistry()
+	p := &countProvider{kind: Instagram}
+	r.Register(p)
+	r.Cache = NewFeedCache(0, nil)
+	r.MaxFetchPerAggregate = 50
+	subs := []Subscription{
+		{Source: Instagram, Channel: "a"}, {Source: Instagram, Channel: "b"}, {Source: Instagram, Channel: "c"},
+	}
+	r.AggregateStream(context.Background(), subs, func(StreamUpdate) {})
+	if p.calls() != 3 {
+		t.Fatalf("budget above the sub count should fetch all 3, got %d", p.calls())
 	}
 }
 
