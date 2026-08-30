@@ -34,17 +34,13 @@ jobs:
           fi
       - name: Vet
         run: go vet ./...
-      # internal/window opens a real OS window and pumps a native event loop
-      # (Cocoa / win32 / X11) — a launch-verified boundary that cannot be
-      # exercised headless, so its per-OS Run is excluded from the coverage gate
-      # (its pure seam helpers are still unit-tested in window_seam_test.go, and
-      # it is still vet-ed above and cross-built in the cross-build job below).
-      - name: Test internal/window (seam helpers; boundary excluded from gate)
-        run: go test ./internal/window/...
+      # The native window loop now lives in go-widgets/application (the reader no
+      # longer carries its own internal/window package). cmd/bundle is build
+      # tooling around go-macos/appbundle.
       # internal/sourceplugin/grpc + internal/mediacacheplugin/grpc are generated
       # protobuf/gRPC code and internal/sourceplugin/transport +
       # internal/mediacacheplugin/transport are the hashicorp/go-plugin subprocess
-      # glue; like internal/window these are boundaries that cannot reach 100% line
+      # glue; these are boundaries that cannot reach 100% line
       # coverage in-process, so they are excluded from the gate (their logic — the
       # Item/Cache <-> proto mapping and the hosts' scan/adapter — lives in the
       # gated protoconv, sourceplugin, mediacache and mediacacheplugin packages,
