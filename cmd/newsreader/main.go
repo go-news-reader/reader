@@ -256,7 +256,10 @@ func runWindow(cfg config, stdout, stderr io.Writer) int {
 	}
 	_, statErr := os.Stat(st.Path)
 	firstRun := os.IsNotExist(statErr)
-	set, err := st.Load()
+	// Load WITHOUT reading the vault, so the window opens (and its Dock, menu bar
+	// and status-item appear) before the keychain prompt: the secrets are read
+	// after the first frame, in emitWindow's onReady via app.HydrateAndActivate.
+	set, err := st.LoadWithoutSecrets()
 	if err != nil {
 		fmt.Fprintln(stderr, "newsreader:", err)
 		return 1
@@ -281,11 +284,6 @@ func runWindow(cfg config, stdout, stderr io.Writer) int {
 // presentWindow (present_reader.go) opens the window through internal/window, the
 // reader's adapter over the shared go-widgets/window backend's toolkit.Surface.
 func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
-	// Before anything concurrent starts, fill in any missing session for a
-	// subscribed X/Instagram/TikTok source from the browser, so a followed account
-	// works on this launch without a manual Accounts → Import (honours the
-	// AutoImportSessions setting; a no-op when the browser holds no session).
-	a.AutoImportSessions()
 	// Marshal background scene writes onto the render thread: the present loop and
 	// input handlers run on the main thread, while refreshFeed aggregates on a
 	// background goroutine. Enable it before that goroutine starts so the scene is
@@ -295,11 +293,28 @@ func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 	// model), not every subscription at once. Set before the background load so it
 	// picks up the right active tab.
 	a.OpenDefaultTab()
-	go refreshFeed(a, stderr)
+
+	// The startup work that READS THE VAULT is deferred to the first shown frame,
+	// so the window — and the Dock icon, menu bar and status-item (tray) that come
+	// with it — is visibly open BEFORE the keychain prompt. onReady runs once, on
+	// the render thread, after the first frame is blitted (see SetOnReady):
+	//   1. put the status-item in the menu bar (the loop is now running, so it
+	//      draws immediately — before the prompt),
+	//   2. hydrate the vault + activate the authenticated providers (the prompt),
+	//   3. start the concurrent feed load.
+	var tray *statusItem
+	onReady := func() {
+		tray = newStatusItem(a)
+		a.HydrateAndActivate()
+		go refreshFeed(a, stderr)
+	}
+
 	// The main goroutine is already pinned to thread 0 (see init()); window.Open
 	// re-locks the same thread. Opening from here therefore stays on the AppKit
-	// main thread even though refreshFeed now runs concurrently.
-	if err := presentWindow(a, cfg); err != nil {
+	// main thread even though refreshFeed runs concurrently once onReady fires.
+	err := presentWindow(a, cfg, onReady)
+	tray.Close()
+	if err != nil {
 		fmt.Fprintln(stderr, "newsreader:", err)
 		fmt.Fprintln(stdout, "native window unavailable; use -serve or -o to view the feed")
 		return 1

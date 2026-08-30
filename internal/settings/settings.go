@@ -630,6 +630,22 @@ func (s *Store) secrets() SecretStore {
 // was down — is migrated into the vault and then purged from disk. The migration
 // is idempotent: a second Load of the purged file finds nothing to move.
 func (s *Store) Load() (*Settings, error) {
+	out, err := s.LoadWithoutSecrets()
+	if err != nil {
+		return nil, err
+	}
+	if err := s.HydrateSecrets(out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// LoadWithoutSecrets loads the settings file WITHOUT touching the credential
+// vault, so a windowed caller can open its window — and so show its Dock, menu
+// bar and status-item presence — BEFORE any keychain prompt. The returned
+// Settings has account metadata but no vault-held secret fields (only any
+// plaintext still on disk); call [Store.HydrateSecrets] afterwards to fill them.
+func (s *Store) LoadWithoutSecrets() (*Settings, error) {
 	data, err := os.ReadFile(s.Path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -642,13 +658,20 @@ func (s *Store) Load() (*Settings, error) {
 		return nil, err
 	}
 	out.Normalize()
-	if s.hydrateSecrets(&out) {
-		// Rewrite the file without the plaintext secrets now held in the vault.
-		if err := s.Save(&out); err != nil {
-			return nil, err
-		}
-	}
 	return &out, nil
+}
+
+// HydrateSecrets fills out's secret account fields from the vault — prompting the
+// OS keychain if it must — and migrates any plaintext secret still on disk into
+// the vault, purging it from the file. Split out of [Load] so the read that
+// prompts happens when the caller chooses, e.g. after its window is on screen.
+// A no-op (nil) when no vault is reachable; the plaintext already in out stands.
+func (s *Store) HydrateSecrets(out *Settings) error {
+	if s.hydrateSecrets(out) {
+		// Rewrite the file without the plaintext secrets now held in the vault.
+		return s.Save(out)
+	}
+	return nil
 }
 
 // Save writes v to the store's path, creating the parent directory as needed.

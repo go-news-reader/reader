@@ -14,11 +14,16 @@ import (
 const windowTitle = "News Reader"
 
 // presentWindow opens the reader's own native window and blocks until it closes.
-// It goes through the openWindow seam so cmd tests can substitute it.
-func presentWindow(a *app.App, cfg config) error {
+// It goes through the openWindow seam so cmd tests can substitute it. onReady
+// runs once after the first frame is on screen (see [windowapp.Handler.SetOnReady]),
+// which is where the caller defers the vault-reading startup so the window — and
+// its Dock and status-item presence — is visible before the keychain prompt.
+func presentWindow(a *app.App, cfg config, onReady func()) error {
+	h := windowapp.New(a)
+	h.SetOnReady(onReady)
 	return openWindow(window.Config{
 		Title:  windowTitle,
 		Width:  float64(cfg.w),
 		Height: float64(cfg.h),
-	}, windowapp.New(a))
+	}, h)
 }
