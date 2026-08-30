@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/go-news-reader/reader/source"
+	"github.com/go-widgets/toolkit"
 )
 
 // TestSidebarScrollbar checks the open section's account ListBox draws its own
@@ -31,8 +32,8 @@ func TestSidebarScrollbar(t *testing.T) {
 	}
 
 	// Many subs: the open section overflows its window, so the ListBox paints its OWN
-	// scrollbar (a muted thumb over a SurfaceAlt track) down the section's right
-	// edge. The other headers stay pinned, so the tree itself never overflows.
+	// scrollbar (a muted thumb over the shared faint-grey track) down the section's
+	// right edge. The other headers stay pinned, so the tree itself never overflows.
 	s = overflowing(40)
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
@@ -42,13 +43,13 @@ func TestSidebarScrollbar(t *testing.T) {
 	if s.sidebarListOverflows() {
 		t.Fatal("a windowed section must keep the tree itself within the band")
 	}
-	// The sidebar ground (and the ListBox's scrollbar track) is SurfaceAlt, so the
-	// only thing painting a different colour in the section's right-edge track column
-	// is the widget's own thumb.
+	// The sidebar ground is SurfaceAlt; the ListBox draws its bar (track + thumb) in
+	// the shared house-style greys, both distinct from SurfaceAlt, so any non-ground
+	// pixel down the section's right-edge track column is the widget's own bar.
 	th := s.theme
 	found := false
 	r := s.sideAccountRect
-	for x := r.X + r.W - rpxOf(s, 12); x < r.X+r.W && !found; x++ {
+	for x := r.X + r.W - toolkit.ScrollGutter(); x < r.X+r.W && !found; x++ {
 		for y := r.Y; y < r.Y+r.H; y++ {
 			c := px(buf, s.W, x, y)
 			if c.R != th.SurfaceAlt.R || c.G != th.SurfaceAlt.G || c.B != th.SurfaceAlt.B {
@@ -58,7 +59,7 @@ func TestSidebarScrollbar(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("no ListBox scrollbar thumb painted in the open section")
+		t.Fatal("no ListBox scrollbar painted in the open section")
 	}
 }
 
@@ -84,16 +85,16 @@ func TestSidebarSectionBarNoOverlap(t *testing.T) {
 	if !s.sectionListOverflows() {
 		t.Fatal("expected an overflowing open section with a scrollbar")
 	}
-	// The ListBox insets its content by scrollGutter (track + gap); the account row
-	// content therefore stops a gap short of the track. That gap column — between the
-	// content's right edge and the track's left edge — must be clear of any row
-	// content across the whole account window, else a count chip is bleeding under
-	// the reserved gutter. track = 12 logical px; gap = 4 logical px.
+	// The ListBox insets its content by the toolkit's ScrollGutter (track + gap);
+	// the account row content therefore stops a gap short of the track. That gap
+	// column — between the content's right edge and the track's left edge — must be
+	// clear of any row content across the whole account window, else a count chip is
+	// bleeding under the reserved gutter. Both bounds read the toolkit's canonical
+	// metrics so this tracks the shared width, not a hardcoded one.
 	th := s.theme
 	r := s.sideAccountRect
-	track := rpxOf(s, 12)
-	gap := rpxOf(s, 4)
-	contentRight := r.X + r.W - track - gap
+	track := toolkit.ScrollbarWidth()
+	contentRight := r.X + r.W - toolkit.ScrollGutter()
 	trackLeft := r.X + r.W - track
 	for y := r.Y; y < r.Y+r.H; y++ {
 		for x := contentRight; x < trackLeft; x++ {

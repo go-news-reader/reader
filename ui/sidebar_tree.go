@@ -110,6 +110,12 @@ func (s *Scene) drawAccountRow(p painter.Painter, _ *toolkit.Theme, rc toolkit.R
 	if err != nil || sub < 0 || sub >= len(s.Subs) {
 		return
 	}
+	// The ListBox hands a full-width content rect; indent it to the depth the tree
+	// gave a source group's child rows (one TreeIndentW past the chevron column) so
+	// an account sits under its source header instead of flush with it.
+	indent := toolkit.Scaled(toolkit.TreeChevronW + toolkit.TreeIndentW)
+	rc.X += indent
+	rc.W -= indent
 	s.drawSideSubRow(p, rc, sub, ttFont(false, rpxOf(s, 13)), ink, selected)
 }
 

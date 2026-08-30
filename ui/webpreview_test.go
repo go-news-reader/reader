@@ -117,10 +117,10 @@ func TestWebPreviewSelectionAndDraw(t *testing.T) {
 }
 
 // TestWebPreviewSharedScrollbar checks the preview pane's web view draws the SAME
-// shared scrollbar every other panel uses — a SurfaceAlt track down previewR's
-// right edge — and NOT the embedded Browser's own Accent house-style bar
-// (HideScrollbar suppresses it). Regression guard for the migration: the preview
-// bar must be identical to the feed and sidebar.
+// shared scrollbar every other panel uses — the toolkit's canonical track colour
+// down previewR's right edge — and NOT the embedded Browser's own Accent
+// house-style bar (HideScrollbar suppresses it). Regression guard for the
+// migration: the preview bar must be identical to the feed and sidebar.
 func TestWebPreviewSharedScrollbar(t *testing.T) {
 	s := New(900, 560, ThemeFor(OSMac, false))
 	buf := make([]byte, s.W*s.H*4)
@@ -144,11 +144,12 @@ func TestWebPreviewSharedScrollbar(t *testing.T) {
 	inset := rpxOf(s, 2)
 	y0 := bb.Y + bb.H - vp + inset
 	y1 := bb.Y + bb.H - inset
+	wantTrack := toolkit.ScrollbarTrackColor(th)
 	track, accent := false, false
 	for x := right - w; x < right; x++ {
 		for y := y0; y < y1; y++ {
 			c := px(buf, s.W, x, y)
-			if c.R == th.SurfaceAlt.R && c.G == th.SurfaceAlt.G && c.B == th.SurfaceAlt.B {
+			if c.R == wantTrack.R && c.G == wantTrack.G && c.B == wantTrack.B {
 				track = true
 			}
 			if c.R == th.Accent.R && c.G == th.Accent.G && c.B == th.Accent.B {
@@ -157,7 +158,7 @@ func TestWebPreviewSharedScrollbar(t *testing.T) {
 		}
 	}
 	if !track {
-		t.Fatal("shared scrollbar track (SurfaceAlt) not painted down the preview's right edge")
+		t.Fatal("shared scrollbar track not painted down the preview's right edge")
 	}
 	if accent {
 		t.Fatal("browser's own Accent scrollbar still painted — HideScrollbar not honoured")
