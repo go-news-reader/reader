@@ -59,3 +59,39 @@ func TestSidebarScrollbar(t *testing.T) {
 		t.Fatal("no scrollbar thumb painted in the sidebar band")
 	}
 }
+
+// TestSidebarSectionBarNoOverlap: with an open accordion section overflowing its
+// window, its account rows carry count chips at the right — none may paint in the
+// scrollbar's reserved gutter (regression: the section bar sat over the counts).
+func TestSidebarSectionBarNoOverlap(t *testing.T) {
+	s := New(760, 380, ThemeFor(OSLinux, false))
+	var subs []Subscription
+	for i := 0; i < 40; i++ {
+		subs = append(subs, Subscription{Source: source.Instagram, Channel: "ig" + strconv.Itoa(i)})
+	}
+	s.SetSubs(subs)
+	items := make([]source.Item, 0, 40)
+	for i := 0; i < 40; i++ {
+		items = append(items, source.Item{ID: strconv.Itoa(i), Source: source.Instagram, Channel: "ig" + strconv.Itoa(i), Title: "t"})
+	}
+	s.SetItems(items)
+	s.ToggleSidebarSource(source.Instagram)
+	buf := make([]byte, s.W*s.H*4)
+	s.Draw(buf)
+	if !s.sidebarScrollbarShown() || s.sourceSubTotal <= s.sourceSubWindow {
+		t.Fatal("expected an overflowing open section with a scrollbar")
+	}
+	// The 6px gap between where content must stop (scrollClampRight) and the bar's
+	// left edge must be clear of any row content across the whole account window.
+	th := s.theme
+	limit := s.scrollClampRight(s.m.sidebarW, s.m.sidebarW, s.m.sidebarW, true)
+	barLeft := s.scrollbarRightX(s.m.sidebarW, s.m.sidebarW) - s.scrollbarW()
+	top := s.sideBandTop + (s.sourceSubHeaderRow+1)*s.m.sideItemH
+	for y := top; y < top+s.sourceSubWindow*s.m.sideItemH; y++ {
+		for x := limit; x < barLeft; x++ {
+			if c := px(buf, s.W, x, y); c.R != th.SurfaceAlt.R || c.G != th.SurfaceAlt.G || c.B != th.SurfaceAlt.B {
+				t.Fatalf("row content paints in the scrollbar gutter at (%d,%d): %v", x, y, c)
+			}
+		}
+	}
+}
