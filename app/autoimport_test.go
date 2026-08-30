@@ -40,6 +40,13 @@ func subProfile(subs ...source.Subscription) []settings.Profile {
 // load) hydrates into the accounts, rebuildRegistry hands it to the authenticated
 // provider, and onLoaded runs — all off the render thread's blocking path.
 func TestActivateAfterVault(t *testing.T) {
+	// Biometric unlock defaults ON; stub the gate so this hydration test does not
+	// reach the real LocalAuthentication prompt (see TestActivateAfterVaultBiometric*
+	// for the gate's own allow/deny/off coverage).
+	old := biometricAuth
+	biometricAuth = func(string) error { return nil }
+	defer func() { biometricAuth = old }()
+
 	path := filepath.Join(t.TempDir(), "s.json")
 	st := testStore(t, path)
 	// Persist a Reddit account whose secret goes into the vault and is purged from
@@ -92,6 +99,104 @@ func TestActivateAfterVault(t *testing.T) {
 	}
 	if gotOpts.RedditSessionCookie != "abc" {
 		t.Fatalf("rebuilt options RedditSessionCookie = %q, want abc (registry not reactivated)", gotOpts.RedditSessionCookie)
+	}
+}
+
+// activateVaultApp builds an app around a vault that holds a purged Reddit
+// secret (as a real prior run left it), with biometric unlock set to enabled,
+// ready to exercise the ActivateAfterVault gate. It returns the app; the caller
+// substitutes biometricAuth before driving.
+func activateVaultApp(t *testing.T, biometricEnabled bool) *App {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "s.json")
+	st := testStore(t, path)
+	enabled := biometricEnabled
+	seed := &settings.Settings{
+		Profiles: subProfile(source.Subscription{Source: source.Reddit, Channel: "golang"}),
+		Active:   0, Theme: settings.ThemeSystem,
+		BiometricUnlock: &enabled,
+		Accounts:        []settings.Account{{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "abc"}}},
+	}
+	if err := st.Save(seed); err != nil {
+		t.Fatal(err)
+	}
+	set, err := st.LoadWithoutSecrets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := New(Config{Registry: newReg(), Settings: set, Store: st, OS: ui.OSMac})
+	a.SetRegistryBuilder(func(o feeds.Options) *source.Registry { return newReg() })
+	a.SetRefreshHook(func() {})
+	a.SetCookieFinder(fakeCookieFinder{})
+	a.DeferSceneWrites()
+	return a
+}
+
+// driveActivate runs ActivateAfterVault and drains the posted work on this
+// goroutine (standing in for the render thread) until onLoaded fires.
+func driveActivate(t *testing.T, a *App) {
+	t.Helper()
+	loaded := make(chan struct{})
+	a.ActivateAfterVault(func() { close(loaded) })
+	waitFor(t, func() bool {
+		a.Frame()
+		select {
+		case <-loaded:
+			return true
+		default:
+			return false
+		}
+	})
+}
+
+// TestActivateAfterVaultBiometricAllows: with biometric unlock ENABLED and the
+// gate returning nil (authenticated), ActivateAfterVault hydrates the vault
+// exactly as when the gate is off.
+func TestActivateAfterVaultBiometricAllows(t *testing.T) {
+	a := activateVaultApp(t, true)
+	var called bool
+	old := biometricAuth
+	biometricAuth = func(string) error { called = true; return nil }
+	defer func() { biometricAuth = old }()
+
+	driveActivate(t, a)
+
+	if !called {
+		t.Fatal("biometric gate was not called with biometric unlock enabled")
+	}
+	if acct, ok := a.set.Account(source.Reddit); !ok || acct.Fields["session_cookie"] != "abc" {
+		t.Fatalf("secret not hydrated after an allowed gate: %+v ok=%v", acct, ok)
+	}
+}
+
+// TestActivateAfterVaultBiometricDenies: with biometric unlock ENABLED and the
+// gate returning an error (cancelled/failed), ActivateAfterVault SKIPS the vault
+// read — the secret stays empty — but still runs onLoaded so the reader opens.
+func TestActivateAfterVaultBiometricDenies(t *testing.T) {
+	a := activateVaultApp(t, true)
+	old := biometricAuth
+	biometricAuth = func(string) error { return errors.New("cancelled") }
+	defer func() { biometricAuth = old }()
+
+	driveActivate(t, a)
+
+	if acct, _ := a.set.Account(source.Reddit); acct.Fields["session_cookie"] != "" {
+		t.Fatalf("secret must NOT hydrate after a denied gate: %+v", acct.Fields)
+	}
+}
+
+// TestActivateAfterVaultBiometricDisabled: with biometric unlock DISABLED, the
+// gate is never consulted and the vault hydrates straight away.
+func TestActivateAfterVaultBiometricDisabled(t *testing.T) {
+	a := activateVaultApp(t, false)
+	old := biometricAuth
+	biometricAuth = func(string) error { t.Fatal("gate must not be called when biometric unlock is disabled"); return nil }
+	defer func() { biometricAuth = old }()
+
+	driveActivate(t, a)
+
+	if acct, ok := a.set.Account(source.Reddit); !ok || acct.Fields["session_cookie"] != "abc" {
+		t.Fatalf("secret not hydrated with biometric disabled: %+v ok=%v", acct, ok)
 	}
 }
 

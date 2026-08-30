@@ -22,7 +22,13 @@ func TestEmitWindowActivatesAfterFirstFrame(t *testing.T) {
 	// An in-memory vault so ActivateAfterVault's keychain read never touches the
 	// host's (#174).
 	st := &settings.Store{Path: filepath.Join(t.TempDir(), "s.json"), Secrets: settings.NewMemorySecrets()}
-	a := app.New(app.Config{Registry: source.NewRegistry(), Settings: settings.Default(), Store: st, Width: 400, Height: 300})
+	// Biometric unlock defaults ON, which would gate the vault read behind a real
+	// LocalAuthentication prompt; turn it off so this activation-ordering test stays
+	// hermetic (the gate's own behaviour is covered by app.TestActivateAfterVaultBiometric*).
+	set := settings.Default()
+	off := false
+	set.BiometricUnlock = &off
+	a := app.New(app.Config{Registry: source.NewRegistry(), Settings: set, Store: st, Width: 400, Height: 300})
 	a.SetRefreshHook(func() {}) // refreshFeed must not reach the network
 
 	// rebuildRegistry runs on the render thread inside the posted activation; it

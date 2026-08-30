@@ -73,6 +73,8 @@ github.com/go-macos/appbundle v0.0.0-20260830075838-3d39525ae64c h1:u2fcKwH8XFRh
 github.com/go-macos/appbundle v0.0.0-20260830075838-3d39525ae64c/go.mod h1:WIKJeLWOi2NK4JmKFrbQ1v7o2WEBrOnxMRVG78ofOjc=
 github.com/go-macos/keychain v0.1.0 h1:QkKT97eeJ5m/FloDcoi4UmxIvZIosIwinRjexs3icqI=
 github.com/go-macos/keychain v0.1.0/go.mod h1:sR+WtyxxCqldTpbPizjLa/pFd0RPme+VSa5C3Qa4NE8=
+github.com/go-macos/localauthentication v0.0.0-20260830135708-6e0c36757903 h1:C1QzfTtU3MVc92hheV8CvTFzg0gdzQ+fh4PjK+o7cb8=
+github.com/go-macos/localauthentication v0.0.0-20260830135708-6e0c36757903/go.mod h1:4acdS/2Vn15KJGDyGBrLR8onPpvZNcMTY+ZSx7I3WGc=
 github.com/go-macos/objc v0.7.0 h1:uu879AhALfe99XtfrjHBNmKz14Y8fxL8oJTOiTr4VPY=
 github.com/go-macos/objc v0.7.0/go.mod h1:00GJyieLzPcb65rPLVWNPPUCVm79nmmiEXUDsslRpOs=
 github.com/go-macos/virtualdisplay v0.1.0 h1:mZll/h6+PVn+mNTDH17D7G5lXV5HPxlmJU9NKXJcR7c=
@@ -113,8 +115,6 @@ github.com/go-webengine/engine v0.3.11 h1:Xdlqv2Dmk9DvMIEt8M++fqAaFAXjvmKqjJMDw6
 github.com/go-webengine/engine v0.3.11/go.mod h1:AsTkHIJS28Lj6jkDnXLgyN2X4oxNGWz5+bnh77jgTyo=
 github.com/go-widgets/android v0.13.1 h1:lo51C5xjTEceNxK2eUDOlpWIFi+LKS5XpKMNjnJns+U=
 github.com/go-widgets/android v0.13.1/go.mod h1:MsEBpJyEUhmq4yKPXIMMf+BX21NWAPQW9lfU0deDR+g=
-github.com/go-widgets/application v0.1.0 h1:b7Av1LntOheT61vX2Qug+ZH7+Xkd7hPLUfHoj+IAhII=
-github.com/go-widgets/application v0.1.0/go.mod h1:Vb6U+wTlsksg+njfXZNE9M+aQFoZO5g2Rug35Am1tbA=
 github.com/go-widgets/application v0.1.1 h1:TskYxEEBTnNUXjd95vy5hczrUhPFZNUy5k4/y2bL8Xk=
 github.com/go-widgets/application v0.1.1/go.mod h1:Vb6U+wTlsksg+njfXZNE9M+aQFoZO5g2Rug35Am1tbA=
 github.com/go-widgets/data v0.1.0 h1:PB9EZtd3ASBeVx6XxgCaFr1YU8bgrmNkYULyyvyPkvU=
@@ -125,8 +125,6 @@ github.com/go-widgets/painter v0.11.0 h1:xsj4zTz8B43rOZnWrx7ZsaUBMgJyvgaE/Pq2Ffc
 github.com/go-widgets/painter v0.11.0/go.mod h1:IPRLqdUJuJX8sfuHeYLZCzjoLvA0ApbOlyIAVmguJDQ=
 github.com/go-widgets/toolkit v0.288.0 h1:vtQDXZAbZRSQqIoEYQf/xE8ARE4YV4QtfHGHgnKP6NM=
 github.com/go-widgets/toolkit v0.288.0/go.mod h1:IaRQFcV6FjxwzGXpHd3dpEoWZ+82f7dMPwtEZSH4nIg=
-github.com/go-widgets/tray v0.5.1 h1:ThQp0QQYmUs9in0Ur2ujAVQ6yfa1+y/gycvLtoDo1Io=
-github.com/go-widgets/tray v0.5.1/go.mod h1:A0Sb4PeLyO0F7Y5BgFFWH8WdKoIWNZcN4H5W+FY6CV8=
 github.com/go-widgets/tray v0.6.0 h1:cbZra0Z9Ag22NBJBhLP+wdQrVLmD6u6w25hK1IAMs4k=
 github.com/go-widgets/tray v0.6.0/go.mod h1:A0Sb4PeLyO0F7Y5BgFFWH8WdKoIWNZcN4H5W+FY6CV8=
 github.com/go-widgets/window v0.57.0 h1:FNPDgAddoQV3NSUid4X4OL0qNP1tD34daEOum89/aBY=

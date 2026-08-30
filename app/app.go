@@ -23,6 +23,7 @@ import (
 	"github.com/go-newsgroups/par2"
 
 	"github.com/go-news-reader/reader/feeds"
+	"github.com/go-news-reader/reader/internal/biometric"
 	"github.com/go-news-reader/reader/internal/browsercookies"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
@@ -464,7 +465,7 @@ func New(cfg Config) *App {
 	a.scene.SetInfiniteScroll(set.InfiniteScrollEnabled())                 // apply the persisted infinite-scroll preference (default on)
 	a.scene.SetDismissPreviewOnSwitch(set.DismissPreviewOnSwitchEnabled()) // apply the persisted dismiss-preview-on-switch preference (default on)
 	a.scene.SetBiometricUnlock(set.BiometricUnlockEnabled())               // reflect the effective biometric-unlock preference (default ON) in the toggle
-	settings.SetSecretUserPresence(set.BiometricUnlockEnabled())           // gate secret writes behind biometric unlock when enabled
+	settings.SetSecretUserPresence(false)                                  // store secrets UNGATED: the SecAccessControl user-presence flag needs a keychain entitlement AMFI rejects on a self-signed build, so biometric unlock is enforced by the LAContext gate in ActivateAfterVault, not the keychain
 	a.groupStatsFetch = func(name string) {
 		go a.loadGroupStats(context.Background(), name)
 	}
@@ -785,6 +786,11 @@ var sessionImportKinds = []source.Kind{source.Twitter, source.Instagram, source.
 // vault and rebuilds the registry (so the authenticated providers are live for the
 // first load) WITHOUT triggering a refresh, leaving the front-end's lazy per-tab
 // load to fetch; it reports what it imported on the status line.
+// biometricAuth gates the vault read behind the platform's owner check (Touch
+// ID, or the device password). A package-var seam so app tests substitute it
+// without triggering a real prompt.
+var biometricAuth = biometric.Authenticate
+
 // ActivateAfterVault performs the deferred startup that reads the vault, but
 // keeps the keychain prompt OFF the render thread so the window does not freeze
 // behind it. The blocking keychain read runs on a goroutine; the state changes
@@ -792,9 +798,27 @@ var sessionImportKinds = []source.Kind{source.Twitter, source.Instagram, source.
 // browser session — are applied on the render thread via post (like every other
 // background result), and onLoaded (also on the render thread) starts the feed
 // load once the providers are live.
+//
+// When biometric unlock is enabled, the vault read is gated by a
+// LocalAuthentication (Touch ID / device password) prompt run on the same
+// background goroutine. A denial leaves the accounts unauthenticated rather than
+// failing the launch — the reader still opens, just without the sign-ins.
 func (a *App) ActivateAfterVault(onLoaded func()) {
 	go func() {
 		if a.store != nil {
+			if a.set.BiometricUnlockEnabled() {
+				// Touch ID (or the device password) once, before the vault is read.
+				// A denial leaves the accounts unauthenticated rather than failing
+				// the launch — the reader still opens, just without the sign-ins.
+				if biometricAuth("Unlock your saved sign-ins") != nil {
+					a.post(func() {
+						if onLoaded != nil {
+							onLoaded()
+						}
+					})
+					return
+				}
+			}
 			// The keychain access — the auth panel — happens here, on a
 			// background goroutine, so it never blocks the render thread.
 			_ = a.store.HydrateSecrets(a.set)
@@ -1179,13 +1203,15 @@ func (a *App) DeleteProfile(i int) {
 // a store is configured), reselects the active profile's subscriptions and
 // theme, and triggers a re-aggregate. Front-ends call it after any profile
 // switch or settings-view edit.
-// SetBiometricUnlock toggles biometric-gated secret storage: it records the
-// preference on the scene, flips the vault-write gate, then persists and
-// re-applies — which re-writes every secret through the (now gated or ungated)
-// vault, so the change takes effect on the next read.
+// SetBiometricUnlock toggles biometric unlock: it records the preference on the
+// scene, then persists and re-applies. Secrets are always stored UNGATED (the
+// SecAccessControl user-presence flag needs a keychain entitlement AMFI rejects
+// on a self-signed build); the preference instead gates the vault READ behind
+// the LAContext prompt in ActivateAfterVault, so the change takes effect on the
+// next launch's read.
 func (a *App) SetBiometricUnlock(v bool) {
 	a.scene.SetBiometricUnlock(v)
-	settings.SetSecretUserPresence(v)
+	settings.SetSecretUserPresence(false) // keep storage ungated regardless; the LAContext read-gate is the biometric now
 	a.ApplySceneSettings()
 }
 
