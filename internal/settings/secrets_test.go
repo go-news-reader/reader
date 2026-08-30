@@ -108,6 +108,33 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
+// TestMigrateBrokenLegacyItemsStillWritesBlob is the regression guard for the
+// three-prompts-forever bug: legacy per-item entries whose ACL trusts a defunct
+// signature read back an error (errSecUserCanceled), so nothing is recovered —
+// but the blob must still be written (empty), so its presence retires the
+// per-item read path and the next launch never re-prompts for the dead items.
+func TestMigrateBrokenLegacyItemsStillWritesBlob(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	sec := newMemSecrets() // no blob, and the per-item reads find nothing (as a broken -128 item would recover nothing)
+	st := &Store{Path: path, Secrets: sec}
+
+	// A configured secret-carrying account, but nothing recoverable from the vault.
+	out := Default()
+	out.SetAccount(redditAccount("")) // metadata present; secret field empty / unrecoverable
+	if err := st.HydrateSecrets(out); err != nil {
+		t.Fatalf("hydrate must not fail: %v", err)
+	}
+	// The blob was written (empty) despite recovering nothing, so migration is done.
+	if _, ok := sec.m[vaultAccount]; !ok {
+		t.Fatal("an attempted migration that recovered nothing must still write the blob to retire the per-item path")
+	}
+	blob := sec.vaultBlob(t)
+	if len(blob) != 0 {
+		t.Fatalf("blob should be empty when nothing was recovered, got %v", blob)
+	}
+}
+
 // TestHasStoredSecret checks the helper the biometric gate uses to decide
 // whether there is anything to unlock.
 func TestHasStoredSecret(t *testing.T) {

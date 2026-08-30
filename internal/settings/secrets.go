@@ -366,20 +366,30 @@ func (s *Store) hydrateSecrets(out *Settings) (migrated bool) {
 // yields an empty map with nothing written.
 func (s *Store) migratePerRefItems(store SecretStore, out *Settings) map[string]string {
 	recovered := map[string]string{}
+	attempted := false
 	for i := range out.Accounts {
 		for key := range secretKeysFor(out.Accounts[i].Kind) {
+			attempted = true
 			ref := secretRef(out.Accounts[i].Kind, key)
 			b, err := store.Get(ref)
 			if err != nil {
-				// Absent (a never-configured field) or unreadable: nothing to recover.
+				// Absent (a never-configured field) or UNREADABLE — a legacy item
+				// whose ACL trusts a code signature that no longer exists reads back
+				// errSecUserCanceled (-128). Skip it; the blob write below still
+				// happens, so it can never keep re-triggering this per-item read loop.
 				continue
 			}
 			recovered[ref] = string(b)
 		}
 	}
-	if len(recovered) == 0 {
-		return recovered // fresh/empty vault: no legacy items to migrate.
+	if !attempted {
+		return recovered // no secret-carrying accounts: nothing to migrate.
 	}
+	// Write the blob even when nothing was recovered: its mere PRESENCE is what
+	// retires the per-item path (hydrateSecrets never calls this again once the
+	// blob exists), so a broken legacy item that can't be read cannot wedge the
+	// vault into prompting for it on every launch. Recovered secrets go in; broken
+	// ones are left behind, unread.
 	data, _ := json.Marshal(recovered)
 	if store.Set(vaultAccount, data) != nil {
 		// Could not write the blob: leave the old items in place and use the
