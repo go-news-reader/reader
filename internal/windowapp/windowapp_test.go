@@ -1061,3 +1061,49 @@ func TestSubContextMenuActions(t *testing.T) {
 	}
 	menu.Menu.Items[0].Action() // Refresh (spawns a goroutine on an empty registry)
 }
+
+// TestBrowseFilterCaretEditing: a focused newsgroup filter accepts caret keys
+// (Left/Right, Home/End) so text can be corrected mid-value, while Up/Down and
+// unmapped keys fall through and an unfocused filter ignores caret keys.
+func TestBrowseFilterCaretEditing(t *testing.T) {
+	a := newApp(t)
+	h := New(a)
+	s := a.Scene()
+	s.SetUsenetServer("news:119")
+	s.OpenBrowse()
+	s.FocusBrowseFilter(true)
+
+	// Type "ac", move the caret back between them, insert "b" → "abc".
+	h.Key("", 'a')
+	h.Key("", 'c')
+	h.Key("Left", 0)
+	h.Key("", 'b')
+	if got := s.BrowseEntry().Text().Get(); got != "abc" {
+		t.Fatalf("Left+insert = %q, want abc (caret must move back)", got)
+	}
+	// Home jumps to the start; typing prepends.
+	h.Key("Home", 0)
+	h.Key("", 'z')
+	if got := s.BrowseEntry().Text().Get(); got != "zabc" {
+		t.Fatalf("Home+insert = %q, want zabc", got)
+	}
+	// End jumps to the end; typing appends.
+	h.Key("End", 0)
+	h.Key("", 'q')
+	if got := s.BrowseEntry().Text().Get(); got != "zabcq" {
+		t.Fatalf("End+insert = %q, want zabcq", got)
+	}
+	// Right at end is a harmless no-op; text unchanged.
+	h.Key("Right", 0)
+	// An unmapped key (PageUp) falls through the caret router unchanged.
+	h.Key("PageUp", 0)
+	if got := s.BrowseEntry().Text().Get(); got != "zabcq" {
+		t.Fatalf("unmapped key changed filter text to %q", got)
+	}
+	// With the filter unfocused, caret keys are not consumed here (no text change).
+	s.FocusBrowseFilter(false)
+	h.Key("Left", 0)
+	if got := s.BrowseEntry().Text().Get(); got != "zabcq" {
+		t.Fatalf("Left while unfocused changed text to %q", got)
+	}
+}

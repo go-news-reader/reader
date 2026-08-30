@@ -143,6 +143,16 @@ func (s *Scene) BrowseFocused() bool { return s.browseFocused }
 // FocusBrowseFilter gives (or removes) keyboard focus to the filter field.
 func (s *Scene) FocusBrowseFilter(v bool) { s.browseFocused = v; s.touch() }
 
+// BrowseCaretKey forwards a caret-navigation key (toolkit codes "ArrowLeft",
+// "ArrowRight", "Home", "End") to the newsgroup filter, so a typo can be corrected
+// mid-text instead of only backspaced from the end. The caller drives it only
+// while the filter is focused; caret movement does not change the filter result,
+// so the list scroll is left alone.
+func (s *Scene) BrowseCaretKey(code string) {
+	s.browseEntry.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: code})
+	s.touch()
+}
+
 // OpenBrowse enters the newsgroup browser view.
 func (s *Scene) OpenBrowse() {
 	s.mode = ModeBrowse

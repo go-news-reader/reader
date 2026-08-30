@@ -78,3 +78,20 @@ func TestBrowseNavScrollsIntoView(t *testing.T) {
 		t.Fatalf("navigating to the top should scroll back to 0, got %d", s.browseTreeView.ScrollRow().Get())
 	}
 }
+
+// TestBrowseCaretKey: a caret key forwarded to the focused newsgroup filter moves
+// the caret so a subsequent typed rune inserts mid-text (correcting a typo)
+// instead of appending at the end.
+func TestBrowseCaretKey(t *testing.T) {
+	s := New(720, 420, ThemeFor(OSMac, false))
+	s.SetUsenetServer("news:119")
+	s.OpenBrowse()
+	s.FocusBrowseFilter(true)
+	s.TypeRune('a')
+	s.TypeRune('c') // "ac", caret at end
+	s.BrowseCaretKey("ArrowLeft")
+	s.TypeRune('b') // insert between a and c
+	if got := s.BrowseEntry().Text().Get(); got != "abc" {
+		t.Fatalf("BrowseCaretKey ArrowLeft then insert = %q, want abc", got)
+	}
+}
