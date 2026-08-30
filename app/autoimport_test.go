@@ -34,6 +34,48 @@ func subProfile(subs ...source.Subscription) []settings.Profile {
 	return []settings.Profile{{Name: "Home", Subs: subs}}
 }
 
+// TestHydrateAndActivate covers the deferred startup the window fires once it is
+// on screen: the vault secret (read only now, not at load) is hydrated into the
+// accounts, and rebuildRegistry hands it to the authenticated provider.
+func TestHydrateAndActivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.json")
+	st := testStore(t, path)
+	// Persist a Reddit account whose secret goes into the vault and is purged from
+	// disk, exactly as a real prior run left it.
+	seed := &settings.Settings{
+		Profiles: subProfile(source.Subscription{Source: source.Reddit, Channel: "golang"}),
+		Active:   0, Theme: settings.ThemeSystem,
+		Accounts: []settings.Account{{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "abc"}}},
+	}
+	if err := st.Save(seed); err != nil {
+		t.Fatal(err)
+	}
+	// The window path loads WITHOUT secrets: the account is present but its secret
+	// field is empty until HydrateAndActivate reads the vault.
+	set, err := st.LoadWithoutSecrets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acct, _ := set.Account(source.Reddit); acct.Fields["session_cookie"] != "" {
+		t.Fatalf("secret should not be loaded yet: %+v", acct.Fields)
+	}
+
+	var gotOpts feeds.Options
+	a := New(Config{Registry: newReg(), Settings: set, Store: st, OS: ui.OSMac})
+	a.SetRegistryBuilder(func(o feeds.Options) *source.Registry { gotOpts = o; return newReg() })
+	a.SetRefreshHook(func() {})
+	a.SetCookieFinder(fakeCookieFinder{}) // no browser session: AutoImportSessions imports nothing
+
+	a.HydrateAndActivate()
+
+	if acct, ok := a.set.Account(source.Reddit); !ok || acct.Fields["session_cookie"] != "abc" {
+		t.Fatalf("secret not hydrated from the vault: %+v ok=%v", acct, ok)
+	}
+	if gotOpts.RedditSessionCookie != "abc" {
+		t.Fatalf("rebuilt options RedditSessionCookie = %q, want abc (registry not reactivated)", gotOpts.RedditSessionCookie)
+	}
+}
+
 func TestAutoImportSessionsFillsMissingAccount(t *testing.T) {
 	set := &settings.Settings{
 		Profiles: subProfile(source.Subscription{Source: source.Twitter, Channel: "nasa"}),

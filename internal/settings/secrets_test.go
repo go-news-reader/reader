@@ -137,6 +137,45 @@ func TestRoundTripThroughVault(t *testing.T) {
 	}
 }
 
+// TestLoadWithoutSecretsSkipsVaultThenHydrateFills proves the split that lets a
+// windowed caller show its Dock/menu-bar/tray before any keychain prompt:
+// LoadWithoutSecrets returns account metadata with NO vault-held secret, and a
+// later HydrateSecrets fills it from the vault.
+func TestLoadWithoutSecretsSkipsVaultThenHydrateFills(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	sec := newMemSecrets()
+	st := &Store{Path: path, Secrets: sec}
+
+	s := Default()
+	s.SetAccount(redditAccount("cookie-abc"))
+	if err := st.Save(s); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// The secret lives only in the vault (purged from disk), so LoadWithoutSecrets
+	// — which must not touch the vault — comes back without it.
+	bare, err := st.LoadWithoutSecrets()
+	if err != nil {
+		t.Fatalf("load without secrets: %v", err)
+	}
+	acc, ok := bare.Account(source.Reddit)
+	if !ok {
+		t.Fatal("account metadata should load without the vault")
+	}
+	if acc.Fields["session_cookie"] != "" {
+		t.Errorf("LoadWithoutSecrets leaked a vault secret: %q", acc.Fields["session_cookie"])
+	}
+
+	// HydrateSecrets then fills it from the vault.
+	if err := st.HydrateSecrets(bare); err != nil {
+		t.Fatalf("hydrate: %v", err)
+	}
+	if acc, _ = bare.Account(source.Reddit); acc.Fields["session_cookie"] != "cookie-abc" {
+		t.Errorf("HydrateSecrets did not fill from the vault: %+v", acc.Fields)
+	}
+}
+
 // TestFallbackKeepsSecretOnDisk proves the documented headless degradation: when
 // the vault is unavailable the secret is written to settings.json and read back
 // from it, with no loss of functionality.

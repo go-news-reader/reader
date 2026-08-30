@@ -14,6 +14,7 @@ require (
 	github.com/go-instagram/instagram v0.5.0
 	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.2.0
+	github.com/go-macos/statusitem v0.3.0
 	github.com/go-mastodon/mastodon v0.3.0
 	github.com/go-newsgroups/newznab v0.1.0
 	github.com/go-newsgroups/nntp v0.2.2
@@ -55,7 +56,7 @@ require (
 	github.com/go-gfx/gfx v0.11.0 // indirect
 	github.com/go-icons/iconoir v0.2.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
-	github.com/go-macos/objc v0.1.1 // indirect
+	github.com/go-macos/objc v0.4.0 // indirect
 	github.com/go-mswin/win32 v0.1.0 // indirect
 	github.com/go-opentype/opentype v0.6.0 // indirect
 	github.com/go-opentype/shape v0.5.0 // indirect
