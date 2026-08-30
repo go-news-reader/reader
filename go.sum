@@ -115,6 +115,8 @@ github.com/go-widgets/android v0.13.1 h1:lo51C5xjTEceNxK2eUDOlpWIFi+LKS5XpKMNjnJ
 github.com/go-widgets/android v0.13.1/go.mod h1:MsEBpJyEUhmq4yKPXIMMf+BX21NWAPQW9lfU0deDR+g=
 github.com/go-widgets/application v0.1.0 h1:b7Av1LntOheT61vX2Qug+ZH7+Xkd7hPLUfHoj+IAhII=
 github.com/go-widgets/application v0.1.0/go.mod h1:Vb6U+wTlsksg+njfXZNE9M+aQFoZO5g2Rug35Am1tbA=
+github.com/go-widgets/application v0.1.1 h1:TskYxEEBTnNUXjd95vy5hczrUhPFZNUy5k4/y2bL8Xk=
+github.com/go-widgets/application v0.1.1/go.mod h1:Vb6U+wTlsksg+njfXZNE9M+aQFoZO5g2Rug35Am1tbA=
 github.com/go-widgets/data v0.1.0 h1:PB9EZtd3ASBeVx6XxgCaFr1YU8bgrmNkYULyyvyPkvU=
 github.com/go-widgets/data v0.1.0/go.mod h1:OUFAK+pXaIt6Hc7wE49iMNykmcXEWICZtycbDiqMLFc=
 github.com/go-widgets/mvvm v0.8.0 h1:DqyNiNNTdITkMOdAwGvWFuCd6xpTaDRS2S+LNxd8inA=

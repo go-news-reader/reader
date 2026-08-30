@@ -26,7 +26,7 @@ require (
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.3.0
 	github.com/go-webengine/engine v0.3.11
-	github.com/go-widgets/application v0.1.0
+	github.com/go-widgets/application v0.1.1
 	github.com/go-widgets/mvvm v0.8.0
 	github.com/go-widgets/painter v0.11.0
 	github.com/go-widgets/toolkit v0.288.0
