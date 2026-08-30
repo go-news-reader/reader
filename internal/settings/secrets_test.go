@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ type memSecrets struct {
 	failRef string // ref the injected error applies to ("" = any)
 	sets    int
 	deletes int
+	gets    int
 }
 
 func newMemSecrets() *memSecrets { return &memSecrets{m: map[string][]byte{}, avail: true} }
@@ -42,6 +44,7 @@ func (s *memSecrets) Set(ref string, secret []byte) error {
 }
 
 func (s *memSecrets) Get(ref string) ([]byte, error) {
+	s.gets++
 	if s.getErr != nil && s.hit(ref) {
 		return nil, s.getErr
 	}
@@ -50,6 +53,22 @@ func (s *memSecrets) Get(ref string) ([]byte, error) {
 		return nil, ErrSecretNotFound
 	}
 	return b, nil
+}
+
+// vaultBlob unmarshals the single-item vault blob (the JSON object stored under
+// vaultAccount) into a ref->value map. Absent blob returns an empty map. The
+// consolidation means EVERY secret lives here, not under its own secretRef item.
+func (s *memSecrets) vaultBlob(t *testing.T) map[string]string {
+	t.Helper()
+	b, ok := s.m[vaultAccount]
+	if !ok {
+		return map[string]string{}
+	}
+	var blob map[string]string
+	if err := json.Unmarshal(b, &blob); err != nil {
+		t.Fatalf("vault blob is not valid JSON: %v (%q)", err, b)
+	}
+	return blob
 }
 
 func (s *memSecrets) Delete(ref string) error {
@@ -62,6 +81,17 @@ func (s *memSecrets) Delete(ref string) error {
 }
 
 func (s *memSecrets) Available() bool { return s.avail }
+
+// mustBlob marshals a ref->value map to the JSON bytes stored under
+// vaultAccount, for seeding a steady-state (blob-present) vault in tests.
+func mustBlob(t *testing.T, blob map[string]string) []byte {
+	t.Helper()
+	b, err := json.Marshal(blob)
+	if err != nil {
+		t.Fatalf("marshal blob: %v", err)
+	}
+	return b
+}
 
 // redditAccount is a helper account carrying a secret (session_cookie) and no
 // other fields.
@@ -103,8 +133,16 @@ func TestSaveVaultOmitsSecretFromDisk(t *testing.T) {
 	if !strings.Contains(disk, "news.example.com:563") {
 		t.Errorf("non-secret field missing from disk:\n%s", disk)
 	}
-	if got := string(sec.m[secretRef(source.Usenet, "password")]); got != "hunter2" {
+	if got := sec.vaultBlob(t)[secretRef(source.Usenet, "password")]; got != "hunter2" {
 		t.Errorf("vault password = %q, want hunter2", got)
+	}
+	// The consolidated model keeps exactly one vault item: the blob, never a
+	// per-secret item under the ref itself.
+	if len(sec.m) != 1 {
+		t.Errorf("vault holds %d items, want 1 (the blob); m=%v", len(sec.m), sec.m)
+	}
+	if _, ok := sec.m[secretRef(source.Usenet, "password")]; ok {
+		t.Errorf("secret stored under its own item, not folded into the one blob")
 	}
 	// The caller's in-memory Settings must be untouched (app still needs it).
 	acc, _ := s.Account(source.Usenet)
@@ -237,8 +275,8 @@ func TestMigrationFromPlaintext(t *testing.T) {
 	if acc.Fields["session_cookie"] != "legacy-cookie" {
 		t.Errorf("migrated Settings lost secret: %+v", acc)
 	}
-	if string(sec.m[secretRef(source.Reddit, "session_cookie")]) != "legacy-cookie" {
-		t.Errorf("secret not moved to vault: %v", sec.m)
+	if sec.vaultBlob(t)[secretRef(source.Reddit, "session_cookie")] != "legacy-cookie" {
+		t.Errorf("secret not moved to vault blob: %v", sec.m)
 	}
 	if strings.Contains(readFile(t, path), "legacy-cookie") {
 		t.Errorf("plaintext not purged from disk after migration")
@@ -268,16 +306,20 @@ func TestClearedSecretDeletedFromVault(t *testing.T) {
 		t.Fatalf("save 1: %v", err)
 	}
 	ref := secretRef(source.Reddit, "session_cookie")
-	if _, ok := sec.m[ref]; !ok {
-		t.Fatalf("precondition: vault should hold the secret")
+	if _, ok := sec.vaultBlob(t)[ref]; !ok {
+		t.Fatalf("precondition: vault blob should hold the secret")
 	}
 	// Clear the cookie and save again.
 	s.SetAccount(redditAccount(""))
 	if err := st.Save(s); err != nil {
 		t.Fatalf("save 2: %v", err)
 	}
-	if _, ok := sec.m[ref]; ok {
-		t.Errorf("cleared secret still in vault")
+	if _, ok := sec.vaultBlob(t)[ref]; ok {
+		t.Errorf("cleared secret still in vault blob")
+	}
+	// The last secret going empty removes the whole blob item, leaving nothing.
+	if _, ok := sec.m[vaultAccount]; ok {
+		t.Errorf("emptied vault should delete the blob item, got %v", sec.m)
 	}
 }
 
@@ -381,7 +423,9 @@ func TestCloneAccountsNil(t *testing.T) {
 // nil (allocated on demand).
 func TestHydrateNilFieldsMap(t *testing.T) {
 	sec := newMemSecrets()
-	sec.m[secretRef(source.Reddit, "session_cookie")] = []byte("from-vault")
+	sec.m[vaultAccount] = mustBlob(t, map[string]string{
+		secretRef(source.Reddit, "session_cookie"): "from-vault",
+	})
 	st := &Store{Secrets: sec}
 	out := &Settings{Accounts: []Account{{Kind: source.Reddit}}} // nil Fields
 	if migrated := st.hydrateSecrets(out); migrated {
@@ -459,9 +503,171 @@ func TestLoadMigratePurgeSaveError(t *testing.T) {
 	if _, err := st.Load(); err == nil {
 		t.Fatalf("Load should fail when purge-save cannot write")
 	}
-	// The secret still reached the vault before the failed purge.
-	if string(sec.m[secretRef(source.Reddit, "session_cookie")]) != "legacy" {
-		t.Errorf("migration should have stored to vault")
+	// The secret still reached the vault blob before the failed purge.
+	if sec.vaultBlob(t)[secretRef(source.Reddit, "session_cookie")] != "legacy" {
+		t.Errorf("migration should have stored to vault blob")
+	}
+}
+
+// TestHydrateReadsVaultOnce is the point of the whole consolidation: hydrating a
+// settings carrying SEVERAL secrets across several accounts reads the vault
+// exactly ONCE (one keychain / Touch ID prompt), because every secret lives in
+// the single blob item — not once per secret.
+func TestHydrateReadsVaultOnce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	sec := newMemSecrets()
+	st := &Store{Path: path, Secrets: sec}
+
+	s := Default()
+	s.SetAccount(redditAccount("reddit-cookie"))
+	s.SetAccount(Account{Kind: source.Mastodon, Fields: map[string]string{
+		"instance": "https://m.example", "token": "mast-token",
+	}})
+	s.SetAccount(Account{Kind: source.Usenet, Fields: map[string]string{
+		"addr": "news.example:563", "password": "pw", "indexer_key": "ik",
+	}})
+	if err := st.Save(s); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Steady state: the blob is present. LoadWithoutSecrets never touches the
+	// vault, so the count below is exactly HydrateSecrets' doing.
+	bare, err := st.LoadWithoutSecrets()
+	if err != nil {
+		t.Fatalf("load bare: %v", err)
+	}
+	sec.gets = 0
+	if err := st.HydrateSecrets(bare); err != nil {
+		t.Fatalf("hydrate: %v", err)
+	}
+	if sec.gets != 1 {
+		t.Fatalf("hydrate performed %d vault reads for 4 secrets across 3 accounts, want exactly 1 (one prompt)", sec.gets)
+	}
+	// And that one read actually filled every secret.
+	if r, _ := bare.Account(source.Reddit); r.Fields["session_cookie"] != "reddit-cookie" {
+		t.Errorf("reddit secret not filled: %+v", r.Fields)
+	}
+	if m, _ := bare.Account(source.Mastodon); m.Fields["token"] != "mast-token" {
+		t.Errorf("mastodon secret not filled: %+v", m.Fields)
+	}
+	if u, _ := bare.Account(source.Usenet); u.Fields["password"] != "pw" || u.Fields["indexer_key"] != "ik" {
+		t.Errorf("usenet secrets not filled from the single read: %+v", u.Fields)
+	}
+}
+
+// TestMigrateFromPerRefItems covers the one-time upgrade of a pre-blob install:
+// OLD per-item secrets (one keychain item per secret, no blob) are recovered
+// into the accounts, folded into the single blob, and the old items deleted;
+// and a second hydrate then reads only the blob (one prompt).
+func TestMigrateFromPerRefItems(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	sec := newMemSecrets()
+	// OLD format: a keychain item per secret, keyed by secretRef, and no blob.
+	redRef := secretRef(source.Reddit, "session_cookie")
+	usrRef := secretRef(source.Usenet, "password")
+	sec.m[redRef] = []byte("old-reddit")
+	sec.m[usrRef] = []byte("old-pw")
+
+	// A settings.json holding the account metadata (non-secret fields), written
+	// with an unavailable vault so nothing is stored under the blob yet.
+	meta := Default()
+	meta.SetAccount(Account{Kind: source.Reddit})
+	meta.SetAccount(Account{Kind: source.Usenet, Fields: map[string]string{"addr": "news.example:563"}})
+	seed := &Store{Path: path, Secrets: &memSecrets{m: map[string][]byte{}, avail: false}}
+	if err := seed.Save(meta); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	st := &Store{Path: path, Secrets: sec}
+	got, err := st.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	// (a) secrets recovered into the accounts.
+	if r, _ := got.Account(source.Reddit); r.Fields["session_cookie"] != "old-reddit" {
+		t.Errorf("reddit secret not recovered: %+v", r.Fields)
+	}
+	if u, _ := got.Account(source.Usenet); u.Fields["password"] != "old-pw" {
+		t.Errorf("usenet secret not recovered: %+v", u.Fields)
+	}
+	// (b) the blob now exists and holds both.
+	blob := sec.vaultBlob(t)
+	if blob[redRef] != "old-reddit" || blob[usrRef] != "old-pw" {
+		t.Errorf("blob missing migrated secrets: %v", blob)
+	}
+	// (c) the old per-item entries are deleted; only the blob remains.
+	if _, ok := sec.m[redRef]; ok {
+		t.Errorf("old reddit item not deleted after migration")
+	}
+	if _, ok := sec.m[usrRef]; ok {
+		t.Errorf("old usenet item not deleted after migration")
+	}
+	if len(sec.m) != 1 {
+		t.Errorf("vault should hold only the blob after migration, has %d items: %v", len(sec.m), sec.m)
+	}
+	// (d) a second hydrate touches ONLY the blob (one read, no per-item reads).
+	bare, err := st.LoadWithoutSecrets()
+	if err != nil {
+		t.Fatalf("second load bare: %v", err)
+	}
+	sec.gets = 0
+	if err := st.HydrateSecrets(bare); err != nil {
+		t.Fatalf("second hydrate: %v", err)
+	}
+	if sec.gets != 1 {
+		t.Fatalf("second hydrate read the vault %d times, want 1 (blob only)", sec.gets)
+	}
+}
+
+// TestHydrateCorruptBlob covers the unparseable-blob branch: a blob that is not
+// valid JSON leaves the accounts unauthenticated (rather than failing the load)
+// and must NOT fall back to the retired per-item path — the blob's presence
+// means migration already happened.
+func TestHydrateCorruptBlob(t *testing.T) {
+	sec := newMemSecrets()
+	sec.m[vaultAccount] = []byte("}{ not json")
+	// A retired per-item value the corrupt-blob path must NOT read or delete.
+	sec.m[secretRef(source.Reddit, "session_cookie")] = []byte("should-not-be-read")
+
+	st := &Store{Secrets: sec}
+	out := &Settings{Accounts: []Account{{Kind: source.Reddit, Fields: map[string]string{}}}}
+	if migrated := st.hydrateSecrets(out); migrated {
+		t.Fatalf("corrupt blob should not report a migration")
+	}
+	if v, ok := out.Accounts[0].Fields["session_cookie"]; ok {
+		t.Errorf("corrupt blob should leave the account unauthenticated, got %q", v)
+	}
+	if _, ok := sec.m[secretRef(source.Reddit, "session_cookie")]; !ok {
+		t.Errorf("corrupt-blob path touched an old per-item entry it should have ignored")
+	}
+}
+
+// TestMigratePerRefSetError covers the migration path where the old items are
+// readable but writing the consolidated blob fails: the secret is used in memory
+// this run (the app still authenticates), the blob is not created, and the old
+// item is kept for a later retry.
+func TestMigratePerRefSetError(t *testing.T) {
+	sec := newMemSecrets()
+	ref := secretRef(source.Reddit, "session_cookie")
+	sec.m[ref] = []byte("old-reddit")
+	sec.setErr = errors.New("blob write failed")
+	sec.failRef = vaultAccount // only the blob write fails; per-item reads succeed
+
+	st := &Store{Secrets: sec}
+	out := &Settings{Accounts: []Account{{Kind: source.Reddit, Fields: map[string]string{}}}}
+	if migrated := st.hydrateSecrets(out); migrated {
+		t.Fatalf("a failed blob write is not a plaintext migration")
+	}
+	if out.Accounts[0].Fields["session_cookie"] != "old-reddit" {
+		t.Errorf("recovered secret not used in memory: %+v", out.Accounts[0].Fields)
+	}
+	if _, ok := sec.m[vaultAccount]; ok {
+		t.Errorf("blob should not exist after a failed migration write")
+	}
+	if _, ok := sec.m[ref]; !ok {
+		t.Errorf("old per-item entry should be kept when the blob write fails")
 	}
 }
 
