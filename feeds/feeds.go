@@ -16,6 +16,7 @@
 package feeds
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -25,7 +26,6 @@ import (
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/provider/bluesky"
 	"github.com/go-news-reader/reader/provider/hackernews"
-	"github.com/go-news-reader/reader/provider/instagram"
 	"github.com/go-news-reader/reader/provider/lemmy"
 	"github.com/go-news-reader/reader/provider/mastodon"
 	"github.com/go-news-reader/reader/provider/reddit"
@@ -179,7 +179,13 @@ func Registry(opts Options) *source.Registry {
 	r.Register(newRedgifs(hc))
 
 	// Best-effort scrapers; credentials optional.
-	r.Register(newInstagram(hc, opts.InstagramSession))
+	// Instagram is DISABLED: its scraper trips Instagram's automated-behaviour
+	// detection and the risk of the account being deactivated is too high to run.
+	// It stays registered (so the source is known and its subscriptions report a
+	// clear "disabled" state instead of "not configured") but never touches the
+	// network. Re-enable by registering its real provider — see git history for
+	// newInstagram — once a safe pacing/auth path exists.
+	r.Register(disabledSource{source.Instagram})
 	r.Register(newTikTok(hc, opts.TikTokMSToken, opts.TikTokSession))
 	r.Register(newTwitter(hc, opts.TwitterSession))
 
@@ -295,11 +301,16 @@ func newRedgifs(hc *http.Client) source.Provider {
 	return redgifs.New()
 }
 
-func newInstagram(hc *http.Client, session string) source.Provider {
-	if hc != nil {
-		return instagram.NewWithHTTPClient(hc, session)
-	}
-	return instagram.New(session)
+// disabledSource is a Provider that never touches the network: it reports its
+// source as intentionally disabled. Instagram uses it — running its scraper risks
+// the account being deactivated (see the Register call). Feed returns a typed
+// NeedsAuth so the UI shows a clear state and no request is ever made.
+type disabledSource struct{ kind source.Kind }
+
+func (d disabledSource) Kind() source.Kind { return d.kind }
+
+func (d disabledSource) Feed(context.Context, source.Query) (source.Result, error) {
+	return source.Result{}, source.NeedsAuth(d.kind, "disabled to avoid risking account deactivation")
 }
 
 func newTikTok(hc *http.Client, msToken, session string) source.Provider {
