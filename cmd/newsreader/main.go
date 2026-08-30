@@ -23,9 +23,9 @@ import (
 	"github.com/go-news-reader/reader/internal/feedstore"
 	"github.com/go-news-reader/reader/internal/httplog"
 	"github.com/go-news-reader/reader/internal/settings"
-	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
+	application "github.com/go-widgets/application"
 )
 
 // osExit is a seam so main() is testable.
@@ -69,7 +69,7 @@ var (
 	writeFile     = os.WriteFile
 	serveFunc     = http.ListenAndServe
 	renderPNG     = (*app.App).RenderPNG
-	openWindow    = window.Run
+	openWindow    = application.Run
 	settingsStore = defaultSettingsStore
 	feedCacheDir  = feedstore.DefaultDir
 )
@@ -257,8 +257,8 @@ func runWindow(cfg config, stdout, stderr io.Writer) int {
 	_, statErr := os.Stat(st.Path)
 	firstRun := os.IsNotExist(statErr)
 	// Load WITHOUT reading the vault, so the window opens (and its Dock, menu bar
-	// and status-item appear) before the keychain prompt: the secrets are read
-	// after the first frame, in emitWindow's onReady via app.HydrateAndActivate.
+	// and tray appear) before the keychain prompt: the secrets are read after the
+	// first frame, in emitWindow's onReady via app.ActivateAfterVault.
 	set, err := st.LoadWithoutSecrets()
 	if err != nil {
 		fmt.Fprintln(stderr, "newsreader:", err)
@@ -281,8 +281,9 @@ func runWindow(cfg config, stdout, stderr io.Writer) int {
 // feed concurrently so the window appears immediately and fills in once loaded.
 // Off macOS (or if the window can't open) it falls back to a printed notice.
 //
-// presentWindow (present_reader.go) opens the window through internal/window, the
-// reader's adapter over the shared go-widgets/window backend's toolkit.Surface.
+// presentWindow (present_reader.go) opens the window through
+// go-widgets/application, which owns the run loop over the shared
+// go-widgets/window backend's toolkit.Surface and puts a tray up beside it.
 func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 	// Marshal background scene writes onto the render thread: the present loop and
 	// input handlers run on the main thread, while refreshFeed aggregates on a
@@ -294,26 +295,19 @@ func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 	// picks up the right active tab.
 	a.OpenDefaultTab()
 
-	// The startup work that READS THE VAULT is deferred to the first shown frame,
-	// so the window — and the Dock icon, menu bar and status-item (tray) that come
-	// with it — is visibly open BEFORE the keychain prompt. onReady runs once, on
-	// the render thread, after the first frame is blitted (see SetOnReady):
-	//   1. put the status-item in the menu bar (the loop is now running, so it
-	//      draws immediately — before the prompt),
-	//   2. hydrate the vault + activate the authenticated providers (the prompt),
-	//   3. start the concurrent feed load.
-	var tray *statusItem
-	onReady := func() {
-		tray = newStatusItem(a)
-		a.HydrateAndActivate()
-		go refreshFeed(a, stderr)
-	}
+	// The startup work that READS THE VAULT is deferred until the window is on
+	// screen — and the Dock icon, menu bar and tray that come with it — so the
+	// keychain prompt lands in front of an app the user can already see. onReady
+	// fires once, after the first frame; ActivateAfterVault keeps the blocking
+	// keychain read off the render thread (see app.App.ActivateAfterVault) and,
+	// once the providers are live, starts the concurrent feed load.
+	onReady := func() { a.ActivateAfterVault(func() { go refreshFeed(a, stderr) }) }
 
-	// The main goroutine is already pinned to thread 0 (see init()); window.Open
-	// re-locks the same thread. Opening from here therefore stays on the AppKit
-	// main thread even though refreshFeed runs concurrently once onReady fires.
+	// The main goroutine is already pinned to thread 0 (see init()); the window
+	// back-end re-locks the same thread. Opening from here therefore stays on the
+	// AppKit main thread even though refreshFeed runs concurrently once the
+	// providers are live.
 	err := presentWindow(a, cfg, onReady)
-	tray.Close()
 	if err != nil {
 		fmt.Fprintln(stderr, "newsreader:", err)
 		fmt.Fprintln(stdout, "native window unavailable; use -serve or -o to view the feed")

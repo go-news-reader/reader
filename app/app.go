@@ -785,23 +785,28 @@ var sessionImportKinds = []source.Kind{source.Twitter, source.Instagram, source.
 // vault and rebuilds the registry (so the authenticated providers are live for the
 // first load) WITHOUT triggering a refresh, leaving the front-end's lazy per-tab
 // load to fetch; it reports what it imported on the status line.
-// HydrateAndActivate performs the startup work that READS THE CREDENTIAL VAULT —
-// deliberately deferred until the window is on screen, so the app's Dock, menu
-// bar and status-item (tray) presence appear BEFORE the keychain prompt rather
-// than a password panel arriving in front of an app that is not visibly open
-// yet. It fills the stored accounts' secrets from the vault (this is the prompt),
-// makes those accounts' providers live, then imports any missing session from the
-// browser. Meant to run once, on the render thread, after the first frame shows.
-func (a *App) HydrateAndActivate() {
-	if a.store != nil {
-		// The keychain access — the auth panel — happens here, now over a window
-		// the user can already see. A declined or unreachable vault leaves the
-		// accounts unauthenticated rather than failing, exactly as [settings.Load]
-		// did when it hydrated inline.
-		_ = a.store.HydrateSecrets(a.set)
-	}
-	a.rebuildRegistry()    // the stored vault accounts are now authenticated
-	a.AutoImportSessions() // fill any still-missing session from the browser
+// ActivateAfterVault performs the deferred startup that reads the vault, but
+// keeps the keychain prompt OFF the render thread so the window does not freeze
+// behind it. The blocking keychain read runs on a goroutine; the state changes
+// it enables — reactivating the authenticated providers, importing any missing
+// browser session — are applied on the render thread via post (like every other
+// background result), and onLoaded (also on the render thread) starts the feed
+// load once the providers are live.
+func (a *App) ActivateAfterVault(onLoaded func()) {
+	go func() {
+		if a.store != nil {
+			// The keychain access — the auth panel — happens here, on a
+			// background goroutine, so it never blocks the render thread.
+			_ = a.store.HydrateSecrets(a.set)
+		}
+		a.post(func() {
+			a.rebuildRegistry()    // stored vault accounts are now authenticated
+			a.AutoImportSessions() // fill any still-missing session from the browser
+			if onLoaded != nil {
+				onLoaded()
+			}
+		})
+	}()
 }
 
 func (a *App) AutoImportSessions() {

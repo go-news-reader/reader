@@ -13,8 +13,8 @@ import (
 
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/internal/settings"
-	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
+	application "github.com/go-widgets/application"
 )
 
 type fakeProv struct {
@@ -225,8 +225,8 @@ func TestRunWindow(t *testing.T) {
 	path := stubStore(t)
 	orig := openWindow
 	var gotTitle string
-	var gotHandler window.Handler
-	openWindow = func(c window.Config, h window.Handler) error {
+	var gotHandler application.Handler
+	openWindow = func(_ application.Spec, c application.Config, h application.Handler, _ func()) error {
 		gotTitle, gotHandler = c.Title, h
 		return nil
 	}
@@ -294,7 +294,9 @@ func TestRunWindowUnsupported(t *testing.T) {
 	stubApp(t, fakeProv{})
 	stubStore(t)
 	orig := openWindow
-	openWindow = func(window.Config, window.Handler) error { return errors.New("unsupported") }
+	openWindow = func(application.Spec, application.Config, application.Handler, func()) error {
+		return errors.New("unsupported")
+	}
 	t.Cleanup(func() { openWindow = orig })
 	var out, errb bytes.Buffer
 	if code := run([]string{"-window"}, &out, &errb); code != 1 {

@@ -13,9 +13,10 @@ import (
 
 	"github.com/go-widgets/toolkit"
 
+	window "github.com/go-widgets/application"
+
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/internal/settings"
-	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )
@@ -110,10 +111,8 @@ type Handler struct {
 	a          *app.App
 	pending    ui.Hit
 	pendingHit bool
-	pendingX   int    // press coordinates for a deferred feed-card click (routed to
-	pendingY   int    // the CardList on release, so the click selects the card under it)
-	onReady    func() // run ONCE after the window's first frame is on screen
-	frames     int    // Frame() call count, so onReady fires after the first blit
+	pendingX   int // press coordinates for a deferred feed-card click (routed to
+	pendingY   int // the CardList on release, so the click selects the card under it)
 }
 
 // New wraps a to be driven by a native window. It installs the platform browser
@@ -125,26 +124,9 @@ func New(a *app.App) *Handler {
 	return &Handler{a: a}
 }
 
-// SetOnReady registers a callback run ONCE, on the render thread, after the
-// window's first frame has been shown. The reader uses it to defer the work that
-// reads the credential vault — so the app's Dock, menu bar and status-item (tray)
-// presence are on screen BEFORE the keychain prompt appears over them.
-func (h *Handler) SetOnReady(f func()) { h.onReady = f }
-
 // Frame returns the current framebuffer, its device dimensions, and whether it
 // changed since the last call.
-//
-// The onReady callback fires on the SECOND Frame call: the first frame's buffer
-// has been blitted by then, so the window (and its Dock/tray) is visibly open
-// before onReady runs — which is what lets a keychain prompt land in front of an
-// app the user can already see rather than ahead of it.
 func (h *Handler) Frame() ([]byte, int, int, bool) {
-	h.frames++
-	if h.frames == 2 && h.onReady != nil {
-		f := h.onReady
-		h.onReady = nil
-		f()
-	}
 	buf, changed := h.a.Frame()
 	s := h.a.Scene()
 	return buf, s.W, s.H, changed

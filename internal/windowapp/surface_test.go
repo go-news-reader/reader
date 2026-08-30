@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/go-news-reader/reader/app"
-	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
+	window "github.com/go-widgets/application"
 	"github.com/go-widgets/toolkit"
 )
 
