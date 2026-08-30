@@ -171,6 +171,20 @@ func secretRef(kind source.Kind, key string) string {
 	return string(kind) + ":" + key
 }
 
+// HasStoredSecret reports whether any configured account currently carries a
+// non-empty secret field (in memory, after hydration) — i.e. whether a biometric
+// unlock gate would have anything to protect.
+func (s *Settings) HasStoredSecret() bool {
+	for _, a := range s.Accounts {
+		for key := range secretKeysFor(a.Kind) {
+			if a.Fields[key] != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // secretKeysFor returns the set of field keys that [CredentialSchema] marks
 // Secret for kind (nil when kind is unknown or has no secret fields).
 func secretKeysFor(kind source.Kind) map[string]bool {

@@ -106,7 +106,7 @@ func TestActivateAfterVault(t *testing.T) {
 // secret (as a real prior run left it), with biometric unlock set to enabled,
 // ready to exercise the ActivateAfterVault gate. It returns the app; the caller
 // substitutes biometricAuth before driving.
-func activateVaultApp(t *testing.T, biometricEnabled bool) *App {
+func activateVaultApp(t *testing.T, biometricEnabled, primed bool) *App {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "s.json")
 	st := testStore(t, path)
@@ -115,6 +115,7 @@ func activateVaultApp(t *testing.T, biometricEnabled bool) *App {
 		Profiles: subProfile(source.Subscription{Source: source.Reddit, Channel: "golang"}),
 		Active:   0, Theme: settings.ThemeSystem,
 		BiometricUnlock: &enabled,
+		BiometricPrimed: primed,
 		Accounts:        []settings.Account{{Kind: source.Reddit, Fields: map[string]string{"session_cookie": "abc"}}},
 	}
 	if err := st.Save(seed); err != nil {
@@ -153,7 +154,7 @@ func driveActivate(t *testing.T, a *App) {
 // gate returning nil (authenticated), ActivateAfterVault hydrates the vault
 // exactly as when the gate is off.
 func TestActivateAfterVaultBiometricAllows(t *testing.T) {
-	a := activateVaultApp(t, true)
+	a := activateVaultApp(t, true, true)
 	var called bool
 	old := biometricAuth
 	biometricAuth = func(string) error { called = true; return nil }
@@ -173,7 +174,7 @@ func TestActivateAfterVaultBiometricAllows(t *testing.T) {
 // gate returning an error (cancelled/failed), ActivateAfterVault SKIPS the vault
 // read — the secret stays empty — but still runs onLoaded so the reader opens.
 func TestActivateAfterVaultBiometricDenies(t *testing.T) {
-	a := activateVaultApp(t, true)
+	a := activateVaultApp(t, true, true)
 	old := biometricAuth
 	biometricAuth = func(string) error { return errors.New("cancelled") }
 	defer func() { biometricAuth = old }()
@@ -188,7 +189,7 @@ func TestActivateAfterVaultBiometricDenies(t *testing.T) {
 // TestActivateAfterVaultBiometricDisabled: with biometric unlock DISABLED, the
 // gate is never consulted and the vault hydrates straight away.
 func TestActivateAfterVaultBiometricDisabled(t *testing.T) {
-	a := activateVaultApp(t, false)
+	a := activateVaultApp(t, false, false)
 	old := biometricAuth
 	biometricAuth = func(string) error { t.Fatal("gate must not be called when biometric unlock is disabled"); return nil }
 	defer func() { biometricAuth = old }()
@@ -197,6 +198,34 @@ func TestActivateAfterVaultBiometricDisabled(t *testing.T) {
 
 	if acct, ok := a.set.Account(source.Reddit); !ok || acct.Fields["session_cookie"] != "abc" {
 		t.Fatalf("secret not hydrated with biometric disabled: %+v ok=%v", acct, ok)
+	}
+}
+
+// TestActivateAfterVaultPrimesOnFirstUnlock: with biometric ENABLED but NOT yet
+// primed, the FIRST unlock does NOT prompt Touch ID (that would stack on the
+// keychain's own first-access grant); it hydrates, then records BiometricPrimed
+// so the NEXT launch gates with Touch ID. The flag is persisted.
+func TestActivateAfterVaultPrimesOnFirstUnlock(t *testing.T) {
+	a := activateVaultApp(t, true, false) // enabled, not primed
+	old := biometricAuth
+	biometricAuth = func(string) error { t.Fatal("gate must not fire before the vault is primed"); return nil }
+	defer func() { biometricAuth = old }()
+
+	driveActivate(t, a)
+
+	if acct, ok := a.set.Account(source.Reddit); !ok || acct.Fields["session_cookie"] != "abc" {
+		t.Fatalf("secret not hydrated on the priming run: %+v ok=%v", acct, ok)
+	}
+	if !a.set.BiometricPrimed {
+		t.Fatal("first successful unlock should set BiometricPrimed")
+	}
+	// It must be persisted, so the next launch gates with Touch ID.
+	reloaded, err := a.store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.BiometricPrimed {
+		t.Fatal("BiometricPrimed was not persisted")
 	}
 }
 

@@ -806,8 +806,13 @@ var biometricAuth = biometric.Authenticate
 func (a *App) ActivateAfterVault(onLoaded func()) {
 	go func() {
 		if a.store != nil {
-			if a.set.BiometricUnlockEnabled() {
-				// Touch ID (or the device password) once, before the vault is read.
+			// Touch ID gates the read only once the vault has been unlocked once
+			// under this app (BiometricPrimed): that first unlock goes through the
+			// keychain's own grant (a password / "Always Allow"), after which the
+			// read is silent — so from then on Touch ID is the ONLY prompt.
+			// Prompting Touch ID before that grant would just stack on top of the
+			// password one.
+			if a.set.BiometricUnlockEnabled() && a.set.BiometricPrimed {
 				// A denial leaves the accounts unauthenticated rather than failing
 				// the launch — the reader still opens, just without the sign-ins.
 				if biometricAuth("Unlock your saved sign-ins") != nil {
@@ -819,9 +824,16 @@ func (a *App) ActivateAfterVault(onLoaded func()) {
 					return
 				}
 			}
-			// The keychain access — the auth panel — happens here, on a
-			// background goroutine, so it never blocks the render thread.
+			// The keychain access happens here, on a background goroutine, so it
+			// never blocks the render thread.
 			_ = a.store.HydrateSecrets(a.set)
+			// First successful unlock under this app: record it so the NEXT launch
+			// gates with Touch ID (the keychain grant is now in place). Save also
+			// persists the flag.
+			if a.set.BiometricUnlockEnabled() && !a.set.BiometricPrimed && a.set.HasStoredSecret() {
+				a.set.BiometricPrimed = true
+				_ = a.store.Save(a.set)
+			}
 		}
 		a.post(func() {
 			a.rebuildRegistry()    // stored vault accounts are now authenticated

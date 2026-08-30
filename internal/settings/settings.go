@@ -110,6 +110,14 @@ type Settings struct {
 	// with (or without) the gate on the next settings save.
 	BiometricUnlock *bool `json:"biometricUnlock,omitempty"`
 
+	// BiometricPrimed records that the vault has been unlocked at least once under
+	// this app, i.e. the keychain's own access grant ("Always Allow") is in place
+	// so a read is now silent. Until then a Touch ID prompt would only STACK on
+	// top of that first password/grant prompt, so the biometric gate holds off
+	// until this is set (see the reader's ActivateAfterVault). Internal, not a
+	// user setting; set the first time secrets load successfully.
+	BiometricPrimed bool `json:"biometricPrimed,omitempty"`
+
 	// SignInBrowser names the browser the reader launches for a provider's
 	// browser sign-in flow (today: Reddit) — one of default|firefox|chrome|
 	// safari|edge. Blank means the default (Firefox); Normalize backfills it.

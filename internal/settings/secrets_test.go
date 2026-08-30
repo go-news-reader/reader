@@ -108,6 +108,25 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
+// TestHasStoredSecret checks the helper the biometric gate uses to decide
+// whether there is anything to unlock.
+func TestHasStoredSecret(t *testing.T) {
+	if (&Settings{}).HasStoredSecret() {
+		t.Fatal("empty settings has no stored secret")
+	}
+	// A populated secret field is detected.
+	full := &Settings{}
+	full.SetAccount(redditAccount("cookie-abc"))
+	if !full.HasStoredSecret() {
+		t.Fatal("a populated secret field should be detected")
+	}
+	// An account whose secret field is empty is not a stored secret.
+	empty := &Settings{Accounts: []Account{{Kind: source.Reddit, Fields: map[string]string{"session_cookie": ""}}}}
+	if empty.HasStoredSecret() {
+		t.Fatal("an empty secret value is not a stored secret")
+	}
+}
+
 // TestSaveVaultOmitsSecretFromDisk proves that with a reachable vault the secret
 // is stored in the vault and never written to settings.json, while non-secret
 // fields remain on disk.
