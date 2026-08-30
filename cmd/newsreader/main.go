@@ -31,6 +31,17 @@ import (
 // osExit is a seam so main() is testable.
 var osExit = os.Exit
 
+// AppKit requires every NSWindow and run-loop call on the process main OS thread
+// (thread 0). Go may migrate the main goroutine off it during the arg parsing,
+// settings load and registry build that precede the window, and a LockOSThread
+// issued only then pins whatever thread it has drifted onto — so window.Open
+// created the NSWindow off the main thread roughly 60% of launches and aborted
+// with "NSWindow should only be instantiated on the main thread". Locking in
+// init(), before the runtime schedules anything, keeps goroutine 1 on thread 0
+// for the whole program, which is exactly what go-widgets/window.Open documents
+// its caller must guarantee. Harmless to the -o/-json/-serve paths.
+func init() { runtime.LockOSThread() }
+
 func main() { osExit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 // config is the parsed command line plus the resolved persistence state (only
@@ -285,7 +296,9 @@ func emitWindow(a *app.App, cfg config, stdout, stderr io.Writer) int {
 	// picks up the right active tab.
 	a.OpenDefaultTab()
 	go refreshFeed(a, stderr)
-	runtime.LockOSThread()
+	// The main goroutine is already pinned to thread 0 (see init()); window.Open
+	// re-locks the same thread. Opening from here therefore stays on the AppKit
+	// main thread even though refreshFeed now runs concurrently.
 	if err := presentWindow(a, cfg); err != nil {
 		fmt.Fprintln(stderr, "newsreader:", err)
 		fmt.Fprintln(stdout, "native window unavailable; use -serve or -o to view the feed")
