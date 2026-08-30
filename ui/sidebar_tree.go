@@ -39,6 +39,7 @@ const (
 	sideSource                       // an auto-group header for one source; Source is its kind
 	sideBrowse                       // the "Browse newsgroups" discovery entry
 	sideSearchReddit                 // the "Search Reddit" discovery entry
+	sideSpacer                       // a blank placeholder row the open section's account ListBox paints over
 )
 
 // sideNode is the identity a sidebar TreeNode carries in its Data, mapping a
@@ -68,6 +69,48 @@ func (s *Scene) ensureSideTree() {
 	// bar style; suppress the TreeView's own square/accent bar and read its
 	// ScrollExtent instead.
 	s.sideTree.HideScrollbar = true
+
+	// The open accordion section's account rows are a real toolkit.ListBox that
+	// OWNS its own scroll window, scrollbar and reserved gutter — the widget paints
+	// the accounts over the spacer rows the TreeView leaves for it (see
+	// layoutOpenSection). Unlike the TreeView, its scrollbar is left VISIBLE: the
+	// component drawing its own bar (and insetting its content past the gutter so no
+	// count chip sits under the thumb) is the whole point of routing the section
+	// through it. Its ItemRenderer decodes each item — a subscription index as a
+	// decimal string — back to the reader's rich account-row painter.
+	s.sideAccountList = toolkit.NewListBox(nil)
+	s.sideAccountList.ItemRenderer = s.drawAccountRow
+	s.sideAccountList.OnActivate = func(row int) {
+		if sub, ok := s.accountRowSub(row); ok {
+			s.SetActive(sub)
+		}
+	}
+}
+
+// accountRowSub decodes the open section ListBox's row (an Items index) to the
+// subscription index it stands for, or ok=false for an out-of-range row or an
+// unparsable item.
+func (s *Scene) accountRowSub(row int) (int, bool) {
+	if s.sideAccountList == nil || row < 0 || row >= len(s.sideAccountList.Items) {
+		return 0, false
+	}
+	sub, err := strconv.Atoi(s.sideAccountList.Items[row])
+	if err != nil {
+		return 0, false
+	}
+	return sub, true
+}
+
+// drawAccountRow is the open section ListBox's ItemRenderer: it decodes the row's
+// item (a subscription index) and paints it with the reader's rich account-row
+// painter into the content rect rc the ListBox hands it — rc is already inset for
+// the widget's own scrollbar gutter, so the count chip never sits under the thumb.
+func (s *Scene) drawAccountRow(p painter.Painter, _ *toolkit.Theme, rc toolkit.Rect, _ int, item string, selected bool, ink toolkit.RGBA) {
+	sub, err := strconv.Atoi(item)
+	if err != nil || sub < 0 || sub >= len(s.Subs) {
+		return
+	}
+	s.drawSideSubRow(p, rc, sub, ttFont(false, rpxOf(s, 13)), ink, selected)
 }
 
 // buildSideTree (re)builds the TreeView's node set from the current
@@ -149,18 +192,21 @@ func (s *Scene) buildSideTree() {
 	root.Children = append(root.Children, &toolkit.TreeNode{Data: sideNode{Kind: sideSearchReddit}})
 
 	s.sideTree.Root = root
-	s.windowOpenSection()
+	s.layoutOpenSection()
 }
 
-// windowOpenSection bounds the open source group's accounts to a scrollable
-// window so the section never pushes the other headers out of the band: every
-// other row ("All Sources", the folders, the source headers, the discovery
-// entries) always stays visible, and only the open section's accounts scroll
-// within the space left below them. It slices the open node's children to that
-// window (offset sourceSubScroll, clamped) and records the geometry the wheel
-// router and the section scrollbar need. With nothing open it clears that state.
-func (s *Scene) windowOpenSection() {
-	s.sourceSubTotal, s.sourceSubWindow, s.sourceSubHeaderRow = 0, 0, 0
+// layoutOpenSection replaces the open source group's account children with N
+// blank spacer rows and hands the accounts themselves to s.sideAccountList — a
+// real toolkit.ListBox that owns the section's scroll window, scrollbar and
+// gutter. N is the number of account rows that fit under every other (always
+// visible) row, so the accordion never pushes a header or the discovery entries
+// out of the band; the ListBox scrolls its full account list within that region.
+// It fills the ListBox's Items (subscription indices), points its selection at
+// the active account's row, sets its bounds and records the section's screen rect
+// for the render / hit-test / wheel routers. With nothing open it clears the list.
+func (s *Scene) layoutOpenSection() {
+	s.sideAccountRect = toolkit.Rect{}
+	s.sideAccountList.Items = nil
 	if s.sourceOpen == "" {
 		return
 	}
@@ -174,7 +220,13 @@ func (s *Scene) windowOpenSection() {
 	if open == nil || len(open.Children) == 0 {
 		return
 	}
+	// The account nodes' subscription indices become the ListBox's model; the
+	// header keeps only spacer children (blank rows the ListBox paints over).
 	full := open.Children
+	subs := make([]string, len(full))
+	for i, n := range full {
+		subs[i] = strconv.Itoa(sideData(n).Sub)
+	}
 	// Count every other visible row (the open header contributes one row while its
 	// accounts are withheld): that is the space the accounts must fit under.
 	open.Children = nil
@@ -189,22 +241,52 @@ func (s *Scene) windowOpenSection() {
 	if window > len(full) {
 		window = len(full)
 	}
-	off := s.sourceSubScroll
-	if maxOff := len(full) - window; off > maxOff {
-		off = maxOff
+	open.Children = make([]*toolkit.TreeNode, window)
+	for i := range open.Children {
+		open.Children[i] = &toolkit.TreeNode{Data: sideNode{Kind: sideSpacer}}
 	}
-	if off < 0 {
-		off = 0
-	}
-	s.sourceSubScroll, s.sourceSubWindow, s.sourceSubTotal = off, window, len(full)
-	open.Children = full[off : off+window]
-	// The open header's flattened index positions the section scrollbar.
+	// The open header's flattened index positions the account region.
+	headerRow := 0
 	for i, n := range s.flattenSide() {
 		if d := sideData(n); d.Kind == sideSource && d.Source == s.sourceOpen {
-			s.sourceSubHeaderRow = i
+			headerRow = i
 			break
 		}
 	}
+	s.sideAccountList.Items = subs
+	s.sideAccountList.RowHeight = rh
+	// Point the highlight at the active subscription's row (or none).
+	sel := -1
+	for i, n := range full {
+		if sideData(n).Sub == s.Active {
+			sel = i
+			break
+		}
+	}
+	s.sideAccountList.Selected().Set(sel)
+	// The section's on-screen rect (top just under the open header, N rows tall).
+	top := s.sideBandTop + (headerRow+1)*rh
+	s.sideAccountRect = toolkit.Rect{X: 0, Y: top, W: s.m.sidebarW, H: window * rh}
+	// Bounds are sprite-local (the sidebar is blitted at (0, topbarH)); Draw and the
+	// hit/scroll math read them for the scroll window + gutter.
+	s.sideAccountList.SetBounds(toolkit.Rect{X: 0, Y: top - s.m.topbarH, W: s.m.sidebarW, H: window * rh})
+}
+
+// sectionListShown reports whether the open accordion section currently hands its
+// accounts to the ListBox (a source is open with at least one account and a band
+// to draw it in). The render, hit-test and wheel routers gate on it.
+func (s *Scene) sectionListShown() bool {
+	return s.sourceOpen != "" && s.sideAccountList != nil &&
+		len(s.sideAccountList.Items) > 0 && s.sideAccountRect.H > 0
+}
+
+// sectionListOverflows reports whether the open section holds more accounts than
+// its window shows, so the ListBox paints a scrollbar and a wheel scrolls it.
+func (s *Scene) sectionListOverflows() bool {
+	if !s.sectionListShown() || s.m.sideItemH <= 0 {
+		return false
+	}
+	return len(s.sideAccountList.Items) > s.sideAccountRect.H/s.m.sideItemH
 }
 
 // flattenSide walks the sidebar tree in visible (expand-aware) order, returning
@@ -243,6 +325,13 @@ func (s *Scene) sidebarA11yNodes() []A11yNode {
 	out := []A11yNode{node(toolkit.RoleList, "Sources", strconv.Itoa(len(s.Subs))+" subscriptions", toolkit.Rect{})}
 	rows := s.flattenSide()
 	for i, n := range rows {
+		// The open section's account rows are blank spacers the ListBox paints over;
+		// they emit no header-style node here. The accounts themselves are appended
+		// below, straight from the ListBox, so "you can click it" and "a reader can
+		// find it" stay the same statement for the visible account rows.
+		if sideData(n).Kind == sideSpacer {
+			continue
+		}
 		r := toolkit.Rect{X: 0, Y: s.sideBandTop + (i-s.sideTree.ScrollRow().Get())*m.sideItemH, W: m.sidebarW, H: m.sideItemH}
 		name, value := "", ""
 		switch d := sideData(n); d.Kind {
@@ -273,6 +362,26 @@ func (s *Scene) sidebarA11yNodes() []A11yNode {
 			name = "Search Reddit"
 		}
 		out = append(out, node(toolkit.RoleButton, name, value, r))
+	}
+	// The open section's accounts come from the ListBox: one node per row currently
+	// in its scroll window, at the same screen rect the section paints it (so it
+	// hit-tests to the very account it names), carrying the same unseen/total value
+	// the old sub rows did.
+	if s.sectionListShown() {
+		lb := s.sideAccountList
+		rh := m.sideItemH
+		window := s.sideAccountRect.H / rh
+		// Match the row the ListBox actually paints at the top: its ScrollRow clamped
+		// to the last full window (Draw clamps the same way).
+		start := max(0, min(lb.ScrollRow().Get(), len(lb.Items)-window))
+		for vis := 0; vis < window && start+vis < len(lb.Items); vis++ {
+			if sub, ok := s.accountRowSub(start + vis); ok {
+				su := s.Subs[sub]
+				total, unseen := s.subCounts(su)
+				r := toolkit.Rect{X: 0, Y: s.sideAccountRect.Y + vis*rh, W: m.sidebarW, H: rh}
+				out = append(out, node(toolkit.RoleButton, su.name(), strconv.Itoa(unseen)+"/"+strconv.Itoa(total), r))
+			}
+		}
 	}
 	return out
 }
@@ -305,14 +414,13 @@ func (s *Scene) sidebarListOverflows() bool {
 	return len(s.flattenSide()) > band/rh
 }
 
-// sidebarScrollbarShown reports whether the sidebar currently paints a vertical
-// scrollbar — an open accordion section whose account window overflows, or the
-// whole list overflowing the band — so the row renderers reserve its gutter. It
-// mirrors the two drawVScrollbar branches in the sidebar sprite.
+// sidebarScrollbarShown reports whether the whole sidebar list overflows the band
+// and so the scene paints a vertical scrollbar down its right edge, meaning the
+// TreeView row renderers must reserve its gutter. The open accordion section's
+// scrollbar is NOT counted here: those account rows are drawn by the ListBox,
+// which owns and insets past its own gutter, so the TreeView never paints under
+// it. It mirrors the single remaining drawVScrollbar branch in the sidebar sprite.
 func (s *Scene) sidebarScrollbarShown() bool {
-	if s.sourceOpen != "" && s.sourceSubTotal > s.sourceSubWindow {
-		return true
-	}
 	// Called from drawSideRow (a TreeView RowRenderer), so the tree exists.
 	_, _, _, shown := s.sideTree.ScrollExtent()
 	return shown
@@ -348,6 +456,9 @@ func (s *Scene) drawSideRow(p painter.Painter, th *toolkit.Theme, cr toolkit.Rec
 		s.drawSideSourceRow(p, cr, d.Source, d.Count, ink)
 	case sideSub:
 		s.drawSideSubRow(p, cr, d.Sub, sideF, ink, selected)
+	case sideSpacer:
+		// A blank placeholder under the open source header: the account ListBox is
+		// drawn over this region afterwards, so the row itself paints nothing.
 	}
 }
 

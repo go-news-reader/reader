@@ -231,9 +231,10 @@ func TestSameItemDistinguishesSharedID(t *testing.T) {
 	}
 }
 
-// B3: when the subscription list overflows the sidebar band it scrolls, and a
-// sub scrolled out of the band is neither drawn over the footer nor hit-testable
-// through the chrome; scrolling brings it back.
+// B3: when the open section's accounts overflow its window they scroll within the
+// section's ListBox, and an account scrolled out is neither drawn over the footer
+// nor hit-testable through the chrome; scrolling brings it back, and an over-scroll
+// clamps.
 func TestSidebarOverflowScrollAndClip(t *testing.T) {
 	s := New(760, 360, ThemeFor(OSMac, false))
 	s.SetUsenetServer("news.free.fr:119") // adds the scrollable Browse entry
@@ -244,20 +245,20 @@ func TestSidebarOverflowScrollAndClip(t *testing.T) {
 	s.SetSubs(subs)
 	s.ToggleSidebarSource(source.Reddit) // expand the group so its 20 accounts overflow the window
 	s.layout()
-	if s.sourceSubTotal <= s.sourceSubWindow {
-		t.Fatal("expected the open section's accounts to overflow its bounded window")
+	if !s.sectionListOverflows() {
+		t.Fatal("expected the open section's accounts to overflow the ListBox window")
 	}
 	// From a fresh (top) state, a wheel with the pointer over the sidebar scrolls
-	// the open section's inner window, not the feed and not the tree (whose other
-	// headers stay pinned).
+	// the section's ListBox, not the feed and not the tree (whose other headers stay
+	// pinned).
 	s.MouseMove(10, 150)
-	before := s.sourceSubScroll
+	before := s.sideAccountList.ScrollRow().Get()
 	s.Scroll(120)
-	if s.sourceSubScroll <= before {
-		t.Fatalf("sidebar section did not scroll: %d -> %d", before, s.sourceSubScroll)
+	if s.sideAccountList.ScrollRow().Get() <= before {
+		t.Fatalf("sidebar section did not scroll: %d -> %d", before, s.sideAccountList.ScrollRow().Get())
 	}
 	// Clicking inside the pinned footer resolves to a pinned entry, never a
-	// scrolled sub row bleeding into it.
+	// scrolled account row bleeding into it.
 	if h := s.HitTest(2, s.accountsR.Y+s.m.sideItemH/2); h.Kind != HitAccounts {
 		t.Fatalf("click in footer band resolved to %v, want HitAccounts", h.Kind)
 	}
@@ -271,14 +272,15 @@ func TestSidebarOverflowScrollAndClip(t *testing.T) {
 	// Render so the sidebar sprite draws (and clips) the windowed rows.
 	buf := make([]byte, s.W*s.H*4)
 	s.Draw(buf)
-	// An over-scroll is clamped back to the maximum offset by buildSideTree.
-	s.sourceSubScroll = 1_000_000
+	// The ListBox clamps at the bottom: two large wheels-down land on the same row.
+	s.MouseMove(10, 150)
+	s.Scroll(10_000)
 	s.layout()
-	max := s.sourceSubScroll
-	s.Scroll(120) // a further wheel down is re-clamped to the maximum on the next layout
+	max := s.sideAccountList.ScrollRow().Get()
+	s.Scroll(10_000) // a further wheel down is clamped to the same maximum
 	s.layout()
-	if s.sourceSubScroll != max {
-		t.Fatalf("over-scroll not clamped: %d != %d", s.sourceSubScroll, max)
+	if s.sideAccountList.ScrollRow().Get() != max {
+		t.Fatalf("over-scroll not clamped: %d != %d", s.sideAccountList.ScrollRow().Get(), max)
 	}
 	// At a high zoom on a minimum-height window the pinned footer's top falls above
 	// the sub-list top, so the band is negative before the guard clamps it to 0 —
