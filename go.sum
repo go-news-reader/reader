@@ -127,6 +127,8 @@ github.com/go-widgets/toolkit v0.288.0 h1:vtQDXZAbZRSQqIoEYQf/xE8ARE4YV4QtfHGHgn
 github.com/go-widgets/toolkit v0.288.0/go.mod h1:IaRQFcV6FjxwzGXpHd3dpEoWZ+82f7dMPwtEZSH4nIg=
 github.com/go-widgets/tray v0.5.1 h1:ThQp0QQYmUs9in0Ur2ujAVQ6yfa1+y/gycvLtoDo1Io=
 github.com/go-widgets/tray v0.5.1/go.mod h1:A0Sb4PeLyO0F7Y5BgFFWH8WdKoIWNZcN4H5W+FY6CV8=
+github.com/go-widgets/tray v0.6.0 h1:cbZra0Z9Ag22NBJBhLP+wdQrVLmD6u6w25hK1IAMs4k=
+github.com/go-widgets/tray v0.6.0/go.mod h1:A0Sb4PeLyO0F7Y5BgFFWH8WdKoIWNZcN4H5W+FY6CV8=
 github.com/go-widgets/window v0.57.0 h1:FNPDgAddoQV3NSUid4X4OL0qNP1tD34daEOum89/aBY=
 github.com/go-widgets/window v0.57.0/go.mod h1:nJjeM1Zq9Jbr/j4KsC5WJDOQt9Ywz3At6ZK60CiZdos=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
