@@ -212,6 +212,52 @@ func TestFetchThumbReDecodeError(t *testing.T) {
 	}
 }
 
+// poisonedCache hands back bytes that do not decode for one URL, so a test can
+// exercise the self-heal path without touching the on-disk cache.
+type poisonedCache struct {
+	url  string
+	bad  []byte
+	puts map[string][]byte
+}
+
+func (c *poisonedCache) Get(url string) ([]byte, bool) {
+	if url == c.url {
+		return c.bad, true
+	}
+	return nil, false
+}
+
+func (c *poisonedCache) Put(url string, data []byte) {
+	if c.puts == nil {
+		c.puts = map[string][]byte{}
+	}
+	c.puts[url] = data
+}
+
+// TestFetchThumbSelfHealsPoisonedCache covers the branch that matters for the
+// persistent-blank-image bug: a cached entry that no longer decodes (a truncated
+// file, or a non-image left by an older build) must be RE-FETCHED and replaced,
+// not left blanking the card forever. The default cache is on disk, so without
+// this a bad entry survives every relaunch.
+func TestFetchThumbSelfHealsPoisonedCache(t *testing.T) {
+	srv, hits := imageServer(t)
+	a := New(Config{Registry: newReg()})
+	a.mediaClient = srv.Client()
+	pc := &poisonedCache{url: srv.URL + "/ok.png", bad: []byte("<html>not an image</html>")}
+	a.mediaCache = pc
+
+	img := a.fetchThumb(context.Background(), srv.URL+"/ok.png", 0)
+	if img == nil {
+		t.Fatal("a cached entry that no longer decodes must be re-fetched, not left blank")
+	}
+	if hits() == 0 {
+		t.Fatal("expected a re-download after the undecodable cache hit")
+	}
+	if _, ok := pc.puts[srv.URL+"/ok.png"]; !ok {
+		t.Fatal("the freshly fetched image should replace the poisoned cache entry")
+	}
+}
+
 // TestSetMediaSyncBlocksUntilFetched checks the one-shot CLI seam: after
 // SetMediaSync, PrefetchMedia returns with the thumbnail already in the scene,
 // so a PNG rendered straight afterwards carries the image rather than a
