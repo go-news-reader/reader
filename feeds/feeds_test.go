@@ -1,6 +1,7 @@
 package feeds
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -200,14 +201,14 @@ func TestLoggedClient(t *testing.T) {
 // TestFollowImporterProviders asserts the social providers whose accounts can be
 // connected implement source.FollowImporter, so the app's syncFollowImportKinds
 // offers the "import my subscriptions" action for each. Reddit and Mastodon are
-// the pre-existing importers; Instagram, X/Twitter and TikTok are the ones this
-// change adds. Only kinds a provider actually implements the interface for are
-// listed by syncFollowImportKinds, so this is the wiring the button hangs on.
+// the pre-existing importers; X/Twitter and TikTok too. Instagram is DISABLED
+// (its scraper risks account deactivation) — importing follows is itself an
+// Instagram request, so its disabled provider must NOT be a FollowImporter.
 func TestFollowImporterProviders(t *testing.T) {
 	r := Registry(Options{MastodonInstance: "https://mastodon.example"})
 	for _, k := range []source.Kind{
 		source.Reddit, source.Mastodon,
-		source.Instagram, source.Twitter, source.TikTok,
+		source.Twitter, source.TikTok,
 	} {
 		p, ok := r.Get(k)
 		if !ok {
@@ -217,11 +218,32 @@ func TestFollowImporterProviders(t *testing.T) {
 			t.Errorf("%s provider does not implement source.FollowImporter", k)
 		}
 	}
+	// Instagram stays registered but disabled: known, yet not a follow importer.
+	ig, ok := r.Get(source.Instagram)
+	if !ok {
+		t.Fatal("Instagram should stay registered (disabled)")
+	}
+	if _, isImp := ig.(source.FollowImporter); isImp {
+		t.Error("disabled Instagram must not offer follow import (it would hit the network)")
+	}
 
 	// A provider without the capability (Hacker News) must NOT be an importer, so
 	// the action is offered for exactly the follow-capable sources.
 	hn, _ := r.Get(source.HackerNews)
 	if _, isImp := hn.(source.FollowImporter); isImp {
 		t.Error("hackernews unexpectedly implements source.FollowImporter")
+	}
+}
+
+// TestInstagramDisabledNeverFetches: the registered Instagram provider makes no
+// network request — its Feed returns a typed NeedsAuth("disabled") signal.
+func TestInstagramDisabledNeverFetches(t *testing.T) {
+	p, ok := Registry(Options{}).Get(source.Instagram)
+	if !ok {
+		t.Fatal("Instagram should stay registered (disabled)")
+	}
+	_, err := p.Feed(context.Background(), source.Query{Channel: "someone"})
+	if ae, ok := source.AsAuthError(err); !ok || ae.Kind != source.Instagram {
+		t.Fatalf("disabled Instagram Feed = %v, want a NeedsAuth AuthError for Instagram", err)
 	}
 }
