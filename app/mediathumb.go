@@ -139,23 +139,28 @@ func (a *App) loadMediaThumbs(ctx context.Context, reqs []ui.MediaRequest) {
 // serve it and the Network log records the fetch), then — only when the bytes
 // are a usable image — caches the ORIGINAL for next time.
 func (a *App) fetchThumb(ctx context.Context, url string, created int64) *image.RGBA {
-	raw, cached := a.mediaCache.Get(url)
-	if !cached {
-		var derr error
-		raw, derr = a.downloadMedia(ctx, url)
-		if derr != nil {
-			return nil
+	// A cached entry that still decodes is served as-is. One that no longer
+	// decodes — a truncated or partially written file, a non-image left by an
+	// older build, anything the pluggable backend hands back — must NOT blank the
+	// card forever: fall through and re-fetch, replacing it. The default cache is
+	// on disk and persists across runs, so without this self-heal a single bad
+	// entry is permanent, and re-launching never recovers the image.
+	if raw, cached := a.mediaCache.Get(url); cached {
+		if img := thumbFromRaw(raw); img != nil {
+			return img
 		}
+	}
+	raw, derr := a.downloadMedia(ctx, url)
+	if derr != nil {
+		return nil
 	}
 	img := thumbFromRaw(raw)
 	if img == nil {
 		return nil // a non-image (or undecodable) download is never cached
 	}
-	if !cached {
-		// Stamp the cached file with the POST's creation time (created), so the
-		// on-disk media reflects post chronology, not the download moment.
-		a.cacheMedia(url, raw, created)
-	}
+	// Stamp the cached file with the POST's creation time (created), so the
+	// on-disk media reflects post chronology, not the download moment.
+	a.cacheMedia(url, raw, created)
 	return img
 }
 
