@@ -457,13 +457,14 @@ func New(cfg Config) *App {
 		a.scene.SetBookmarked(url, on)
 		a.persistSettings()
 	})
-	a.scene.SetBrowserSingleTab(set.SingleTab())              // apply the persisted tab-mode preference (default single-tab)
-	a.scene.SetBrowserChromeHidden(set.HideBrowserChrome)     // apply the persisted toolbar-visibility preference
-	a.scene.SetBrowserZoomKeys(set.ZoomInKey, set.ZoomOutKey) // apply the persisted browser zoom keybindings
-	a.scene.SetBookmarks(set.Bookmarks)                       // apply the persisted bookmarks
-	a.scene.SetInfiniteScroll(set.InfiniteScrollEnabled())    // apply the persisted infinite-scroll preference (default on)
-	a.scene.SetBiometricUnlock(set.BiometricUnlock)           // reflect the persisted biometric-unlock preference in the settings toggle
-	settings.SetSecretUserPresence(set.BiometricUnlock)       // gate secret writes behind biometric unlock when enabled
+	a.scene.SetBrowserSingleTab(set.SingleTab())                           // apply the persisted tab-mode preference (default single-tab)
+	a.scene.SetBrowserChromeHidden(set.HideBrowserChrome)                  // apply the persisted toolbar-visibility preference
+	a.scene.SetBrowserZoomKeys(set.ZoomInKey, set.ZoomOutKey)              // apply the persisted browser zoom keybindings
+	a.scene.SetBookmarks(set.Bookmarks)                                    // apply the persisted bookmarks
+	a.scene.SetInfiniteScroll(set.InfiniteScrollEnabled())                 // apply the persisted infinite-scroll preference (default on)
+	a.scene.SetDismissPreviewOnSwitch(set.DismissPreviewOnSwitchEnabled()) // apply the persisted dismiss-preview-on-switch preference (default on)
+	a.scene.SetBiometricUnlock(set.BiometricUnlock)                        // reflect the persisted biometric-unlock preference in the settings toggle
+	settings.SetSecretUserPresence(set.BiometricUnlock)                    // gate secret writes behind biometric unlock when enabled
 	a.groupStatsFetch = func(name string) {
 		go a.loadGroupStats(context.Background(), name)
 	}

@@ -154,15 +154,29 @@ func TestSettingsScrollReachesBottom(t *testing.T) {
 	if s.sCacheBackendR.Y < s.H {
 		t.Fatalf("cache-backend field already on-screen (Y=%d, H=%d); test needs it below", s.sCacheBackendR.Y, s.H)
 	}
-	// Scroll to the bottom (over-scroll is clamped) and it must be reachable.
+	// Scrolling down in small steps must bring the cache-backend field fully into
+	// the viewport and make it clickable there — it started below the fold, and
+	// sections below it (FEED, SECURITY) mean it need not sit at the very bottom.
+	clicked := false
+	for i := 0; i < 80 && !clicked; i++ {
+		if s.sCacheBackendR.Y >= s.m.topbarH && s.sCacheBackendR.Y+s.sCacheBackendR.H <= s.H &&
+			s.HitTest(s.sCacheBackendR.X+4, s.sCacheBackendR.Y+s.sCacheBackendR.H/2).Kind == HitFocusCacheBackend {
+			clicked = true
+			break
+		}
+		s.Scroll(40)
+	}
+	if !clicked {
+		t.Fatalf("cache-backend field never became clickable while scrolling: Y=%d H=%d winH=%d", s.sCacheBackendR.Y, s.sCacheBackendR.H, s.H)
+	}
+	// Over-scroll is clamped: past the end the offset stays at its maximum.
 	for i := 0; i < 40; i++ {
 		s.Scroll(120)
 	}
-	if s.sCacheBackendR.Y < s.m.topbarH || s.sCacheBackendR.Y+s.sCacheBackendR.H > s.H {
-		t.Fatalf("cache-backend field not in viewport after scroll: Y=%d H=%d winH=%d", s.sCacheBackendR.Y, s.sCacheBackendR.H, s.H)
-	}
-	if h := s.HitTest(s.sCacheBackendR.X+4, s.sCacheBackendR.Y+s.sCacheBackendR.H/2); h.Kind != HitFocusCacheBackend {
-		t.Fatalf("click on scrolled-in cache-backend field = %v, want HitFocusCacheBackend", h.Kind)
+	maxOff := s.settingsScroll.offset
+	s.Scroll(120)
+	if s.settingsScroll.offset != maxOff {
+		t.Fatalf("over-scroll not clamped: %d advanced past %d", s.settingsScroll.offset, maxOff)
 	}
 }
 
