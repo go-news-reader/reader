@@ -463,8 +463,8 @@ func New(cfg Config) *App {
 	a.scene.SetBookmarks(set.Bookmarks)                                    // apply the persisted bookmarks
 	a.scene.SetInfiniteScroll(set.InfiniteScrollEnabled())                 // apply the persisted infinite-scroll preference (default on)
 	a.scene.SetDismissPreviewOnSwitch(set.DismissPreviewOnSwitchEnabled()) // apply the persisted dismiss-preview-on-switch preference (default on)
-	a.scene.SetBiometricUnlock(set.BiometricUnlock)                        // reflect the persisted biometric-unlock preference in the settings toggle
-	settings.SetSecretUserPresence(set.BiometricUnlock)                    // gate secret writes behind biometric unlock when enabled
+	a.scene.SetBiometricUnlock(set.BiometricUnlockEnabled())               // reflect the effective biometric-unlock preference (default ON) in the toggle
+	settings.SetSecretUserPresence(set.BiometricUnlockEnabled())           // gate secret writes behind biometric unlock when enabled
 	a.groupStatsFetch = func(name string) {
 		go a.loadGroupStats(context.Background(), name)
 	}

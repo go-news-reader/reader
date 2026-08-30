@@ -176,6 +176,33 @@ func TestAutoImportSessionsDefaultAndRoundTrip(t *testing.T) {
 	}
 }
 
+// TestBiometricUnlockDefaultsOn proves the tri-state that makes Touch ID work
+// without hunting for a toggle: Default seeds it on, an unset field (a settings
+// file predating the field) reads as on and Normalize backfills it, and an
+// explicit opt-out survives.
+func TestBiometricUnlockDefaultsOn(t *testing.T) {
+	if d := Default(); d.BiometricUnlock == nil || !*d.BiometricUnlock || !d.BiometricUnlockEnabled() {
+		t.Fatalf("default biometric unlock = %v, want enabled", d.BiometricUnlock)
+	}
+	// An unset field applies the enabled default (an old file becomes Touch ID on).
+	if (&Settings{}).BiometricUnlockEnabled() != DefaultBiometricUnlock {
+		t.Fatal("BiometricUnlockEnabled() on an unset field should apply the default")
+	}
+	// Normalize backfills an unset field to on.
+	s := &Settings{}
+	s.Normalize()
+	if s.BiometricUnlock == nil || !*s.BiometricUnlock {
+		t.Fatal("Normalize should backfill an unset biometric-unlock flag to on")
+	}
+	// An explicit opt-out to off survives Normalize.
+	off := false
+	s2 := &Settings{Profiles: []Profile{{Name: "x"}}, Theme: ThemeDark, CachePath: "/c", BiometricUnlock: &off}
+	s2.Normalize()
+	if s2.BiometricUnlock == nil || *s2.BiometricUnlock || s2.BiometricUnlockEnabled() {
+		t.Fatal("Normalize clobbered an explicit biometric-unlock opt-out")
+	}
+}
+
 func TestSignInBrowserDefaultAndRoundTrip(t *testing.T) {
 	// A fresh install defaults to Firefox — the only browser whose session cookie
 	// the reader can subsequently import.

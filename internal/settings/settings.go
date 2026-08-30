@@ -102,9 +102,13 @@ type Settings struct {
 	// an interactive user-presence gate, so unlocking them at startup uses the
 	// platform biometric/consent check — Touch ID on macOS, Windows Hello on
 	// Windows, the desktop's authentication agent on Linux — instead of a typed
-	// password (or nothing). Default false (off). Toggling it on re-writes the
-	// secrets with the gate on the next settings save.
-	BiometricUnlock bool `json:"biometricUnlock,omitempty"`
+	// password (or nothing). Tri-state: nil (unset) means the default
+	// (DefaultBiometricUnlock, ON — the whole point of a signed build); an
+	// explicit false persists an opt-out. On an unsigned build the write silently
+	// falls back to an ungated item, so defaulting ON is safe everywhere. Read it
+	// through [Settings.BiometricUnlockEnabled]. Changing it re-writes the secrets
+	// with (or without) the gate on the next settings save.
+	BiometricUnlock *bool `json:"biometricUnlock,omitempty"`
 
 	// SignInBrowser names the browser the reader launches for a provider's
 	// browser sign-in flow (today: Reddit) — one of default|firefox|chrome|
@@ -276,6 +280,13 @@ const DefaultDismissPreviewOnSwitch = true
 // provider's browser session at startup when it has no account yet: enabled.
 const DefaultAutoImportSessions = true
 
+// DefaultBiometricUnlock is whether a fresh install (or a settings file predating
+// this field, so BiometricUnlock is unset) stores/reads the vault behind the
+// platform user-presence gate: enabled. A signed build is what makes Touch ID
+// work, and every shipped build is signed; an unsigned build falls back to an
+// ungated item, so on-by-default costs nothing there.
+const DefaultBiometricUnlock = true
+
 // boolPtr returns a pointer to b, for the tri-state BrowserSingleTab field.
 func boolPtr(b bool) *bool { return &b }
 
@@ -313,6 +324,15 @@ func (s *Settings) AutoImportSessionsEnabled() bool {
 		return DefaultAutoImportSessions
 	}
 	return *s.AutoImportSessions
+}
+
+// BiometricUnlockEnabled reports the effective biometric-unlock preference:
+// [DefaultBiometricUnlock] when unset, else the explicit value.
+func (s *Settings) BiometricUnlockEnabled() bool {
+	if s.BiometricUnlock == nil {
+		return DefaultBiometricUnlock
+	}
+	return *s.BiometricUnlock
 }
 
 // Account holds a user's credentials for one provider. Fields are keyed by the
@@ -470,6 +490,7 @@ func Default() *Settings {
 		InfiniteScroll:         boolPtr(DefaultInfiniteScroll),
 		DismissPreviewOnSwitch: boolPtr(DefaultDismissPreviewOnSwitch),
 		AutoImportSessions:     boolPtr(DefaultAutoImportSessions),
+		BiometricUnlock:        boolPtr(DefaultBiometricUnlock),
 		ZoomInKey:              DefaultZoomInKey,
 		ZoomOutKey:             DefaultZoomOutKey,
 		SignInBrowser:          DefaultSignInBrowser,
@@ -562,6 +583,12 @@ func (s *Settings) Normalize() {
 		// A settings file predating this field (or a fresh one) defaults to
 		// auto-importing a subscribed provider's browser session.
 		s.AutoImportSessions = boolPtr(DefaultAutoImportSessions)
+	}
+	if s.BiometricUnlock == nil {
+		// A settings file predating this field (or a fresh one) defaults to
+		// unlocking the vault behind the platform user-presence gate (Touch ID) —
+		// so a signed build offers it without the user hunting for a toggle.
+		s.BiometricUnlock = boolPtr(DefaultBiometricUnlock)
 	}
 	s.dedupAccounts()
 }
