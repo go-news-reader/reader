@@ -1,14 +1,15 @@
 package ui
 
-// Nav/chrome icons rendered from the real Iconoir set (github.com/go-iconoir/iconoir)
-// through its painter adapter, instead of hand-drawn painter primitives.
+// Nav/chrome icons rendered from the real Iconoir set (github.com/go-icons/iconoir)
+// through toolkit.SVGIcon, instead of hand-drawn painter primitives.
 //
 // The embedded Go fonts (goregular/gobold) carry none of the UI symbol glyphs
 // (☰ ⚙ 👤 📡 🔒 …), so drawing them as text produced empty "tofu" boxes. Rather
-// than approximate the Iconoir aesthetic with bars and rounded rects, we now
-// blit the actual Iconoir 24-grid outline masks: iconoir.DrawIcon rasterizes the
-// mask at the target rect's size and composites the anti-aliased coverage via the
-// painter, so the icons are crisp and scale with the scene.
+// than approximate the Iconoir aesthetic with bars and rounded rects, we blit the
+// actual Iconoir 24-grid outlines: go-icons ships the pack as SVG source and
+// toolkit.SVGIcon rasterizes it, caching per (document, ink) and compositing the
+// anti-aliased coverage through the painter, so the icons are crisp and scale
+// with the scene.
 //
 // Each helper fills the supplied box r; the caller centres r where the glyph
 // should sit. The stroke-width argument (lineW) is retained so the drawNavRow /
@@ -16,7 +17,7 @@ package ui
 // own outline weight, so it is not otherwise needed.
 
 import (
-	"github.com/go-iconoir/iconoir"
+	"github.com/go-icons/iconoir"
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
 )
@@ -36,25 +37,25 @@ func iconInset(r toolkit.Rect, frac int) toolkit.Rect {
 // Cached Iconoir icon lookups. Get is cheap, but caching avoids a registry
 // lookup per frame. Names verified present in iconoir v0.1.0.
 var (
-	iconMenu       = iconoir.MustGet("menu")            // burger / open-sidebar
-	iconLock       = iconoir.MustGet("lock")            // auth-banner padlock
-	iconUser       = iconoir.MustGet("user")            // sidebar Accounts
-	iconList       = iconoir.MustGet("list")            // sidebar Network log
-	iconSettings   = iconoir.MustGet("settings")        // sidebar Settings (gear)
-	iconSearch     = iconoir.MustGet("search")          // topbar SearchEntry magnifier
-	iconPlus       = iconoir.MustGet("plus")            // sidebar "Browse newsgroups" + subscribe
-	iconRefresh    = iconoir.MustGet("refresh-double")  // browse view Refresh control + web preview Reload
-	iconCheck      = iconoir.MustGet("check")           // subscribed / complete marker
-	iconNavLeft    = iconoir.MustGet("nav-arrow-left")  // web preview Back
-	iconNavRight   = iconoir.MustGet("nav-arrow-right") // web preview Forward
-	iconZoomIn     = iconoir.MustGet("zoom-in")         // web preview zoom in
-	iconZoomOut    = iconoir.MustGet("zoom-out")        // web preview zoom out
-	iconFit        = iconoir.MustGet("expand")          // web preview best-fit zoom
-	iconLockSlash  = iconoir.MustGet("lock-slash")      // address bar: insecure (non-https)
-	iconStar       = iconoir.MustGet("star")            // address bar: bookmark toggle (star)
-	iconBin        = iconoir.MustGet("bin")             // sidebar context menu: unsubscribe (delete)
-	iconFolder     = iconoir.MustGet("folder")          // sidebar virtual folder
-	iconFolderPlus = iconoir.MustGet("folder-plus")     // sidebar context menu: new folder
+	iconMenu       = mustIcon("menu")            // burger / open-sidebar
+	iconLock       = mustIcon("lock")            // auth-banner padlock
+	iconUser       = mustIcon("user")            // sidebar Accounts
+	iconList       = mustIcon("list")            // sidebar Network log
+	iconSettings   = mustIcon("settings")        // sidebar Settings (gear)
+	iconSearch     = mustIcon("search")          // topbar SearchEntry magnifier
+	iconPlus       = mustIcon("plus")            // sidebar "Browse newsgroups" + subscribe
+	iconRefresh    = mustIcon("refresh-double")  // browse view Refresh control + web preview Reload
+	iconCheck      = mustIcon("check")           // subscribed / complete marker
+	iconNavLeft    = mustIcon("nav-arrow-left")  // web preview Back
+	iconNavRight   = mustIcon("nav-arrow-right") // web preview Forward
+	iconZoomIn     = mustIcon("zoom-in")         // web preview zoom in
+	iconZoomOut    = mustIcon("zoom-out")        // web preview zoom out
+	iconFit        = mustIcon("expand")          // web preview best-fit zoom
+	iconLockSlash  = mustIcon("lock-slash")      // address bar: insecure (non-https)
+	iconStar       = mustIcon("star")            // address bar: bookmark toggle (star)
+	iconBin        = mustIcon("bin")             // sidebar context menu: unsubscribe (delete)
+	iconFolder     = mustIcon("folder")          // sidebar virtual folder
+	iconFolderPlus = mustIcon("folder-plus")     // sidebar context menu: new folder
 )
 
 // MenuIconNewFolder and MenuIconFolder paint the sidebar folder context-menu
@@ -80,10 +81,23 @@ func drawFolderIcon(p painter.Painter, r toolkit.Rect, col toolkit.RGBA) {
 // accent that made the toggled state hard to see.
 var bookmarkGold = toolkit.RGBA{R: 0xF2, G: 0xA6, B: 0x1C, A: 0xFF}
 
-// drawIcon blits a cached Iconoir mask into r, inset slightly so the glyph keeps
-// a little breathing room within its cell (matching the previous ~80% weight).
-func drawIcon(p painter.Painter, r toolkit.Rect, ic *iconoir.Icon, col toolkit.RGBA) {
-	iconoir.DrawIcon(p, iconInset(r, 88), ic, col)
+// mustIcon returns the pack's SVG source for name, and panics if the pack does
+// not carry it. The names below are compile-time constants checked by
+// TestIconsResolve, so a miss is a typo, not a runtime condition to handle.
+func mustIcon(name string) string {
+	doc := iconoir.Icon(name)
+	if doc == "" {
+		panic("ui: no Iconoir icon named " + name)
+	}
+	return doc
+}
+
+// drawIcon blits an Iconoir glyph into r, inset slightly so it keeps a little
+// breathing room within its cell (matching the previous ~80% weight).
+// toolkit.SVGIcon caches the rasterization per (document, ink), so this is a map
+// lookup and a blit rather than an SVG parse per frame.
+func drawIcon(p painter.Painter, r toolkit.Rect, ic string, col toolkit.RGBA) {
+	toolkit.SVGIcon(ic)(p, iconInset(r, 88), col)
 }
 
 // MenuIconRefresh, MenuIconMarkRead and MenuIconUnsubscribe paint the sidebar
@@ -150,7 +164,7 @@ func (s *Scene) chromeGlyphBox(r toolkit.Rect) toolkit.Rect {
 // chromeIcon returns a toolkit.Browser icon hook that blits ic at burger size
 // (chromeGlyphBox) within the button rect. Wiring the toolbar buttons through it
 // keeps every preview-chrome glyph aligned to the topbar burger.
-func (s *Scene) chromeIcon(ic *iconoir.Icon) func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
+func (s *Scene) chromeIcon(ic string) func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
 	return func(p painter.Painter, r toolkit.Rect, ink toolkit.RGBA) {
 		drawIcon(p, s.chromeGlyphBox(r), ic, ink)
 	}
