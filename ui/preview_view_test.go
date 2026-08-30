@@ -324,3 +324,43 @@ func TestTightPix(t *testing.T) {
 		t.Fatalf("packed copy len = %d, want %d", len(got), 2*2*4)
 	}
 }
+
+// TestDismissPreviewOnSwitch: with the setting on, switching to a different
+// subscription/group closes the open preview; re-selecting the same filter, or
+// switching with the setting off, leaves it open.
+func TestDismissPreviewOnSwitch(t *testing.T) {
+	sub := source.Item{ID: "1", Source: source.HackerNews, Title: "Prev", Body: "b", Link: "https://ex.com/p"}
+	openPreview := func(dismiss bool) *Scene {
+		s := New(1200, 700, ThemeFor(OSMac, false))
+		s.SetProfiles([]settings.Profile{{Name: "P"}}, 0)
+		s.SetSubs([]Subscription{{Source: source.Reddit, Channel: "a"}, {Source: source.Reddit, Channel: "b"}})
+		s.SetActive(0)
+		s.SetDismissPreviewOnSwitch(dismiss)
+		s.SelectPreview(sub)
+		if !s.previewHas {
+			t.Fatal("preview should be open after SelectPreview")
+		}
+		return s
+	}
+
+	// On + a real switch → dismissed.
+	s := openPreview(true)
+	s.SetActive(1)
+	if s.previewHas {
+		t.Fatal("switching subscription with the setting on should dismiss the preview")
+	}
+
+	// On + re-selecting the SAME filter → kept (no change, nothing to dismiss).
+	s = openPreview(true)
+	s.SetActive(0) // already active
+	if !s.previewHas {
+		t.Fatal("re-selecting the active filter should not dismiss the preview")
+	}
+
+	// Off + a switch → kept.
+	s = openPreview(false)
+	s.SetActive(1)
+	if !s.previewHas {
+		t.Fatal("switching with the setting off should keep the preview open")
+	}
+}

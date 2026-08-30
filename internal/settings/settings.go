@@ -120,6 +120,13 @@ type Settings struct {
 	// it through [Settings.InfiniteScrollEnabled], which applies that default.
 	InfiniteScroll *bool `json:"infiniteScroll,omitempty"`
 
+	// DismissPreviewOnSwitch closes the preview pane when the active
+	// subscription/group changes, so a stale item's detail does not linger over
+	// the new feed. A tri-state pointer like InfiniteScroll: nil defaults to on
+	// (DefaultDismissPreviewOnSwitch); an explicit false persists. Read it through
+	// [Settings.DismissPreviewOnSwitchEnabled].
+	DismissPreviewOnSwitch *bool `json:"dismissPreviewOnSwitch,omitempty"`
+
 	// AutoImportSessions, when enabled, imports a provider's logged-in session
 	// cookie from the browser at startup for any session-based source (X,
 	// Instagram, TikTok) the active profile subscribes to but has no account for
@@ -261,6 +268,10 @@ const DefaultBrowserSingleTab = true
 // posts on scrolling to the bottom of the feed: enabled.
 const DefaultInfiniteScroll = true
 
+// DefaultDismissPreviewOnSwitch is whether a fresh install closes the preview
+// pane when the active subscription/group changes: enabled.
+const DefaultDismissPreviewOnSwitch = true
+
 // DefaultAutoImportSessions is whether a fresh install imports a subscribed
 // provider's browser session at startup when it has no account yet: enabled.
 const DefaultAutoImportSessions = true
@@ -284,6 +295,15 @@ func (s *Settings) InfiniteScrollEnabled() bool {
 		return DefaultInfiniteScroll
 	}
 	return *s.InfiniteScroll
+}
+
+// DismissPreviewOnSwitchEnabled reports the effective dismiss-preview-on-switch
+// setting, applying the enabled default when the preference is unset (nil).
+func (s *Settings) DismissPreviewOnSwitchEnabled() bool {
+	if s.DismissPreviewOnSwitch == nil {
+		return DefaultDismissPreviewOnSwitch
+	}
+	return *s.DismissPreviewOnSwitch
 }
 
 // AutoImportSessionsEnabled reports the effective auto-import setting, applying
@@ -442,18 +462,19 @@ func (s *Settings) PluginsDirOrDefault() string {
 // includes Reddit and Hacker News, the system theme, and the OS media cache.
 func Default() *Settings {
 	return &Settings{
-		Profiles:           []Profile{{Name: "Home", Subs: defaultSubs()}},
-		Active:             0,
-		Theme:              ThemeSystem,
-		CachePath:          defaultCachePath(),
-		BrowserSingleTab:   boolPtr(DefaultBrowserSingleTab),
-		InfiniteScroll:     boolPtr(DefaultInfiniteScroll),
-		AutoImportSessions: boolPtr(DefaultAutoImportSessions),
-		ZoomInKey:          DefaultZoomInKey,
-		ZoomOutKey:         DefaultZoomOutKey,
-		SignInBrowser:      DefaultSignInBrowser,
-		PreviewTextScale:   DefaultPreviewTextScale,
-		MediaCacheMB:       DefaultMediaCacheMB,
+		Profiles:               []Profile{{Name: "Home", Subs: defaultSubs()}},
+		Active:                 0,
+		Theme:                  ThemeSystem,
+		CachePath:              defaultCachePath(),
+		BrowserSingleTab:       boolPtr(DefaultBrowserSingleTab),
+		InfiniteScroll:         boolPtr(DefaultInfiniteScroll),
+		DismissPreviewOnSwitch: boolPtr(DefaultDismissPreviewOnSwitch),
+		AutoImportSessions:     boolPtr(DefaultAutoImportSessions),
+		ZoomInKey:              DefaultZoomInKey,
+		ZoomOutKey:             DefaultZoomOutKey,
+		SignInBrowser:          DefaultSignInBrowser,
+		PreviewTextScale:       DefaultPreviewTextScale,
+		MediaCacheMB:           DefaultMediaCacheMB,
 	}
 }
 
@@ -531,6 +552,11 @@ func (s *Settings) Normalize() {
 		// A settings file predating this field (or a fresh one) defaults to
 		// infinite scroll enabled.
 		s.InfiniteScroll = boolPtr(DefaultInfiniteScroll)
+	}
+	if s.DismissPreviewOnSwitch == nil {
+		// A settings file predating this field (or a fresh one) defaults to
+		// dismissing the preview on a subscription/group switch.
+		s.DismissPreviewOnSwitch = boolPtr(DefaultDismissPreviewOnSwitch)
 	}
 	if s.AutoImportSessions == nil {
 		// A settings file predating this field (or a fresh one) defaults to

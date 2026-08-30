@@ -112,25 +112,26 @@ const (
 	// Settings-view actions (Mode == ModeSettings):
 	HitSelectProfile // Profile = index being edited
 	HitNewProfile
-	HitDeleteProfile     // Profile = index
-	HitRenameProfile     // focus the rename field for Profile = index
-	HitSelectKind        // Value = source kind for the add-subscription palette
-	HitAddSub            // commit the channel input into the edited profile
-	HitRemoveSub         // Profile = index, Sub = subscription index
-	HitFocusChannel      // focus the add-channel input
-	HitFocusCache        // focus the media-cache path input
-	HitFocusCacheSize    // focus the media-cache size-limit (MB) input
-	HitFocusCacheBackend // focus the media-cache backend (plugin path) input
-	HitFocusZoomIn       // focus the zoom-in browser-shortcut key input
-	HitFocusZoomOut      // focus the zoom-out browser-shortcut key input
-	HitTheme             // Value = "system"|"light"|"dark"
-	HitSignInBrowser     // Value = "default"|"firefox"|"chrome"|"safari"|"edge" (sign-in browser)
-	HitBrowserTabs       // Value = "multi"|"single" (web-preview browser tab mode)
-	HitBrowserChrome     // Value = "shown"|"hidden" (web-preview toolbar/urlbar visibility)
-	HitInfiniteScroll    // Value = "on"|"off" (fetch next page on scroll-to-bottom)
-	HitBiometricUnlock   // Value = "on"|"off" (store/read secrets behind a biometric gate)
-	HitClearRenderCache  // empty the web-preview render cache
-	HitCloseSettings     // leave the settings view
+	HitDeleteProfile          // Profile = index
+	HitRenameProfile          // focus the rename field for Profile = index
+	HitSelectKind             // Value = source kind for the add-subscription palette
+	HitAddSub                 // commit the channel input into the edited profile
+	HitRemoveSub              // Profile = index, Sub = subscription index
+	HitFocusChannel           // focus the add-channel input
+	HitFocusCache             // focus the media-cache path input
+	HitFocusCacheSize         // focus the media-cache size-limit (MB) input
+	HitFocusCacheBackend      // focus the media-cache backend (plugin path) input
+	HitFocusZoomIn            // focus the zoom-in browser-shortcut key input
+	HitFocusZoomOut           // focus the zoom-out browser-shortcut key input
+	HitTheme                  // Value = "system"|"light"|"dark"
+	HitSignInBrowser          // Value = "default"|"firefox"|"chrome"|"safari"|"edge" (sign-in browser)
+	HitBrowserTabs            // Value = "multi"|"single" (web-preview browser tab mode)
+	HitBrowserChrome          // Value = "shown"|"hidden" (web-preview toolbar/urlbar visibility)
+	HitInfiniteScroll         // Value = "on"|"off" (fetch next page on scroll-to-bottom)
+	HitDismissPreviewOnSwitch // Value = "on"|"off" (close the preview when the sub/group changes)
+	HitBiometricUnlock        // Value = "on"|"off" (store/read secrets behind a biometric gate)
+	HitClearRenderCache       // empty the web-preview render cache
+	HitCloseSettings          // leave the settings view
 
 	// Accounts-view actions (Mode == ModeAccounts):
 	HitAccounts            // the sidebar 👤 Accounts entry (open the accounts editor)
@@ -213,10 +214,13 @@ type Scene struct {
 	// the list's OnReachBottom (a pull past the newest re-aggregates). Both are
 	// nil-safe (only called when installed). infiniteScroll gates whether the
 	// next-page trigger is offered.
-	OnReachBottom   func()
-	OnPullRefresh   func()
-	infiniteScroll  bool
-	biometricUnlock bool // secrets stored/read behind a biometric user-presence gate
+	OnReachBottom  func()
+	OnPullRefresh  func()
+	infiniteScroll bool
+	// dismissPreviewOnSwitch closes the preview pane when the active filter changes
+	// (see SetActive), so a stale item's detail does not linger over the new feed.
+	dismissPreviewOnSwitch bool
+	biometricUnlock        bool // secrets stored/read behind a biometric user-presence gate
 
 	// Live-loading feedback (streaming aggregation). loading is set while a
 	// refresh is in progress; loadDone/loadTotal track how many sources have
@@ -723,6 +727,13 @@ func (s *Scene) BrowserSingleTab() bool { return s.browser.Mode() == toolkit.Sin
 // is always on and unaffected — only the bottom trigger is gated.
 func (s *Scene) SetInfiniteScroll(v bool) { s.infiniteScroll = v; s.touch() }
 
+// SetDismissPreviewOnSwitch controls whether switching to another
+// subscription/group closes the preview pane (see SetActive).
+func (s *Scene) SetDismissPreviewOnSwitch(v bool) { s.dismissPreviewOnSwitch = v; s.touch() }
+
+// DismissPreviewOnSwitch reports the current dismiss-preview-on-switch setting.
+func (s *Scene) DismissPreviewOnSwitch() bool { return s.dismissPreviewOnSwitch }
+
 // InfiniteScroll reports whether the bottom-of-feed next-page trigger is enabled.
 func (s *Scene) InfiniteScroll() bool { return s.infiniteScroll }
 
@@ -938,7 +949,25 @@ func (s *Scene) SetSubs(subs []Subscription) { s.Subs = subs; s.subsRev++; s.tou
 
 // SetActive selects the sidebar filter (a subscription index, or AllFilter). A
 // filter switch opens the (re-filtered) feed at its newest post.
-func (s *Scene) SetActive(i int) { s.Active = i; s.feedBottomPending = true; s.touch() }
+func (s *Scene) SetActive(i int) {
+	// Switching to a different filter closes the preview pane (when enabled), so a
+	// stale item's detail does not linger over the feed it no longer belongs to.
+	if s.dismissPreviewOnSwitch && i != s.Active {
+		s.clearPreview()
+	}
+	s.Active = i
+	s.feedBottomPending = true
+	s.touch()
+}
+
+// clearPreview hides the preview pane and forgets the previewed item.
+func (s *Scene) clearPreview() {
+	s.previewHas = false
+	s.previewItem = source.Item{}
+	s.previewScroll.offset = 0
+	s.previewImgPending = false
+	s.previewFocused = false
+}
 
 // ActiveFilter returns the selected sidebar filter — a subscription index, or
 // [AllFilter] when no single subscription is selected. Pull-to-refresh reads it
@@ -1038,24 +1067,26 @@ func (s *Scene) Settings() *settings.Settings {
 	// stored as false and is not re-defaulted to single-tab on the next load.
 	singleTab := s.BrowserSingleTab()
 	infinite := s.infiniteScroll
+	dismiss := s.dismissPreviewOnSwitch
 	return &settings.Settings{
-		Profiles:          s.Profiles,
-		Active:            s.activeProf,
-		Theme:             s.themeName,
-		CachePath:         s.cachePath,
-		MediaCacheMB:      s.cacheSizeMB,
-		CacheBackend:      s.cacheBackend,
-		Accounts:          s.EditedAccounts(),
-		BrowserSingleTab:  &singleTab,
-		InfiniteScroll:    &infinite,
-		BiometricUnlock:   s.biometricUnlock,
-		HideBrowserChrome: s.BrowserChromeHidden(),
-		SignInBrowser:     s.signInBrowser,
-		ZoomInKey:         s.BrowserZoomInKey(),
-		ZoomOutKey:        s.BrowserZoomOutKey(),
-		Bookmarks:         s.BookmarkedURLs(),
-		PreviewTextScale:  s.previewTextScale,
-		SidebarFolders:    s.SidebarFolders(),
+		Profiles:               s.Profiles,
+		Active:                 s.activeProf,
+		Theme:                  s.themeName,
+		CachePath:              s.cachePath,
+		MediaCacheMB:           s.cacheSizeMB,
+		CacheBackend:           s.cacheBackend,
+		Accounts:               s.EditedAccounts(),
+		BrowserSingleTab:       &singleTab,
+		InfiniteScroll:         &infinite,
+		DismissPreviewOnSwitch: &dismiss,
+		BiometricUnlock:        s.biometricUnlock,
+		HideBrowserChrome:      s.BrowserChromeHidden(),
+		SignInBrowser:          s.signInBrowser,
+		ZoomInKey:              s.BrowserZoomInKey(),
+		ZoomOutKey:             s.BrowserZoomOutKey(),
+		Bookmarks:              s.BookmarkedURLs(),
+		PreviewTextScale:       s.previewTextScale,
+		SidebarFolders:         s.SidebarFolders(),
 	}
 }
 

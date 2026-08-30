@@ -357,6 +357,17 @@ func TestMouseDownProfileAndSettings(t *testing.T) {
 	if !s.InfiniteScroll() {
 		t.Fatal("infinite scroll still off after clicking on")
 	}
+	// The dismiss-preview-on-switch toggle sits just below infinite scroll; re-pin
+	// the bottom and flip it off then on, asserting the route reached the scene.
+	s.Scroll(1 << 20)
+	clickValue(t, h, ui.HitDismissPreviewOnSwitch, "off")
+	if s.DismissPreviewOnSwitch() {
+		t.Fatal("dismiss-preview-on-switch still on after clicking off")
+	}
+	clickValue(t, h, ui.HitDismissPreviewOnSwitch, "on")
+	if !s.DismissPreviewOnSwitch() {
+		t.Fatal("dismiss-preview-on-switch still off after clicking on")
+	}
 	// The SECURITY biometric-unlock toggle sits below infinite scroll; re-pin the
 	// bottom and flip it on then off, asserting the route reached SetBiometricUnlock.
 	s.Scroll(1 << 20)

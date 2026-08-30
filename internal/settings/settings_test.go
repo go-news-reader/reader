@@ -624,3 +624,28 @@ func TestSourceFetchConcurrency(t *testing.T) {
 		}
 	}
 }
+
+func TestDismissPreviewOnSwitchDefaultAndRoundTrip(t *testing.T) {
+	// Default seeds it enabled.
+	d := Default()
+	if d.DismissPreviewOnSwitch == nil || !*d.DismissPreviewOnSwitch || !d.DismissPreviewOnSwitchEnabled() {
+		t.Fatalf("default dismiss-preview-on-switch = %v, want enabled", d.DismissPreviewOnSwitch)
+	}
+	// The Enabled helper applies the default on an unset field.
+	s := &Settings{}
+	if s.DismissPreviewOnSwitchEnabled() != DefaultDismissPreviewOnSwitch {
+		t.Fatal("DismissPreviewOnSwitchEnabled() on an unset field should apply the default")
+	}
+	// Normalize backfills an unset field (a settings file predating it) to enabled.
+	s.Normalize()
+	if s.DismissPreviewOnSwitch == nil || !*s.DismissPreviewOnSwitch {
+		t.Fatal("Normalize should backfill an unset dismiss-preview flag to enabled")
+	}
+	// An explicit opt-out to off survives Normalize.
+	off := false
+	s2 := &Settings{Profiles: []Profile{{Name: "x"}}, Theme: ThemeDark, CachePath: "/c", DismissPreviewOnSwitch: &off}
+	s2.Normalize()
+	if s2.DismissPreviewOnSwitch == nil || *s2.DismissPreviewOnSwitch || s2.DismissPreviewOnSwitchEnabled() {
+		t.Fatal("Normalize clobbered an explicit dismiss-preview opt-out")
+	}
+}

@@ -464,6 +464,14 @@ func (s *Scene) layoutSettings() {
 		{label: "Infinite scroll off", kind: HitInfiniteScroll, value: "off", active: !infinite},
 	})
 	y += btnH + pad
+	label(pad, y, "Close the preview pane when you switch to another subscription or group")
+	y += m.side.height + gap
+	dismiss := s.DismissPreviewOnSwitch()
+	s.layoutBtnRow(pad, y, []sButton{
+		{label: "Dismiss preview on switch", kind: HitDismissPreviewOnSwitch, value: "on", active: dismiss},
+		{label: "Keep preview open", kind: HitDismissPreviewOnSwitch, value: "off", active: !dismiss},
+	})
+	y += btnH + pad
 
 	// SECURITY: biometric unlock of the credential vault. Fully enforced on macOS
 	// today (Touch ID); on Windows/Linux the write-side gate is stored and the

@@ -354,6 +354,9 @@ func (h *Handler) runHit(hit ui.Hit) {
 	case ui.HitInfiniteScroll:
 		s.SetInfiniteScroll(hit.Value == "on") // fetch next page on scroll-to-bottom
 		h.a.ApplySceneSettings()
+	case ui.HitDismissPreviewOnSwitch:
+		s.SetDismissPreviewOnSwitch(hit.Value == "on") // close the preview when the sub/group changes
+		h.a.ApplySceneSettings()
 	case ui.HitBiometricUnlock:
 		h.a.SetBiometricUnlock(hit.Value == "on") // store/read secrets behind a biometric gate
 	case ui.HitClearRenderCache:
