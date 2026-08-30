@@ -482,17 +482,16 @@ type Scene struct {
 	// source headers. Session state (not persisted), like folderCollapsed; changing
 	// it bumps foldRev so the cached sidebar sprite re-rasterises.
 	sourceOpen source.Kind
-	// The open source's accounts scroll within a bounded window so the other
-	// section headers stay on screen (the accordion never pushes a header out of
-	// the band). sourceSubScroll is the first shown account's offset into the open
-	// section; sourceSubWindow how many fit below the always-shown header rows;
-	// sourceSubTotal the section's full count; sourceSubHeaderRow the open header's
-	// flattened row index (for the section scrollbar). buildSideTree recomputes all
-	// four each layout and clamps sourceSubScroll; they are zero when nothing is open.
-	sourceSubScroll    int
-	sourceSubWindow    int
-	sourceSubTotal     int
-	sourceSubHeaderRow int
+	// The open source's accounts are rendered by sideAccountList — a real
+	// toolkit.ListBox that OWNS its own scroll window, scrollbar and reserved gutter
+	// — painted over the blank spacer rows the TreeView leaves under the open header
+	// (see layoutOpenSection). It scrolls the full account list WITHIN that region,
+	// so the accordion never pushes another header or the discovery entries out of
+	// the band. sideAccountRect is that region's on-screen rect (X=0, W=sidebarW),
+	// used by the render, hit-test and wheel routers; it is empty when nothing is
+	// open. buildSideTree recomputes both each layout.
+	sideAccountList *toolkit.ListBox
+	sideAccountRect toolkit.Rect
 	// renamingFolder is the folder currently being renamed inline in the sidebar
 	// (empty = none); renameFolderEntry is the focused toolkit.Entry that holds the
 	// edit buffer (its Text) and owns caret/Backspace/Arrows/Home/End behaviour.
@@ -1440,12 +1439,12 @@ func (s *Scene) Scroll(dy int) {
 	// feed. The device-pixel delta is converted to whole rows (at least one in the
 	// wheel direction) since the TreeView scrolls by row.
 	if !s.sidebarCollapsed && s.lastMouseX < s.m.sidebarW {
-		s.layout() // refresh the tree, band + TreeView bounds before scrolling it
-		// An open source group whose accounts overflow their bounded window scrolls
-		// that window (the offset is re-clamped by buildSideTree on the next layout),
-		// keeping every section header on screen; nothing else has diverted the wheel.
-		if s.sourceOpen != "" && s.sourceSubTotal > s.sourceSubWindow {
-			s.sourceSubScroll += wheelRows(dy, s.m.sideItemH)
+		s.layout() // refresh the tree, band + list bounds before scrolling
+		// An open source group whose accounts overflow their window scrolls the
+		// ListBox itself (which clamps at the top + bottom), keeping every section
+		// header on screen; nothing else has diverted the wheel.
+		if s.sectionListOverflows() {
+			s.sideAccountList.ScrollBy(wheelRows(dy, s.m.sideItemH))
 			s.touch()
 			return
 		}

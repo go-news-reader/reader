@@ -195,20 +195,20 @@ func TestSidebarWheelScroll(t *testing.T) {
 	s.SetSubs(subs)
 	s.ToggleSidebarSource(source.Reddit) // expand the group so its 40 accounts show
 	s.layout()
-	// The open section overflows its bounded window, so a wheel over the sidebar
-	// scrolls that window's inner offset (keeping the headers pinned), not the tree.
-	if s.sourceSubTotal <= s.sourceSubWindow {
-		t.Fatal("40 subs should overflow the open section's window")
+	// The open section overflows its ListBox window, so a wheel over the sidebar
+	// scrolls the widget (keeping the headers pinned), not the tree.
+	if !s.sectionListOverflows() {
+		t.Fatal("40 subs should overflow the open section's ListBox window")
 	}
 	s.MouseMove(10, 150)
 	s.Scroll(200) // down
-	if s.sourceSubScroll == 0 {
+	if s.sideAccountList.ScrollRow().Get() == 0 {
 		t.Fatal("wheel down did not scroll the open section")
 	}
-	down := s.sourceSubScroll
+	down := s.sideAccountList.ScrollRow().Get()
 	s.Scroll(-200) // up
-	if s.sourceSubScroll >= down {
-		t.Fatalf("wheel up did not scroll back: %d !< %d", s.sourceSubScroll, down)
+	if s.sideAccountList.ScrollRow().Get() >= down {
+		t.Fatalf("wheel up did not scroll back: %d !< %d", s.sideAccountList.ScrollRow().Get(), down)
 	}
 }
 
@@ -333,9 +333,13 @@ func TestSidebarAccordionKeepsHeadersVisible(t *testing.T) {
 	s.ToggleSidebarSource(source.Instagram) // open the huge one
 	s.layout()
 
-	// The section is windowed, not laid out whole.
-	if s.sourceSubTotal != 300 || s.sourceSubWindow >= 300 {
-		t.Fatalf("open section not windowed: total=%d window=%d", s.sourceSubTotal, s.sourceSubWindow)
+	// The section is windowed, not laid out whole: all 300 accounts are in the
+	// ListBox model, but its window (the section rect) shows fewer than that.
+	if got := len(s.sideAccountList.Items); got != 300 {
+		t.Fatalf("open section should hold all 300 accounts, got %d", got)
+	}
+	if !s.sectionListOverflows() {
+		t.Fatal("open section not windowed: 300 accounts should overflow the window")
 	}
 	// Every visible row fits the band: the tree never overflows, so no header is
 	// pushed off. (flattenSide is the exact visible-row set the TreeView paints.)
@@ -392,18 +396,28 @@ func TestSidebarFolderOverflowScrollsTree(t *testing.T) {
 	}
 }
 
-// TestWindowOpenSectionGuards covers windowOpenSection's defensive branches: an
+// TestWindowOpenSectionGuards covers layoutOpenSection's defensive branches: an
 // open source no longer present in the profile, a non-positive row height, a band
-// too small for even one account row, and a negative inner offset.
+// too small for even one account row, and the ListBox clamping an over-scroll.
 func TestWindowOpenSectionGuards(t *testing.T) {
+	spacers := func(s *Scene) int {
+		n := 0
+		for _, nd := range s.flattenSide() {
+			if sideData(nd).Kind == sideSpacer {
+				n++
+			}
+		}
+		return n
+	}
+
 	// Open a source that has no subscriptions in this profile → no header node →
-	// the function returns without windowing anything.
+	// layoutOpenSection returns without handing anything to the ListBox.
 	s := New(760, 380, ThemeFor(OSMac, false))
 	s.SetSubs([]Subscription{{Source: source.Reddit, Channel: "r0"}})
 	s.ToggleSidebarSource(source.Twitter) // Twitter has no subs here
 	s.layout()
-	if s.sourceSubTotal != 0 {
-		t.Fatalf("an absent open source must not window anything, got total=%d", s.sourceSubTotal)
+	if got := len(s.sideAccountList.Items); got != 0 {
+		t.Fatalf("an absent open source must not populate the ListBox, got %d items", got)
 	}
 
 	// A real, overflowing open section, then the edge branches.
@@ -416,19 +430,22 @@ func TestWindowOpenSectionGuards(t *testing.T) {
 	s.ToggleSidebarSource(source.Instagram)
 	s.layout()
 
-	// Non-positive row height: the window falls back to the full section.
+	// Non-positive row height: the window falls back to the full section (a spacer
+	// per account), so nothing is silently dropped when the band can't be measured.
 	s.m.sideItemH = 0
 	s.buildSideTree()
-	if s.sourceSubWindow != 40 {
-		t.Fatalf("rh<=0 should window the whole section, got %d", s.sourceSubWindow)
+	if got := spacers(s); got != 40 {
+		t.Fatalf("rh<=0 should window the whole section, got %d spacers", got)
 	}
 	s.layout() // restore a real row height
 
-	// A negative offset is clamped up to the first account.
-	s.sourceSubScroll = -5
-	s.layout()
-	if s.sourceSubScroll != 0 {
-		t.Fatalf("a negative offset must clamp to 0, got %d", s.sourceSubScroll)
+	// The ListBox clamps an over-scroll: driving it far past the end and reading back
+	// through Draw never scrolls beyond the last full window (a wheel up from the top
+	// stays at 0).
+	s.MouseMove(10, 150)
+	s.Scroll(-1000) // wheel up from the top
+	if got := s.sideAccountList.ScrollRow().Get(); got != 0 {
+		t.Fatalf("a wheel up from the top must clamp to 0, got %d", got)
 	}
 
 	// A band too short for even one account row still shows one (the list scrolls).
@@ -438,8 +455,8 @@ func TestWindowOpenSectionGuards(t *testing.T) {
 	tiny.layout()
 	tiny.sideBandBot = tiny.sideBandTop + tiny.m.sideItemH // room for a single row
 	tiny.buildSideTree()
-	if tiny.sourceSubWindow != 1 {
-		t.Fatalf("a one-row band should window a single account, got %d", tiny.sourceSubWindow)
+	if got := spacers(tiny); got != 1 {
+		t.Fatalf("a one-row band should window a single account, got %d spacers", got)
 	}
 }
 

@@ -236,18 +236,14 @@ func (s *Scene) Draw(buf []byte) {
 		div.SetBounds(toolkit.Rect{X: m.sidebarW - 1, Y: m.topbarH, W: 1, H: s.H - m.topbarH})
 		div.Draw(p, th)
 		s.drawGripHandle(p, m.sidebarW)
-		// The sidebar's scrollbar is drawn by the scene (HideScrollbar on the
-		// TreeView) so it is the SAME slim rounded muted bar as the card list,
-		// not the TreeView's built-in square/accent one. Rows → pixels via the
-		// row height so drawVScrollbar's proportion math matches the feed's.
-		if s.sourceOpen != "" && s.sourceSubTotal > s.sourceSubWindow {
-			// The open section's accounts scroll within a bounded window; the bar
-			// spans just that window and reflects the inner offset, so the pinned
-			// headers around it carry no bar of their own.
-			rh := m.sideItemH
-			area := toolkit.Rect{X: 0, Y: s.sideBandTop + (s.sourceSubHeaderRow+1)*rh, W: m.sidebarW, H: s.sourceSubWindow * rh}
-			s.drawVScrollbar(p, area, m.sidebarW, s.sourceSubTotal*rh, s.sourceSubScroll*rh)
-		} else if off, _, total, shown := s.sideTree.ScrollExtent(); shown {
+		// The whole-list scrollbar (a folder expanded past the band, etc.) is drawn
+		// by the scene (HideScrollbar on the TreeView) so it is the SAME slim rounded
+		// muted bar as the card list, not the TreeView's built-in square/accent one.
+		// Rows → pixels via the row height so drawVScrollbar's proportion math matches
+		// the feed's. The open accordion section's OWN scrollbar is NOT drawn here: the
+		// section's account ListBox paints its own bar + reserved gutter (see
+		// sidebarSprite), which is the whole point of routing it through the widget.
+		if off, _, total, shown := s.sideTree.ScrollExtent(); shown {
 			rh := m.sideItemH
 			area := toolkit.Rect{X: 0, Y: s.sideBandTop, W: m.sidebarW, H: s.sideBandBot - s.sideBandTop}
 			s.drawVScrollbar(p, area, m.sidebarW, total*rh, off*rh)
@@ -293,7 +289,8 @@ type sidebarKey struct {
 	pendRev    int
 	anim       int // animation frame, but only while a source is pending
 	sideScroll int // TreeView top-row scroll index
-	secScroll  int // open section's inner account-window offset
+	secScroll  int // open section account ListBox's top-row scroll index
+	secSel     int // open section account ListBox's selected row (re-raster on select)
 	fold       int // folder/collapse revision (folder set + expand state)
 }
 type topbarKey struct {
@@ -319,7 +316,11 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	if s.PendingCount() > 0 {
 		anim = s.animFrame
 	}
-	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim, sideScroll: s.sideTree.ScrollRow().Get(), secScroll: s.sourceSubScroll, fold: s.foldRev}
+	secScroll, secSel := 0, -1
+	if s.sideAccountList != nil {
+		secScroll, secSel = s.sideAccountList.ScrollRow().Get(), s.sideAccountList.Selected().Get()
+	}
+	k := sidebarKey{h: h, sub: m.sidebarW, scale: s.Scale, theme: th, active: s.Active, activeP: s.activeProf, subsRev: s.subsRev, profRev: s.profRev, pendRev: s.pendRev, anim: anim, sideScroll: s.sideTree.ScrollRow().Get(), secScroll: secScroll, secSel: secSel, fold: s.foldRev}
 	if s.sidebarSpr != nil && s.sidebarKey == k {
 		return s.sidebarSpr
 	}
@@ -362,6 +363,16 @@ func (s *Scene) sidebarSprite() *image.RGBA {
 	sideTheme := *th
 	sideTheme.Surface = th.SurfaceAlt
 	s.sideTree.Draw(p, &sideTheme)
+
+	// The open accordion section's accounts are a real toolkit.ListBox drawn over
+	// the blank spacer rows the TreeView left under the open header. It paints the
+	// accounts, its own scrollbar and the reserved gutter (so no count chip sits
+	// under the thumb) — the component owning its bar is the whole point. Its bounds
+	// were set sprite-local in layoutOpenSection; it reads the same sideTheme so an
+	// unselected account row blends into the SurfaceAlt sidebar ground.
+	if s.sectionListShown() {
+		s.sideAccountList.Draw(p, &sideTheme)
+	}
 
 	// Pinned entries at the bottom: Accounts, Network log, Settings. Each icon is
 	// drawn (not a font glyph) so nothing renders as a tofu box.
@@ -695,6 +706,19 @@ func (s *Scene) HitTest(x, y int) Hit {
 		}
 		if inRect(s.accountsR, x, y) {
 			return Hit{Kind: HitAccounts}
+		}
+		// The open accordion section's accounts are the ListBox's, not the TreeView's:
+		// a click inside its region maps through the widget's own hit-test (which
+		// accounts for its scroll offset) to the subscription that row stands for.
+		if r := s.sideAccountRect; s.sectionListShown() && inRect(r, x, y) {
+			// A resolved account row returns HitSub; a click that maps to no account
+			// (past the last row) falls through to the spacer node below, which
+			// sideNodeHit resolves to HitNone — the same result, one path.
+			if row := s.sideAccountList.IndexAt(x-r.X, y-r.Y); row >= 0 {
+				if sub, ok := s.accountRowSub(row); ok {
+					return Hit{Kind: HitSub, Sub: sub}
+				}
+			}
 		}
 		// The scrollable middle list is the TreeView: map the click to the node
 		// under it (band-local coordinates). A row scrolled out of the band, or a

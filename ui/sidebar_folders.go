@@ -230,7 +230,11 @@ func (s *Scene) ToggleSidebarSource(kind source.Kind) {
 	} else {
 		s.sourceOpen = kind
 	}
-	s.sourceSubScroll = 0 // a freshly opened section starts at its first account
+	// A freshly opened section starts at its first account: reset the ListBox's own
+	// scroll position (the widget now owns the section's scroll offset).
+	if s.sideAccountList != nil {
+		s.sideAccountList.ScrollRow().Set(0)
+	}
 	s.foldRev++
 	s.touch()
 }
@@ -287,6 +291,23 @@ const (
 // it: a subscription, a folder, or nothing. The window layer calls it on a
 // secondary click.
 func (s *Scene) SidebarContextAt(x, y int) SidebarContext {
+	// The open accordion section's account rows are the ListBox's, not the
+	// TreeView's: a right-click inside its region maps through the widget's own
+	// hit-test to the subscription that row stands for (the same routing HitTest
+	// uses for a left-click), so the per-subscription context menu still opens.
+	if s.mode == ModeFeed {
+		s.layout()
+		if r := s.sideAccountRect; s.sectionListShown() && inRect(r, x, y) {
+			if row := s.sideAccountList.IndexAt(x-r.X, y-r.Y); row >= 0 {
+				if sub, ok := s.accountRowSub(row); ok {
+					su := s.Subs[sub]
+					return SidebarContext{Kind: SidebarCtxSub, Sub: sub, Source: su.Source, Channel: su.Channel}
+				}
+			}
+			// A click that maps to no account falls through to the spacer node, which
+			// carries no context — the same empty result.
+		}
+	}
 	node := s.sidebarNodeAt(x, y)
 	if node == nil {
 		return SidebarContext{}
