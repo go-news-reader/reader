@@ -5,13 +5,13 @@ import (
 	"image/color"
 	"testing"
 
+	window "github.com/go-widgets/application"
 	"github.com/go-widgets/toolkit"
 
 	"github.com/go-news-reader/reader/app"
 	"github.com/go-news-reader/reader/feeds"
 	"github.com/go-news-reader/reader/internal/browsercookies"
 	"github.com/go-news-reader/reader/internal/settings"
-	"github.com/go-news-reader/reader/internal/window"
 	"github.com/go-news-reader/reader/source"
 	"github.com/go-news-reader/reader/ui"
 )

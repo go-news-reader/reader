@@ -14,7 +14,8 @@ require (
 	github.com/go-instagram/instagram v0.5.0
 	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.2.0
-	github.com/go-macos/statusitem v0.3.0
+	github.com/go-macos/appbundle v0.0.0-20260830075838-3d39525ae64c
+	github.com/go-macos/localauthentication v0.0.0-20260830135708-6e0c36757903
 	github.com/go-mastodon/mastodon v0.3.0
 	github.com/go-newsgroups/newznab v0.1.0
 	github.com/go-newsgroups/nntp v0.2.2
@@ -26,10 +27,11 @@ require (
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.3.0
 	github.com/go-webengine/engine v0.3.11
+	github.com/go-widgets/application v0.1.1
 	github.com/go-widgets/mvvm v0.8.0
 	github.com/go-widgets/painter v0.11.0
 	github.com/go-widgets/toolkit v0.288.0
-	github.com/go-widgets/window v0.44.0
+	github.com/go-widgets/tray v0.6.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.83.0
@@ -53,18 +55,20 @@ require (
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
+	github.com/go-freedesktop/x11 v0.2.0 // indirect
 	github.com/go-gfx/gfx v0.11.0 // indirect
 	github.com/go-icons/iconoir v0.2.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
-	github.com/go-macos/objc v0.4.0 // indirect
-	github.com/go-mswin/win32 v0.1.0 // indirect
+	github.com/go-macos/objc v0.7.0 // indirect
+	github.com/go-mswin/win32 v0.4.0 // indirect
 	github.com/go-opentype/opentype v0.6.0 // indirect
 	github.com/go-opentype/shape v0.5.0 // indirect
 	github.com/go-richdoc/richdoc v0.2.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-typeset/bidi v0.3.0 // indirect
-	github.com/go-widgets/android v0.12.1 // indirect
+	github.com/go-widgets/android v0.13.1 // indirect
 	github.com/go-widgets/data v0.1.0 // indirect
+	github.com/go-widgets/window v0.57.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect

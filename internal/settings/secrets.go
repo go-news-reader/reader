@@ -17,6 +17,7 @@
 package settings
 
 import (
+	"encoding/json"
 	"errors"
 
 	"github.com/go-keyring/keyring"
@@ -25,10 +26,17 @@ import (
 )
 
 // secretService is the vault "service" every reader secret is filed under; the
-// per-secret "account" is [secretRef]. It matches the on-disk config subdir
-// name so a human inspecting the Keychain/Credential Manager sees a recognisable
-// owner.
+// "account" is [vaultAccount]. It matches the on-disk config subdir name so a
+// human inspecting the Keychain/Credential Manager sees a recognisable owner.
 const secretService = appDir
+
+// vaultAccount is the single vault "account" the whole credential blob is filed
+// under: ALL of the reader's secrets live in ONE keychain item — a JSON object
+// mapping each [secretRef] to its value — rather than one item per secret. That
+// is the whole point of this file: macOS Keychain prompts once per ITEM, so one
+// item means unlocking the vault at startup (and, with biometric unlock on, the
+// Touch ID gate) prompts ONCE regardless of how many accounts are configured.
+const vaultAccount = "vault"
 
 // ErrSecretNotFound is returned by [SecretStore.Get] when no secret is stored
 // for the given reference. It is the package-local mapping of
@@ -152,11 +160,29 @@ func (keyringSecrets) Delete(account string) error {
 
 func (keyringSecrets) Available() bool { return keyringAvailable() }
 
-// secretRef is the vault "account" a provider's secret field is filed under:
-// "<kind>:<fieldKey>" (e.g. "reddit:session_cookie"). Stable and unique per
-// (provider, field) so multiple providers' secrets coexist.
+// secretRef is the KEY a provider's secret field is filed under inside the
+// vault blob: "<kind>:<fieldKey>" (e.g. "reddit:session_cookie"). Stable and
+// unique per (provider, field) so every provider's secrets coexist in the one
+// JSON object. (Before the blob consolidation it was also the per-item vault
+// "account"; it is now purely a map key — and, during the one-time migration of
+// a pre-blob install, the old per-item account name we read the legacy items
+// back from. See [Store.hydrateSecrets].)
 func secretRef(kind source.Kind, key string) string {
 	return string(kind) + ":" + key
+}
+
+// HasStoredSecret reports whether any configured account currently carries a
+// non-empty secret field (in memory, after hydration) — i.e. whether a biometric
+// unlock gate would have anything to protect.
+func (s *Settings) HasStoredSecret() bool {
+	for _, a := range s.Accounts {
+		for key := range secretKeysFor(a.Kind) {
+			if a.Fields[key] != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // secretKeysFor returns the set of field keys that [CredentialSchema] marks
@@ -201,34 +227,44 @@ func cloneAccounts(accts []Account) []Account {
 	return out
 }
 
-// pushSecrets stores every populated secret field of v's accounts into the
-// vault and returns a disk-bound copy of v with those fields removed, so the
-// settings.json written by [Store.Save] carries no secret material. A secret
-// field that is empty (a user who cleared a cookie) is deleted from the vault so
-// no stale value lingers. Non-secret fields and all other settings are carried
-// through untouched. v itself is not modified.
+// pushSecrets collects every populated secret field of v's accounts into ONE
+// JSON blob keyed by [secretRef], writes it under the single [vaultAccount] item
+// with one Set, and returns a disk-bound copy of v with those secret fields
+// removed so the settings.json written by [Store.Save] carries no secret
+// material. When no secret is populated at all — a fresh install, or a vault the
+// user has fully cleared — the blob item is Deleted instead, so nothing stale
+// lingers. Non-secret fields and all other settings are carried through
+// untouched. v itself is not modified.
 func (s *Store) pushSecrets(v *Settings) (*Settings, error) {
 	diskAccts := cloneAccounts(v.Accounts)
-	store := s.secrets()
+	blob := map[string]string{}
 	for i := range diskAccts {
 		for key := range secretKeysFor(diskAccts[i].Kind) {
-			ref := secretRef(diskAccts[i].Kind, key)
-			val, ok := diskAccts[i].Fields[key]
-			if ok && val != "" {
-				if err := store.Set(ref, []byte(val)); err != nil {
-					return nil, err
-				}
-				delete(diskAccts[i].Fields, key)
-			} else {
-				// Empty or absent: drop any previously stored value so a cleared
-				// secret does not survive in the vault.
-				if err := store.Delete(ref); err != nil {
-					return nil, err
-				}
-				delete(diskAccts[i].Fields, key)
+			if val, ok := diskAccts[i].Fields[key]; ok && val != "" {
+				blob[secretRef(diskAccts[i].Kind, key)] = val
 			}
+			// Strip the secret field from the disk copy whether or not it had a
+			// value: the vault, never settings.json, is its home.
+			delete(diskAccts[i].Fields, key)
 		}
 	}
+
+	store := s.secrets()
+	if len(blob) == 0 {
+		// No secrets: remove any prior blob so a fully-cleared vault leaves nothing
+		// behind (one item to delete, not one per former secret).
+		if err := store.Delete(vaultAccount); err != nil {
+			return nil, err
+		}
+	} else {
+		// json.Marshal of a map[string]string cannot fail, so the error is elided:
+		// a returned err here would be a permanently-dead branch.
+		data, _ := json.Marshal(blob)
+		if err := store.Set(vaultAccount, data); err != nil {
+			return nil, err
+		}
+	}
+
 	disk := *v
 	disk.Accounts = diskAccts
 	return &disk, nil
@@ -237,45 +273,133 @@ func (s *Store) pushSecrets(v *Settings) (*Settings, error) {
 // hydrateSecrets fills out's secret fields from the vault and migrates any
 // plaintext secret still present in a freshly loaded settings.json (a file
 // written before this feature, or by the on-disk fallback while the vault was
-// unavailable) into the vault. It reports whether such a migration happened, so
-// [Store.Load] can purge the plaintext from disk. When no vault is reachable it
-// is a no-op (false, nil): the plaintext already in out is the fallback and is
-// left in place. out is modified in place.
+// unavailable) into the vault. It reports whether such a plaintext migration
+// happened, so [Store.Load] can purge the plaintext from disk. When no vault is
+// reachable it is a no-op (false): the plaintext already in out is the fallback
+// and is left in place. out is modified in place.
+//
+// The steady-state cost is a SINGLE read of the one [vaultAccount] blob item —
+// one keychain prompt — however many accounts are configured. The exceptions
+// both run at most once: the first launch after upgrading a pre-blob install
+// reads (and retires) the old per-item secrets, and a settings.json still
+// carrying plaintext is migrated into the blob.
 func (s *Store) hydrateSecrets(out *Settings) (migrated bool) {
 	store := s.secrets()
 	if !store.Available() {
 		return false
 	}
+
+	// Read the ONE blob item a single time.
+	blob := map[string]string{}
+	b, err := store.Get(vaultAccount)
+	switch {
+	case err == nil:
+		if json.Unmarshal(b, &blob) != nil {
+			// Corrupt/unparseable blob: treat it as an empty (but PRESENT) vault, so
+			// affected accounts are left unauthenticated rather than failing the load
+			// — and, crucially, do NOT fall back to the retired per-item path (the
+			// blob exists, so migration already happened; re-reading old items would
+			// re-prompt for nothing).
+			blob = map[string]string{}
+		}
+	case errors.Is(err, ErrSecretNotFound):
+		// No blob: either a fresh/empty vault or a pre-blob install still holding
+		// per-item secrets. Recover the latter into a blob once (this is the only
+		// launch that reads the old items, so the only one that prompts per item).
+		blob = s.migratePerRefItems(store, out)
+	default:
+		// The vault is present but unreadable (the user declined the prompt →
+		// userCanceled, or a transient error). Leave every account unauthenticated
+		// rather than failing the load — a keychain hiccup must never stop the
+		// reader — and keep any plaintext on disk as the fallback.
+		return false
+	}
+
+	// Fill each account's secret fields from the blob, folding any plaintext still
+	// on disk into it as we go.
+	plaintext := false
 	for i := range out.Accounts {
 		for key := range secretKeysFor(out.Accounts[i].Kind) {
 			ref := secretRef(out.Accounts[i].Kind, key)
-			val, ok := out.Accounts[i].Fields[key]
-			if ok && val != "" {
-				// Plaintext on disk: move it into the vault, keeping the value in
-				// memory so the running app is unaffected. The purge of the disk
-				// copy happens in Load via a follow-up Save. If the vault write fails
-				// (e.g. the user declined the keychain prompt), leave the plaintext on
-				// disk as the fallback rather than failing the whole load — the reader
-				// must still start.
-				if err := store.Set(ref, []byte(val)); err != nil {
-					continue
-				}
-				migrated = true
+			if val, ok := out.Accounts[i].Fields[key]; ok && val != "" {
+				// Plaintext on disk wins and is folded into the blob; the value stays
+				// in memory so the running app is unaffected, and Load purges the disk
+				// copy once the blob write below confirms the vault took it.
+				blob[ref] = val
+				plaintext = true
 				continue
 			}
-			// Absent from disk: read it back from the vault. A missing secret, or an
-			// unreadable vault (the user declined the prompt → userCanceled, or a
-			// transient vault error), leaves this account unauthenticated rather than
-			// failing the load: a keychain hiccup must never stop the reader starting.
-			b, gErr := store.Get(ref)
-			if gErr != nil {
+			// Absent on disk: fill from the blob when present. A key in neither place
+			// leaves the account unauthenticated.
+			v, ok := blob[ref]
+			if !ok {
 				continue
 			}
 			if out.Accounts[i].Fields == nil {
 				out.Accounts[i].Fields = map[string]string{}
 			}
-			out.Accounts[i].Fields[key] = string(b)
+			out.Accounts[i].Fields[key] = v
+		}
+	}
+
+	if plaintext {
+		// Persist the folded-in plaintext to the one blob item. On success report
+		// the migration so Load purges the plaintext from disk; on failure (the
+		// user declined, or a transient vault error) leave the plaintext on disk as
+		// the fallback and do NOT fail the load.
+		data, _ := json.Marshal(blob)
+		if store.Set(vaultAccount, data) == nil {
+			migrated = true
 		}
 	}
 	return migrated
+}
+
+// migratePerRefItems recovers the secrets of a pre-blob install — one keychain
+// item per secret, keyed by [secretRef] — into the single-blob format, and
+// returns them as the blob map. It reads each account's secret field from its
+// old per-item account, and, if any are found, writes them all into the one
+// [vaultAccount] blob with a single Set and then deletes the old items, so every
+// subsequent launch reads only the blob (one prompt). It is idempotent: once the
+// blob exists hydrateSecrets never calls this again, and a run whose blob write
+// fails simply keeps the old items for the next attempt. A fresh/empty vault
+// yields an empty map with nothing written.
+func (s *Store) migratePerRefItems(store SecretStore, out *Settings) map[string]string {
+	recovered := map[string]string{}
+	attempted := false
+	for i := range out.Accounts {
+		for key := range secretKeysFor(out.Accounts[i].Kind) {
+			attempted = true
+			ref := secretRef(out.Accounts[i].Kind, key)
+			b, err := store.Get(ref)
+			if err != nil {
+				// Absent (a never-configured field) or UNREADABLE — a legacy item
+				// whose ACL trusts a code signature that no longer exists reads back
+				// errSecUserCanceled (-128). Skip it; the blob write below still
+				// happens, so it can never keep re-triggering this per-item read loop.
+				continue
+			}
+			recovered[ref] = string(b)
+		}
+	}
+	if !attempted {
+		return recovered // no secret-carrying accounts: nothing to migrate.
+	}
+	// Write the blob even when nothing was recovered: its mere PRESENCE is what
+	// retires the per-item path (hydrateSecrets never calls this again once the
+	// blob exists), so a broken legacy item that can't be read cannot wedge the
+	// vault into prompting for it on every launch. Recovered secrets go in; broken
+	// ones are left behind, unread.
+	data, _ := json.Marshal(recovered)
+	if store.Set(vaultAccount, data) != nil {
+		// Could not write the blob: leave the old items in place and use the
+		// recovered values in memory this run; a later launch retries.
+		return recovered
+	}
+	for ref := range recovered {
+		// Retire the old per-item entries; a delete hiccup is harmless (the blob now
+		// wins, so hydrateSecrets never reads the stragglers again).
+		_ = store.Delete(ref)
+	}
+	return recovered
 }

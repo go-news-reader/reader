@@ -554,11 +554,11 @@ func TestBiometricUnlockToggle(t *testing.T) {
 	if !s.BiometricUnlock() {
 		t.Fatal("setter did not enable it")
 	}
-	if !s.Settings().BiometricUnlock {
+	if bio := s.Settings().BiometricUnlock; bio == nil || !*bio {
 		t.Fatal("Settings() did not carry the biometric-unlock preference")
 	}
 	s.SetBiometricUnlock(false)
-	if s.BiometricUnlock() || s.Settings().BiometricUnlock {
+	if bio := s.Settings().BiometricUnlock; s.BiometricUnlock() || bio == nil || *bio {
 		t.Fatal("setter did not disable it")
 	}
 }

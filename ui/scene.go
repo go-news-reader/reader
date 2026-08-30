@@ -1067,6 +1067,7 @@ func (s *Scene) Settings() *settings.Settings {
 	singleTab := s.BrowserSingleTab()
 	infinite := s.infiniteScroll
 	dismiss := s.dismissPreviewOnSwitch
+	bio := s.biometricUnlock
 	return &settings.Settings{
 		Profiles:               s.Profiles,
 		Active:                 s.activeProf,
@@ -1078,7 +1079,7 @@ func (s *Scene) Settings() *settings.Settings {
 		BrowserSingleTab:       &singleTab,
 		InfiniteScroll:         &infinite,
 		DismissPreviewOnSwitch: &dismiss,
-		BiometricUnlock:        s.biometricUnlock,
+		BiometricUnlock:        &bio,
 		HideBrowserChrome:      s.BrowserChromeHidden(),
 		SignInBrowser:          s.signInBrowser,
 		ZoomInKey:              s.BrowserZoomInKey(),
