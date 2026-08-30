@@ -305,12 +305,35 @@ func (s *Scene) sidebarListOverflows() bool {
 	return len(s.flattenSide()) > band/rh
 }
 
+// sidebarScrollbarShown reports whether the sidebar currently paints a vertical
+// scrollbar — an open accordion section whose account window overflows, or the
+// whole list overflowing the band — so the row renderers reserve its gutter. It
+// mirrors the two drawVScrollbar branches in the sidebar sprite.
+func (s *Scene) sidebarScrollbarShown() bool {
+	if s.sourceOpen != "" && s.sourceSubTotal > s.sourceSubWindow {
+		return true
+	}
+	// Called from drawSideRow (a TreeView RowRenderer), so the tree exists.
+	_, _, _, shown := s.sideTree.ScrollExtent()
+	return shown
+}
+
 // drawSideRow is the TreeView RowRenderer: it paints one sidebar row's content
 // in the content rect the widget hands it (already past the chevron + indent and
 // inset for the scrollbar gutter), in the resolved ink (theme.Background on the
 // selected row's accent fill, else theme.OnSurface). The source dot keeps its
 // brand colour on every row.
 func (s *Scene) drawSideRow(p painter.Painter, th *toolkit.Theme, cr toolkit.Rect, node *toolkit.TreeNode, selected bool, ink toolkit.RGBA) {
+	// The sidebar's scrollbar is drawn down the right edge by the scene (the
+	// TreeView's own bar is hidden). When one is shown, reserve its gutter here —
+	// through the same scrollClampRight contract every other panel uses — so no
+	// row's count chip or label paints under the bar. Without this the open
+	// accordion section's account counts sat behind the section scrollbar.
+	if s.sidebarScrollbarShown() {
+		if r := s.scrollClampRight(cr.X+cr.W, s.m.sidebarW, s.m.sidebarW, true); r < cr.X+cr.W {
+			cr.W = r - cr.X
+		}
+	}
 	sideF := ttFont(false, rpxOf(s, 13))
 	switch d := sideData(node); d.Kind {
 	case sideAll:
