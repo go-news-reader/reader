@@ -601,6 +601,12 @@ func (h *Handler) Key(name string, r rune) {
 	if h.folderRenameKey(name, r) {
 		return
 	}
+	// A focused newsgroup filter captures the horizontal caret keys (Left/Right and
+	// Home/End) to edit its text mid-value; Up/Down are left to drive the group
+	// list, exactly as before.
+	if h.browseFilterCaretKey(name) {
+		return
+	}
 	// In the feed view, an active + focused embedded browser captures editing keys
 	// and printable runes for its address field (Enter commits/navigates).
 	if s.Mode() == ui.ModeFeed && s.ForwardBrowserKey(name, r) {
@@ -712,6 +718,24 @@ func (h *Handler) Key(name string, r rune) {
 			s.TypeRune(r)
 		}
 	}
+}
+
+// browseFilterCaretKey routes a horizontal caret key into a focused newsgroup
+// filter (browse view only), returning whether it consumed the event. Left/Right
+// move the caret one rune; Home/End jump to the ends — mapped to the toolkit
+// SearchEntry codes. Up/Down are NOT consumed here so they keep driving the group
+// list while the filter is focused.
+func (h *Handler) browseFilterCaretKey(name string) bool {
+	s := h.a.Scene()
+	if s.Mode() != ui.ModeBrowse || !s.BrowseFocused() {
+		return false
+	}
+	code := map[string]string{"Left": "ArrowLeft", "Right": "ArrowRight", "Home": "Home", "End": "End"}[name]
+	if code == "" {
+		return false
+	}
+	s.BrowseCaretKey(code)
+	return true
 }
 
 // folderRenameKey routes a key into an in-progress inline folder rename (feed
