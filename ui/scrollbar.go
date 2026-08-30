@@ -11,8 +11,12 @@ import (
 	"github.com/go-widgets/toolkit"
 )
 
-// scrollbarW is the on-screen width of the vertical scrollbars.
-func (s *Scene) scrollbarW() int { return rpxOf(s, 6) }
+// scrollbarW is the on-screen width of the vertical scrollbars. It reads the
+// toolkit's canonical scrollbar width so a panel we paint ourselves (the feed,
+// the preview, the detail view) is exactly as wide as the bar an embedded
+// toolkit widget draws — the accordion's account ListBox, say — instead of
+// picking its own number that drifts from the shared one.
+func (s *Scene) scrollbarW() int { return toolkit.ScrollbarWidth() }
 
 // scrollGripGap is the single standard gap between a scrollbar and the resize
 // grip on its panel's divider — the same everywhere, so the sidebar and the feed
