@@ -848,16 +848,26 @@ func (h *Handler) A11yElements() []window.A11yElement {
 func (h *Handler) NativeControls() []toolkit.NativeControl {
 	scene := h.a.Scene()
 	ctrls := scene.NativeControls()
-	// A native button carries no action from the Scene — the reader dispatches
-	// clicks by geometry. Wire each button's activation to run the Hit the Scene
-	// recorded for it, through the same runHit a click would reach.
+	// The Scene dispatches clicks and Enter by geometry/keyboard, so a native
+	// control carries no action from it — wire each one here to the same path its
+	// drawn twin uses. A button runs the Hit the Scene recorded (runHit); a
+	// settings text field commits on Enter (its activate) through
+	// commitSettingsField, exactly as a keyboard Enter on the drawn field does.
 	for i := range ctrls {
-		if ctrls[i].Kind != toolkit.NativeButton {
-			continue
-		}
-		if hit, ok := scene.NativeHit(ctrls[i].Key); ok {
-			hit := hit
-			ctrls[i].OnActivate = func() { h.runHit(hit) }
+		switch ctrls[i].Kind {
+		case toolkit.NativeButton:
+			if hit, ok := scene.NativeHit(ctrls[i].Key); ok {
+				hit := hit
+				ctrls[i].OnActivate = func() { h.runHit(hit) }
+			}
+		case toolkit.NativeEntry, toolkit.NativeSecureEntry:
+			if focus, ok := scene.NativeSettingsCommit(ctrls[i].Key); ok {
+				focus := focus
+				ctrls[i].OnActivate = func() {
+					scene.FocusSettingsField(focus)
+					h.commitSettingsField()
+				}
+			}
 		}
 	}
 	return ctrls

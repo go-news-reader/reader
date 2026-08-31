@@ -63,6 +63,53 @@ func TestAccountsEmitNativeControls(t *testing.T) {
 	}
 }
 
+// TestSettingsFieldsEmitNativeControls proves the preferences view publishes each
+// of its text fields as a native entry whose keystrokes flow to the same buffer,
+// and that a zoom-key field keeps only one rune.
+func TestSettingsFieldsEmitNativeControls(t *testing.T) {
+	s := New(900, 600, ThemeFor(OSLinux, false))
+	s.OpenSettings()
+	s.Draw(make([]byte, s.W*s.H*4))
+
+	byKey := map[string]toolkit.NativeControl{}
+	for _, c := range s.NativeControls() {
+		byKey[c.Key] = c
+	}
+	for _, key := range []string{
+		"set:rename", "set:channel", "set:cache", "set:cachesize",
+		"set:cachebackend", "set:zoomin", "set:zoomout",
+	} {
+		c, ok := byKey[key]
+		if !ok {
+			t.Fatalf("settings field %q emitted no native control", key)
+		}
+		if c.Kind != toolkit.NativeEntry {
+			t.Errorf("%s kind = %v, want NativeEntry", key, c.Kind)
+		}
+		if c.OnText == nil {
+			t.Errorf("%s has no OnText callback", key)
+		}
+		if (c.Rect == toolkit.Rect{}) || !c.Visible {
+			t.Errorf("%s geometry = %+v visible=%v", key, c.Rect, c.Visible)
+		}
+		if f, ok := s.NativeSettingsCommit(key); !ok {
+			t.Errorf("%s has no commit-focus record", key)
+			_ = f
+		}
+	}
+
+	// OnText writes the field's buffer (and focuses it).
+	byKey["set:rename"].OnText("Renamed")
+	if s.renameInput != "Renamed" || s.Focus() != FocusRename {
+		t.Errorf("rename OnText: buffer=%q focus=%v, want \"Renamed\"/FocusRename", s.renameInput, s.Focus())
+	}
+	// A zoom-key field holds a single printable rune, so only the last survives.
+	byKey["set:zoomin"].OnText("abc")
+	if s.zoomInInput != "c" {
+		t.Errorf("zoom-in field kept %q, want last rune \"c\"", s.zoomInInput)
+	}
+}
+
 // TestNativeControlsResetEachFrame proves the accumulator is cleared per Draw, so
 // controls from one frame do not linger into the next.
 func TestNativeControlsResetEachFrame(t *testing.T) {
