@@ -272,13 +272,22 @@ type Scene struct {
 	// Accounts editor (ModeAccounts) state. accBuf holds the editable credential
 	// values per provider (seeded from settings.Accounts); accSel is the provider
 	// being edited; accFocus is the focused field key ("" = none).
-	accBuf            map[source.Kind]map[string]string
-	accSel            source.Kind
-	accFocus          string
-	accScroll         panelScroll
-	accLabels         []sLabel
-	accProvBtns       []accProvBtn
-	accRows           []accFieldRow
+	accBuf      map[source.Kind]map[string]string
+	accSel      source.Kind
+	accFocus    string
+	accScroll   panelScroll
+	accLabels   []sLabel
+	accProvBtns []accProvBtn
+	accRows     []accFieldRow
+
+	// nativeControls accumulates, over one Draw, the descriptors of the
+	// interactive controls this frame should back with real OS controls (a
+	// secure field, a button). A host that can embed native controls
+	// (go-widgets/window's cocoa backend, via the application Surface's Controls
+	// field) reads them through NativeControls; a host that cannot leaves them
+	// drawn. Each draw path appends to it after resetNativeControls clears it, so
+	// a control the app is not showing this frame simply is not there.
+	nativeControls    []toolkit.NativeControl
 	accBackR          toolkit.Rect
 	accDoneR          toolkit.Rect
 	accImportR        toolkit.Rect // Reddit-only "Import session from Firefox" button (zero when hidden)

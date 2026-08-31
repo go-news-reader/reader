@@ -1107,3 +1107,26 @@ func TestBrowseFilterCaretEditing(t *testing.T) {
 		t.Fatalf("Left while unfocused changed text to %q", got)
 	}
 }
+
+// TestNativeControlsForwardsSceneControls checks the Handler satisfies
+// application.NativeControlProvider by handing the platform the Scene's
+// native-control descriptors — here, the accounts editor's secure password field.
+func TestNativeControlsForwardsSceneControls(t *testing.T) {
+	a := profApp(t)
+	a.Scene().OpenAccounts()
+	a.Scene().SelectAccount(source.Usenet)
+	h := New(a)
+	h.Resize(900, 600, 1)
+	h.Frame() // draws the accounts screen, populating the native-control list
+
+	var secure *toolkit.NativeControl
+	for i, c := range h.NativeControls() {
+		if c.Kind == toolkit.NativeSecureEntry {
+			secure = &h.NativeControls()[i]
+			break
+		}
+	}
+	if secure == nil {
+		t.Fatal("the Handler did not forward the accounts editor's secure field")
+	}
+}
