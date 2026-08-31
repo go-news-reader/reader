@@ -59,6 +59,7 @@ require (
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
 	github.com/go-freedesktop/x11 v0.2.0 // indirect
 	github.com/go-gfx/gfx v0.19.0 // indirect
+	github.com/go-gtk/gtk4 v0.2.4 // indirect
 	github.com/go-macos/appkit v0.1.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
 	github.com/go-macos/objc v0.7.0 // indirect
@@ -70,7 +71,7 @@ require (
 	github.com/go-typeset/bidi v0.3.0 // indirect
 	github.com/go-widgets/android v0.13.1 // indirect
 	github.com/go-widgets/data v0.1.0 // indirect
-	github.com/go-widgets/window v0.59.0 // indirect
+	github.com/go-widgets/window v0.62.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect
