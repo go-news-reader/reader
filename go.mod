@@ -71,7 +71,7 @@ require (
 	github.com/go-typeset/bidi v0.3.0 // indirect
 	github.com/go-widgets/android v0.13.1 // indirect
 	github.com/go-widgets/data v0.1.0 // indirect
-	github.com/go-widgets/window v0.62.0 // indirect
+	github.com/go-widgets/window v0.63.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect
