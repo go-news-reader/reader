@@ -54,8 +54,8 @@ github.com/go-freedesktop/x11 v0.2.0 h1:qHvov5jn7GG4QxeealqRJVj72/MjR5qi2IXqyD7N
 github.com/go-freedesktop/x11 v0.2.0/go.mod h1:a+Fma9oOlsagw0CJKe+VHYxIl5/PzPSmlCVaYCtUSYA=
 github.com/go-gfx/gfx v0.19.0 h1:nA2Eg8Aq2kytR5Hrm/eQ6618w4vT0+Ao8BMZiuYh84c=
 github.com/go-gfx/gfx v0.19.0/go.mod h1:VAK6hgCgkhT3j3ek2K7G8zDfkCPD3RCF45UbcRlCV8Q=
-github.com/go-gtk/gtk4 v0.2.4 h1:cK5NQrKqR2ZnmS/yGL6C01JCZKRpaRVpGWcS26L775A=
-github.com/go-gtk/gtk4 v0.2.4/go.mod h1:+bpfPrc8PwsiQkZdNCL3LcOzj1KYgv8j2BvvL6P6Aqo=
+github.com/go-gtk/gtk4 v0.3.0 h1:GDlMkW5OapZLhmzaLps9qjt1v/hqxomxiJmLcahzQSo=
+github.com/go-gtk/gtk4 v0.3.0/go.mod h1:+bpfPrc8PwsiQkZdNCL3LcOzj1KYgv8j2BvvL6P6Aqo=
 github.com/go-hackernews/hackernews v0.1.0 h1:4d9f4KmqfEnd8WTRyx2ee5jnA4JJz7QHZqA7q3nuGCY=
 github.com/go-hackernews/hackernews v0.1.0/go.mod h1:qqjIppBfii2cO163KCgdBX1RjlcEfp4MROYs4SZjay0=
 github.com/go-icons/iconoir v0.2.0 h1:I5AnDEIPgYfawTmwzemDRJjlYCUbFHuS8GJXrjADhXc=
@@ -134,8 +134,8 @@ github.com/go-widgets/toolkit v0.299.0 h1:lUFOiIWGjhlD+IXHZrY/EF1xNbFCTHVnxoanMM
 github.com/go-widgets/toolkit v0.299.0/go.mod h1:oQuOK+iE7Dc1xG1EXsBeO5Kjdf+091uIZSVu3AVLXwc=
 github.com/go-widgets/tray v0.7.2 h1:9GnNPUCmgJ2Q9LXDBc0UrcaizAQOwFUMQVey4jHZNQo=
 github.com/go-widgets/tray v0.7.2/go.mod h1:A0Sb4PeLyO0F7Y5BgFFWH8WdKoIWNZcN4H5W+FY6CV8=
-github.com/go-widgets/window v0.63.0 h1:xORVQjvSGFdcqDDzkkBz1C16aiYx0YPd95Tra0diMYo=
-github.com/go-widgets/window v0.63.0/go.mod h1:qF5Jr26dode0vCoNpJwpsc3RQf4ORYclC9c1tztAAa4=
+github.com/go-widgets/window v0.64.0 h1:d65yDR0f1FUthm+qDrRosz3M1a7DTgwV5NPXYATfoHs=
+github.com/go-widgets/window v0.64.0/go.mod h1:+QY3dIvgfbwyk64/HRCqYf89M2TAesBUKp4iRWbRscE=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
 github.com/goccy/go-yaml v1.19.2/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7LkFRi1kA=
 github.com/godbus/dbus/v5 v5.2.2 h1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=
