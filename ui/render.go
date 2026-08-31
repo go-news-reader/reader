@@ -438,6 +438,15 @@ func (s *Scene) topbarSprite(onAccent toolkit.RGBA) *image.RGBA {
 	se.FocusRingWidth = rpxOf(s, 2)
 	se.SetFocused(s.searchFocused)
 	se.Draw(p, th)
+	// Native counterpart: a real text field over the drawn search box, so composed
+	// input (CJK, dead keys, emoji) the drawn entry cannot accept works. Its text
+	// is the SearchEntry's own observable, which the feed filter already reads.
+	s.addNativeControl(toolkit.NativeControl{
+		Kind: toolkit.NativeEntry, Key: "topbar:search",
+		Rect: toolkit.Rect(s.searchR), Visible: true,
+		Text:   se.Text().Get(),
+		OnText: func(t string) { se.Text().Set(t) },
+	})
 	// After a copy, paint a translucent select-all highlight OVER the query text
 	// (visual feedback of what went to the clipboard). SearchEntry.Draw fills its
 	// own background, so the highlight must go on top — a translucent accent lets

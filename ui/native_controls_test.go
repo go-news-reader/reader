@@ -83,3 +83,27 @@ func TestNativeControlsResetEachFrame(t *testing.T) {
 		}
 	}
 }
+
+// TestTopbarSearchEmitsNativeControl proves the feed's search box publishes a
+// native text field bound to the same SearchEntry observable the filter reads.
+func TestTopbarSearchEmitsNativeControl(t *testing.T) {
+	s := New(900, 600, ThemeFor(OSLinux, false))
+	s.Draw(make([]byte, s.W*s.H*4)) // feed mode: draws the topbar
+	var search *toolkit.NativeControl
+	for i, c := range s.NativeControls() {
+		if c.Key == "topbar:search" {
+			search = &s.NativeControls()[i]
+			break
+		}
+	}
+	if search == nil {
+		t.Fatal("the topbar search box emitted no native control")
+	}
+	if search.Kind != toolkit.NativeEntry || search.OnText == nil {
+		t.Fatalf("topbar search descriptor = %+v, want an entry with a callback", search)
+	}
+	search.OnText("golang")
+	if got := s.Search(); got != "golang" {
+		t.Errorf("after OnText, topbar search = %q, want golang", got)
+	}
+}
