@@ -441,8 +441,9 @@ func (s *Scene) drawAccounts(buf []byte) {
 		w.Draw(p, th)
 	}
 	for _, f := range s.accRows {
+		key, sel := f.key, s.accSel
 		if f.isBool {
-			on := s.accFieldValue(s.accSel, f.key) == "true"
+			on := s.accFieldValue(sel, key) == "true"
 			lbl := "Off"
 			if on {
 				lbl = "On"
@@ -452,9 +453,16 @@ func (s *Scene) drawAccounts(buf []byte) {
 			w.Font = pillFont
 			w.SetBounds(f.rect)
 			w.Draw(p, th)
+			// Native counterpart: a real checkbox over the drawn pill. Its state
+			// flows back to the same field the pill's click toggles.
+			s.addNativeControl(toolkit.NativeControl{
+				Kind: toolkit.NativeCheckbox, Key: nativeAccKey(sel, key),
+				Rect: f.rect, Visible: true, On: on,
+				OnBool: func(b bool) { s.SetAccountField(sel, key, boolField(b)) },
+			})
 			continue
 		}
-		w := toolkit.NewEntry(s.accFieldValue(s.accSel, f.key))
+		w := toolkit.NewEntry(s.accFieldValue(sel, key))
 		w.Placeholder = "…"
 		w.SetFocused(f.focused)
 		w.Font = pillFont
@@ -463,6 +471,18 @@ func (s *Scene) drawAccounts(buf []byte) {
 		}
 		w.SetBounds(f.rect)
 		w.Draw(p, th)
+		// Native counterpart: a real text field — a secure one for a secret, where
+		// a drawn mask cannot hide the keystrokes from the process. Edits flow back
+		// to the same field a keypress would.
+		kind := toolkit.NativeEntry
+		if f.secret {
+			kind = toolkit.NativeSecureEntry
+		}
+		s.addNativeControl(toolkit.NativeControl{
+			Kind: kind, Key: nativeAccKey(sel, key),
+			Rect: f.rect, Visible: true, Text: s.accFieldValue(sel, key),
+			OnText: func(t string) { s.SetAccountField(sel, key, t) },
+		})
 	}
 
 	// Reddit's "Sign in to Reddit in browser" + "Import session from Firefox" buttons.

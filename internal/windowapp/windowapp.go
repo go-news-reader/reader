@@ -837,3 +837,14 @@ func (h *Handler) A11yElements() []window.A11yElement {
 	}
 	return out
 }
+
+// NativeControls describes the interactive controls the app wants backed by real
+// OS controls this frame, satisfying application.NativeControlProvider so a
+// back-end that can embed native controls lays them over the framebuffer. The
+// descriptors are the toolkit's own, already in the framebuffer's device-pixel,
+// top-left space the platform expects — the same reason A11yElements passes its
+// rects through unchanged — so there is nothing to convert here. It is the Scene
+// that decides what should be native; this only forwards its list.
+func (h *Handler) NativeControls() []toolkit.NativeControl {
+	return h.a.Scene().NativeControls()
+}
