@@ -42,6 +42,9 @@ func (s *Scene) resetNativeControls() {
 	for k := range s.nativeHits {
 		delete(s.nativeHits, k)
 	}
+	for k := range s.nativeSetFocus {
+		delete(s.nativeSetFocus, k)
+	}
 }
 
 // addNativeControl records one control the current frame wants natively backed.
@@ -70,6 +73,68 @@ func (s *Scene) addNativeButton(key, label string, rect toolkit.Rect, hit Hit) {
 func (s *Scene) NativeHit(key string) (Hit, bool) {
 	h, ok := s.nativeHits[key]
 	return h, ok
+}
+
+// addNativeSettingsField records a settings text field's native counterpart: a
+// text-entry descriptor whose keystrokes flow into the field's buffer (OnText,
+// keeping Scene focus in step), plus the record the windowapp Handler needs to
+// wire Enter — the descriptor's OnActivate — to commitSettingsField for this
+// field. It is the settings-view analogue of addNativeButton: the reader edits
+// and commits by geometry/keyboard, so the native control routes back through the
+// same Scene setter and the same commit a keypress would reach.
+func (s *Scene) addNativeSettingsField(key string, focus Focus, rect toolkit.Rect, text string) {
+	if s.nativeSetFocus == nil {
+		s.nativeSetFocus = map[string]Focus{}
+	}
+	s.nativeSetFocus[key] = focus
+	s.nativeControls = append(s.nativeControls, toolkit.NativeControl{
+		Kind: toolkit.NativeEntry, Key: key,
+		Rect: rect, Visible: true, Text: text,
+		OnText: func(t string) { s.setSettingsField(focus, t) },
+	})
+}
+
+// NativeSettingsCommit reports the settings field a native entry's Enter should
+// commit, if the key names one. The windowapp Handler uses it to give the
+// descriptor an OnActivate that focuses that field and runs commitSettingsField —
+// the same path a keyboard Enter takes when the drawn field has focus.
+func (s *Scene) NativeSettingsCommit(key string) (Focus, bool) {
+	f, ok := s.nativeSetFocus[key]
+	return f, ok
+}
+
+// setSettingsField focuses a settings text field and replaces its buffer with
+// text — the native-entry counterpart of typing into it. The zoom-key fields hold
+// a single printable rune, so only the last rune of text is kept, matching
+// TypeRune's rule.
+func (s *Scene) setSettingsField(f Focus, text string) {
+	s.sf = f
+	switch f {
+	case FocusZoomIn:
+		s.zoomInInput = lastRune(text)
+	case FocusZoomOut:
+		s.zoomOutInput = lastRune(text)
+	default:
+		if p := s.focusedField(); p != nil {
+			*p = text
+		}
+	}
+	s.touch()
+}
+
+// FocusSettingsField gives keyboard focus to a settings field by name. The
+// windowapp Handler calls it before commitSettingsField so a native entry's Enter
+// commits the field the person was editing even if no keystroke set focus first.
+func (s *Scene) FocusSettingsField(f Focus) { s.sf = f; s.touch() }
+
+// lastRune returns the last rune of s as a string, or "" if s is empty — the one
+// printable rune a zoom-key field keeps.
+func lastRune(s string) string {
+	r := []rune(s)
+	if len(r) == 0 {
+		return ""
+	}
+	return string(r[len(r)-1])
 }
 
 // NativeControls returns the native controls accumulated over the last Draw, in

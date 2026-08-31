@@ -559,18 +559,20 @@ func (s *Scene) drawSettings(buf []byte) {
 		w.Draw(p, th)
 	}
 	for _, f := range []struct {
-		r    toolkit.Rect
-		text string
-		ph   string
-		foc  bool
+		r     toolkit.Rect
+		text  string
+		ph    string
+		foc   bool
+		focus Focus
+		key   string
 	}{
-		{s.sRenameR, s.renameInput, "profile name", s.sf == FocusRename},
-		{s.sChannelR, s.channelInput, "channel…", s.sf == FocusChannel},
-		{s.sCacheR, s.cacheInput, "media cache path", s.sf == FocusCache},
-		{s.sCacheSizeR, s.cacheSizeInput, "cache limit (MB)", s.sf == FocusCacheSize},
-		{s.sCacheBackendR, s.cacheBackendInput, "local (or /path/to/cache-plugin)", s.sf == FocusCacheBackend},
-		{s.sZoomInR, s.zoomInInput, "=", s.sf == FocusZoomIn},
-		{s.sZoomOutR, s.zoomOutInput, "-", s.sf == FocusZoomOut},
+		{s.sRenameR, s.renameInput, "profile name", s.sf == FocusRename, FocusRename, "set:rename"},
+		{s.sChannelR, s.channelInput, "channel…", s.sf == FocusChannel, FocusChannel, "set:channel"},
+		{s.sCacheR, s.cacheInput, "media cache path", s.sf == FocusCache, FocusCache, "set:cache"},
+		{s.sCacheSizeR, s.cacheSizeInput, "cache limit (MB)", s.sf == FocusCacheSize, FocusCacheSize, "set:cachesize"},
+		{s.sCacheBackendR, s.cacheBackendInput, "local (or /path/to/cache-plugin)", s.sf == FocusCacheBackend, FocusCacheBackend, "set:cachebackend"},
+		{s.sZoomInR, s.zoomInInput, "=", s.sf == FocusZoomIn, FocusZoomIn, "set:zoomin"},
+		{s.sZoomOutR, s.zoomOutInput, "-", s.sf == FocusZoomOut, FocusZoomOut, "set:zoomout"},
 	} {
 		// Text fields are generic toolkit.Entry (placeholder from the toolkit's own
 		// Entry.Placeholder), with the caret parked at the end since the reader
@@ -581,6 +583,11 @@ func (s *Scene) drawSettings(buf []byte) {
 		w.Font = ttFont(true, rpxOf(s, 12))
 		w.SetBounds(f.r)
 		w.Draw(p, th)
+		// Native counterpart: a real OS text field over the drawn one. Keystrokes
+		// flow to the same buffer (OnText), and Enter commits the field through the
+		// same commitSettingsField path a keyboard Enter would (wired in windowapp
+		// via NativeSettingsCommit).
+		s.addNativeSettingsField(f.key, f.focus, f.r, f.text)
 	}
 
 	// Topbar over any overflow, composed from widgets: an accent Backdrop band,
