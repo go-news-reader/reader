@@ -103,10 +103,26 @@ func TestSettingsFieldsEmitNativeControls(t *testing.T) {
 	if s.renameInput != "Renamed" || s.Focus() != FocusRename {
 		t.Errorf("rename OnText: buffer=%q focus=%v, want \"Renamed\"/FocusRename", s.renameInput, s.Focus())
 	}
-	// A zoom-key field holds a single printable rune, so only the last survives.
+	// A zoom-key field holds a single printable rune, so only the last survives,
+	// and an empty edit clears it.
 	byKey["set:zoomin"].OnText("abc")
 	if s.zoomInInput != "c" {
 		t.Errorf("zoom-in field kept %q, want last rune \"c\"", s.zoomInInput)
+	}
+	byKey["set:zoomout"].OnText("xy")
+	if s.zoomOutInput != "y" {
+		t.Errorf("zoom-out field kept %q, want last rune \"y\"", s.zoomOutInput)
+	}
+	byKey["set:zoomin"].OnText("")
+	if s.zoomInInput != "" {
+		t.Errorf("empty edit left zoom-in = %q, want cleared", s.zoomInInput)
+	}
+
+	// FocusSettingsField focuses a field by name (what a native entry's Enter does
+	// before it commits).
+	s.FocusSettingsField(FocusCache)
+	if s.Focus() != FocusCache {
+		t.Errorf("FocusSettingsField(FocusCache): focus = %v", s.Focus())
 	}
 }
 
