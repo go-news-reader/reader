@@ -846,5 +846,19 @@ func (h *Handler) A11yElements() []window.A11yElement {
 // rects through unchanged — so there is nothing to convert here. It is the Scene
 // that decides what should be native; this only forwards its list.
 func (h *Handler) NativeControls() []toolkit.NativeControl {
-	return h.a.Scene().NativeControls()
+	scene := h.a.Scene()
+	ctrls := scene.NativeControls()
+	// A native button carries no action from the Scene — the reader dispatches
+	// clicks by geometry. Wire each button's activation to run the Hit the Scene
+	// recorded for it, through the same runHit a click would reach.
+	for i := range ctrls {
+		if ctrls[i].Kind != toolkit.NativeButton {
+			continue
+		}
+		if hit, ok := scene.NativeHit(ctrls[i].Key); ok {
+			hit := hit
+			ctrls[i].OnActivate = func() { h.runHit(hit) }
+		}
+	}
+	return ctrls
 }
