@@ -9,11 +9,10 @@ import (
 )
 
 func authenticate(reason string) error {
-	// No owner check available (no Touch ID and no passcode, or unbundled): do
-	// NOT gate — locking the vault behind an unusable prompt would strand the
-	// user. Only prompt (and only enforce) when a check is actually available.
-	if la.Available(la.PolicyOwner) != nil {
-		return nil
-	}
-	return la.Evaluate(context.Background(), la.PolicyOwner, reason)
+	// Gate does exactly the convenience contract we want: prompt when the owner
+	// check (Touch ID, or the device password) is available, and return nil
+	// WITHOUT prompting when it is not — so a person with no biometric or passcode
+	// is never locked out of their own vault. It errors only when an available
+	// check is failed or cancelled.
+	return la.Gate(context.Background(), la.PolicyOwner, reason)
 }

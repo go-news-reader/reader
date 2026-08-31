@@ -76,8 +76,8 @@ github.com/go-macos/appbundle v0.0.0-20260830075838-3d39525ae64c h1:u2fcKwH8XFRh
 github.com/go-macos/appbundle v0.0.0-20260830075838-3d39525ae64c/go.mod h1:WIKJeLWOi2NK4JmKFrbQ1v7o2WEBrOnxMRVG78ofOjc=
 github.com/go-macos/keychain v0.1.0 h1:QkKT97eeJ5m/FloDcoi4UmxIvZIosIwinRjexs3icqI=
 github.com/go-macos/keychain v0.1.0/go.mod h1:sR+WtyxxCqldTpbPizjLa/pFd0RPme+VSa5C3Qa4NE8=
-github.com/go-macos/localauthentication v0.0.0-20260830135708-6e0c36757903 h1:C1QzfTtU3MVc92hheV8CvTFzg0gdzQ+fh4PjK+o7cb8=
-github.com/go-macos/localauthentication v0.0.0-20260830135708-6e0c36757903/go.mod h1:4acdS/2Vn15KJGDyGBrLR8onPpvZNcMTY+ZSx7I3WGc=
+github.com/go-macos/localauthentication v0.1.0 h1:2fOzEwkhvk/9LpaEA2i3NHureb13UeeWKT0uO1LGHmw=
+github.com/go-macos/localauthentication v0.1.0/go.mod h1:4acdS/2Vn15KJGDyGBrLR8onPpvZNcMTY+ZSx7I3WGc=
 github.com/go-macos/objc v0.7.0 h1:uu879AhALfe99XtfrjHBNmKz14Y8fxL8oJTOiTr4VPY=
 github.com/go-macos/objc v0.7.0/go.mod h1:00GJyieLzPcb65rPLVWNPPUCVm79nmmiEXUDsslRpOs=
 github.com/go-macos/virtualdisplay v0.1.0 h1:mZll/h6+PVn+mNTDH17D7G5lXV5HPxlmJU9NKXJcR7c=
