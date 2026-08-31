@@ -417,6 +417,15 @@ func (s *Scene) drawSearchControls(p *painter.PixelPainter, muteS toolkit.RGBA) 
 		se.Font = ttFont(false, rpxOf(s, 13))
 		se.SetFocused(focused)
 		se.Draw(p, th)
+		// Native counterpart: a real text field over the drawn search entry, keyed
+		// by the (persistent) widget it mirrors, its value the widget's own
+		// observable the search already reads.
+		s.addNativeControl(toolkit.NativeControl{
+			Kind: toolkit.NativeEntry, Key: fmt.Sprintf("search:%p", se),
+			Rect: r, Visible: true,
+			Text:   se.Text().Get(),
+			OnText: func(t string) { se.Text().Set(t) },
+		})
 	}
 	drawEntry(ss.queryEntry, ss.queryR, ss.queryFocus)
 
