@@ -491,24 +491,28 @@ func (s *Scene) drawAccounts(buf []byte) {
 		w.Font = pillFont
 		w.SetBounds(s.accSignInR)
 		w.Draw(p, th)
+		s.addNativeButton("acc:signin", redditSignInLabel, s.accSignInR, Hit{Kind: HitRedditSignIn})
 	}
 	if s.accImportR.W > 0 {
 		w := toolkit.NewButton(redditImportLabel, nil)
 		w.Font = pillFont
 		w.SetBounds(s.accImportR)
 		w.Draw(p, th)
+		s.addNativeButton("acc:import", redditImportLabel, s.accImportR, Hit{Kind: HitImportRedditFirefox})
 	}
 	if s.accImportSubsR.W > 0 {
 		w := toolkit.NewButton(redditImportSubsLabel, nil)
 		w.Font = pillFont
 		w.SetBounds(s.accImportSubsR)
 		w.Draw(p, th)
+		s.addNativeButton("acc:importsubs", redditImportSubsLabel, s.accImportSubsR, Hit{Kind: HitImportFollows, Value: string(s.accSel)})
 	}
 	if s.accImportSessionR.W > 0 {
 		w := toolkit.NewButton(importSessionLabel, nil)
 		w.Font = pillFont
 		w.SetBounds(s.accImportSessionR)
 		w.Draw(p, th)
+		s.addNativeButton("acc:importsession", importSessionLabel, s.accImportSessionR, Hit{Kind: HitImportSession})
 	}
 
 	// Topbar (accent) with Back, title and Done, over any scroll overflow. The
@@ -525,6 +529,7 @@ func (s *Scene) drawAccounts(buf []byte) {
 	back.Font = m.tab.font
 	back.SetBounds(s.accBackR)
 	back.Draw(p, invTheme)
+	s.addNativeButton("acc:back", "‹ Back", s.accBackR, Hit{Kind: HitCloseAccounts})
 
 	title := toolkit.NewLabel("Accounts")
 	title.Font, title.Ink = m.title.font, onAccent
@@ -539,6 +544,7 @@ func (s *Scene) drawAccounts(buf []byte) {
 	done.Font = m.tab.font
 	done.SetBounds(s.accDoneR)
 	done.Draw(p, invTheme)
+	s.addNativeButton("acc:done", "Done", s.accDoneR, Hit{Kind: HitCloseAccounts})
 }
 
 // accountsHitTest maps a click in the credentials editor to an action.

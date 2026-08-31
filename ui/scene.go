@@ -288,6 +288,7 @@ type Scene struct {
 	// drawn. Each draw path appends to it after resetNativeControls clears it, so
 	// a control the app is not showing this frame simply is not there.
 	nativeControls    []toolkit.NativeControl
+	nativeHits        map[string]Hit // native button key -> the Hit its click runs
 	accBackR          toolkit.Rect
 	accDoneR          toolkit.Rect
 	accImportR        toolkit.Rect // Reddit-only "Import session from Firefox" button (zero when hidden)

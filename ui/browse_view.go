@@ -550,6 +550,13 @@ func (s *Scene) drawBrowseBody(p painter.Painter, muteS toolkit.RGBA) {
 	se.Font = ttFont(false, rpxOf(s, 13))
 	se.SetFocused(s.browseFocused)
 	se.Draw(p, th)
+	// Native counterpart over the drawn filter field, bound to the same observable.
+	s.addNativeControl(toolkit.NativeControl{
+		Kind: toolkit.NativeEntry, Key: fmt.Sprintf("search:%p", se),
+		Rect: s.browseFilterR, Visible: true,
+		Text:   se.Text().Get(),
+		OnText: func(t string) { se.Text().Set(t) },
+	})
 
 	// Count / hint line as a Label.
 	count := fmt.Sprintf("%d groups", s.browseMatchCount)
