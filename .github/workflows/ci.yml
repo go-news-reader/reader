@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.4"
+          go-version: "1.27.1"
       - name: Gofmt
         # Three test files had silently drifted out of gofmt; nothing in CI
         # noticed, because vet does not check formatting. gofmt -l prints the
@@ -71,7 +71,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.4"
+          go-version: "1.27.1"
       - name: Test with the race detector (all packages except the window boundary)
         run: go test -race -timeout 20m $(go list ./... | grep -vE '/(internal/(window|sourceplugin/grpc|sourceplugin/transport|mediacacheplugin/grpc|mediacacheplugin/transport)|cmd/(example-source-plugin|example-mediacache-plugin|bundle))($|/)')
 
@@ -102,7 +102,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.4"
+          go-version: "1.27.1"
       - name: Build ${{ matrix.target.goos }}/${{ matrix.target.goarch }}
         env:
           GOOS: ${{ matrix.target.goos }}
