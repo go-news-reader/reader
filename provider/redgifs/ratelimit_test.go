@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v5"
+	"github.com/cenkalti/backoff/v7"
 )
 
 // fakeClock is a controllable clock + sleep for the limiter: sleeping advances
