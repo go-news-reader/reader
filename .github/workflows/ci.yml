@@ -15,7 +15,7 @@ jobs:
       CGO_ENABLED: "0"
       GOWORK: "off"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.4"
@@ -68,7 +68,7 @@ jobs:
       CGO_ENABLED: "1"
       GOWORK: "off"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.4"
@@ -99,7 +99,7 @@ jobs:
           # the whole premise of a CGO=0 build.
           - { goos: android, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.4"
