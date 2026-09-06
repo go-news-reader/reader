@@ -16,7 +16,7 @@ jobs:
       GOWORK: "off"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26.4"
       - name: Gofmt
@@ -69,7 +69,7 @@ jobs:
       GOWORK: "off"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26.4"
       - name: Test with the race detector (all packages except the window boundary)
@@ -100,7 +100,7 @@ jobs:
           - { goos: android, goarch: arm64 }
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26.4"
       - name: Build ${{ matrix.target.goos }}/${{ matrix.target.goarch }}
