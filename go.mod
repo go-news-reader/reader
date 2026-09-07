@@ -14,7 +14,7 @@ require (
 	github.com/go-instagram/instagram v0.5.0
 	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.2.0
-	github.com/go-macos/appbundle v0.4.0
+	github.com/go-macos/appbundle v0.5.0
 	github.com/go-macos/appdmg v0.1.1
 	github.com/go-macos/localauthentication v0.1.0
 	github.com/go-mastodon/mastodon v0.3.0
@@ -31,7 +31,7 @@ require (
 	github.com/go-widgets/application v0.2.0
 	github.com/go-widgets/mvvm v0.9.0
 	github.com/go-widgets/painter v0.13.0
-	github.com/go-widgets/toolkit v0.305.0
+	github.com/go-widgets/toolkit v0.316.0
 	github.com/go-widgets/tray v0.10.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
@@ -54,8 +54,8 @@ require (
 	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-compressions/lzfse v0.3.0 // indirect
-	github.com/go-crdt/collab v0.40.0 // indirect
-	github.com/go-crdt/crdt v0.42.0 // indirect
+	github.com/go-crdt/collab v0.45.0 // indirect
+	github.com/go-crdt/crdt v0.46.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-diskimages/dmg v0.0.0-20260907182204-944939792f30 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
