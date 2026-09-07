@@ -15,6 +15,7 @@ require (
 	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.2.0
 	github.com/go-macos/appbundle v0.4.0
+	github.com/go-macos/appdmg v0.1.1
 	github.com/go-macos/localauthentication v0.1.0
 	github.com/go-mastodon/mastodon v0.3.0
 	github.com/go-newsgroups/newznab v0.1.0
@@ -52,15 +53,20 @@ require (
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
+	github.com/go-compressions/lzfse v0.3.0 // indirect
 	github.com/go-crdt/collab v0.40.0 // indirect
 	github.com/go-crdt/crdt v0.42.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
+	github.com/go-diskimages/dmg v0.0.0-20260907182204-944939792f30 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
+	github.com/go-filesystems/hfsplus v0.2.0 // indirect
+	github.com/go-filesystems/interface v0.3.0 // indirect
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
 	github.com/go-freedesktop/x11 v0.2.0 // indirect
 	github.com/go-gfx/gfx v0.19.0 // indirect
 	github.com/go-gtk/gtk4 v0.3.0 // indirect
 	github.com/go-macos/appkit v0.1.0 // indirect
+	github.com/go-macos/dsstore v0.1.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
 	github.com/go-macos/objc v0.9.1 // indirect
 	github.com/go-mswin/win32 v0.4.0 // indirect
@@ -69,6 +75,7 @@ require (
 	github.com/go-richdoc/richdoc v0.3.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-typeset/bidi v0.3.0 // indirect
+	github.com/go-volumes/safeio v0.0.0-20260831125406-d8f54b2890d4 // indirect
 	github.com/go-widgets/android v0.13.1 // indirect
 	github.com/go-widgets/data v0.1.0 // indirect
 	github.com/go-widgets/window v0.64.0 // indirect
@@ -95,6 +102,7 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
+	howett.net/plist v1.0.1 // indirect
 	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect

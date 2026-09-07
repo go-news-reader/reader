@@ -35,8 +35,8 @@ jobs:
       - name: Vet
         run: go vet ./...
       # The native window loop now lives in go-widgets/application (the reader no
-      # longer carries its own internal/window package). cmd/bundle is build
-      # tooling around go-macos/appbundle.
+      # longer carries its own internal/window package). cmd/bundle and cmd/dmg
+      # are build tooling around go-macos/appbundle and go-macos/appdmg.
       # internal/sourceplugin/grpc + internal/mediacacheplugin/grpc are generated
       # protobuf/gRPC code and internal/sourceplugin/transport +
       # internal/mediacacheplugin/transport are the hashicorp/go-plugin subprocess
@@ -47,7 +47,7 @@ jobs:
       # tested to 100%, and the whole path is exercised end-to-end by building and
       # launching cmd/example-source-plugin + cmd/example-mediacache-plugin).
       - name: Test with coverage (all packages except the window boundary and the plugin transports)
-        run: go test -covermode=set -coverprofile=cover.out $(go list ./... | grep -vE '/(internal/(window|sourceplugin/grpc|sourceplugin/transport|mediacacheplugin/grpc|mediacacheplugin/transport)|cmd/(example-source-plugin|example-mediacache-plugin|bundle))($|/)')
+        run: go test -covermode=set -coverprofile=cover.out $(go list ./... | grep -vE '/(internal/(window|sourceplugin/grpc|sourceplugin/transport|mediacacheplugin/grpc|mediacacheplugin/transport)|cmd/(example-source-plugin|example-mediacache-plugin|bundle|dmg))($|/)')
       - name: Enforce 100% coverage
         run: |
           pct=$(go tool cover -func=cover.out | awk '/^total:/ {print $3}' | tr -d '%')
@@ -73,7 +73,7 @@ jobs:
         with:
           go-version: "1.26.4"
       - name: Test with the race detector (all packages except the window boundary)
-        run: go test -race -timeout 20m $(go list ./... | grep -vE '/(internal/(window|sourceplugin/grpc|sourceplugin/transport|mediacacheplugin/grpc|mediacacheplugin/transport)|cmd/(example-source-plugin|example-mediacache-plugin|bundle))($|/)')
+        run: go test -race -timeout 20m $(go list ./... | grep -vE '/(internal/(window|sourceplugin/grpc|sourceplugin/transport|mediacacheplugin/grpc|mediacacheplugin/transport)|cmd/(example-source-plugin|example-mediacache-plugin|bundle|dmg))($|/)')
 
   cross-build:
     runs-on: ubuntu-latest

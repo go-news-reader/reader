@@ -8,6 +8,11 @@
 /reader
 /newsreader
 /reader-fixed
+# …and it happened again: `go build ./cmd/dmg` leaves /dmg, which `git add -A`
+# swept into a commit at 4 MB. The names are listed because that is what this
+# file can do; the actual remedy is `go build -o /tmp/...` from the start.
+/dmg
+/bundle
 /*.png
 .DS_Store
 
