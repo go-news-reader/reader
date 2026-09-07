@@ -28,6 +28,30 @@ Subscriptions are `kind:channel` (repeatable): `reddit:golang`,
 `usenet:search:ubuntu` (with `-indexer`), … Provider endpoints/credentials are
 set with `-mastodon`, `-lemmy`, `-usenet`, `-indexer`.
 
+## Shipping a macOS build
+
+Two build-tooling commands turn a compiled binary into what a Mac user
+installs, both pure Go with `CGO_ENABLED=0` and no `hdiutil`:
+
+```sh
+APP=$(go run ./cmd/bundle -exe ./newsreader -dir /tmp -version 1.2.3)
+codesign --force --deep --sign "NewsReader Dev" --identifier com.gonewsreader.reader "$APP"
+go run ./cmd/dmg -app "$APP" -o "News Reader.dmg"
+```
+
+`cmd/bundle` assembles the `.app` (a bare executable is not an application to
+AppKit: no Dock tile, no name in the menu bar, no working tray).
+`cmd/dmg` puts that bundle in the disk image it is distributed in — the
+application on the left, a shortcut to `/Applications` on the right, and the
+reader's own icon on the volume — via
+[go-macos/appdmg](https://github.com/go-macos/appdmg).
+
+**Sign before making the image.** The image is a copy of the bundle as it
+stands, so a bundle signed afterwards is not the bundle inside it. The copy
+does preserve a signature — it lives in `Contents/_CodeSignature` and inside
+the Mach-O, both ordinary files — and `codesign --verify` on the mounted copy
+says `valid on disk` and `satisfies its Designated Requirement`.
+
 ## Sources
 
 Each platform has a standalone pure-Go client library in its own org; this repo
