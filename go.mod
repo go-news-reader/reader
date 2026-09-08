@@ -32,7 +32,7 @@ require (
 	github.com/go-widgets/mvvm v0.9.0
 	github.com/go-widgets/painter v0.13.0
 	github.com/go-widgets/toolkit v0.316.0
-	github.com/go-widgets/tray v0.10.0
+	github.com/go-widgets/tray v0.10.1
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.83.2
