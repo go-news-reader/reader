@@ -10,7 +10,7 @@ require (
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-icons/iconoir v0.2.0
 	github.com/go-icons/simple-icons v0.1.0
-	github.com/go-images/images v0.0.0-20260831115433-23d959d868e3
+	github.com/go-images/images v0.0.0-20260910072158-ed2a303027a2
 	github.com/go-instagram/instagram v0.5.0
 	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.2.0
@@ -63,7 +63,7 @@ require (
 	github.com/go-filesystems/interface v0.3.0 // indirect
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
 	github.com/go-freedesktop/x11 v0.2.0 // indirect
-	github.com/go-gfx/gfx v0.19.0 // indirect
+	github.com/go-gfx/gfx v0.20.0 // indirect
 	github.com/go-gtk/gtk4 v0.3.0 // indirect
 	github.com/go-macos/appkit v0.1.0 // indirect
 	github.com/go-macos/dsstore v0.1.0 // indirect
@@ -97,10 +97,10 @@ require (
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/tannevaled/gobig2 v0.1.0 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
-	golang.org/x/image v0.45.0 // indirect
+	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	howett.net/plist v1.0.1 // indirect
 	modernc.org/libc v1.75.6 // indirect
