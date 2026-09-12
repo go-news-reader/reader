@@ -50,7 +50,7 @@ require (
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/dop251/goja v0.0.0-20260723142020-b4aef50fa347 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/ebitengine/purego v0.10.2 // indirect
+	github.com/ebitengine/purego v0.11.0 // indirect
 	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-compressions/lzfse v0.3.0 // indirect
@@ -64,11 +64,11 @@ require (
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
 	github.com/go-freedesktop/x11 v0.2.0 // indirect
 	github.com/go-gfx/gfx v0.20.0 // indirect
-	github.com/go-gtk/gtk4 v0.3.0 // indirect
-	github.com/go-macos/appkit v0.1.0 // indirect
+	github.com/go-gtk/gtk4 v0.6.0 // indirect
+	github.com/go-macos/appkit v0.5.0 // indirect
 	github.com/go-macos/dsstore v0.1.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
-	github.com/go-macos/objc v0.9.1 // indirect
+	github.com/go-macos/objc v0.10.2 // indirect
 	github.com/go-mswin/win32 v0.4.0 // indirect
 	github.com/go-opentype/opentype v0.12.0 // indirect
 	github.com/go-opentype/shape v0.5.0 // indirect
@@ -78,7 +78,7 @@ require (
 	github.com/go-volumes/safeio v0.0.0-20260831125406-d8f54b2890d4 // indirect
 	github.com/go-widgets/android v0.13.1 // indirect
 	github.com/go-widgets/data v0.1.0 // indirect
-	github.com/go-widgets/window v0.64.0 // indirect
+	github.com/go-widgets/window v0.77.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect
