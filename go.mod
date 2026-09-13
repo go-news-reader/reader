@@ -10,7 +10,7 @@ require (
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-icons/iconoir v0.2.0
 	github.com/go-icons/simple-icons v0.1.0
-	github.com/go-images/images v0.0.0-20260910072158-ed2a303027a2
+	github.com/go-images/images v0.0.0-20260912071231-12ebfec58453
 	github.com/go-instagram/instagram v0.5.0
 	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.2.0
@@ -32,7 +32,7 @@ require (
 	github.com/go-widgets/mvvm v0.9.0
 	github.com/go-widgets/painter v0.13.0
 	github.com/go-widgets/toolkit v0.316.0
-	github.com/go-widgets/tray v0.10.1
+	github.com/go-widgets/tray v0.11.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.83.2
@@ -63,7 +63,7 @@ require (
 	github.com/go-filesystems/interface v0.3.0 // indirect
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
 	github.com/go-freedesktop/x11 v0.2.0 // indirect
-	github.com/go-gfx/gfx v0.20.0 // indirect
+	github.com/go-gfx/gfx v0.24.0 // indirect
 	github.com/go-gtk/gtk4 v0.6.0 // indirect
 	github.com/go-macos/appkit v0.5.0 // indirect
 	github.com/go-macos/dsstore v0.1.0 // indirect

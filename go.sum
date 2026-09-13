@@ -60,8 +60,8 @@ github.com/go-freedesktop/secretservice v0.1.0 h1:TvkRjrJFluGux0MMOllbZ3rQrCK74x
 github.com/go-freedesktop/secretservice v0.1.0/go.mod h1:PiF8irQ+aFqjMhiwdTDI2lYLk4HZ55eQPVJIUQ8K2+E=
 github.com/go-freedesktop/x11 v0.2.0 h1:qHvov5jn7GG4QxeealqRJVj72/MjR5qi2IXqyD7N02A=
 github.com/go-freedesktop/x11 v0.2.0/go.mod h1:a+Fma9oOlsagw0CJKe+VHYxIl5/PzPSmlCVaYCtUSYA=
-github.com/go-gfx/gfx v0.20.0 h1:gZheZMfwkBm1mkcIqcAMiLwV/mZkkQxx7TfEJ1+6JB8=
-github.com/go-gfx/gfx v0.20.0/go.mod h1:VAK6hgCgkhT3j3ek2K7G8zDfkCPD3RCF45UbcRlCV8Q=
+github.com/go-gfx/gfx v0.24.0 h1:4ow4Mqh0WV42iMV8Pe24XWLy4YsJrKr+S1V+/Hk8RHc=
+github.com/go-gfx/gfx v0.24.0/go.mod h1:5wUl8qCvaooyJ9Ly0oS2TLlawlvAp3kosrxh5kfxVTo=
 github.com/go-gtk/gtk4 v0.6.0 h1:piXUsvHo1FWJtgEz5ogowyvXlMskchAbiryeNJPKEmw=
 github.com/go-gtk/gtk4 v0.6.0/go.mod h1:jjaA29sFQTpy2D3N+FrnxMFZq07mG48ahgQoEEECpPA=
 github.com/go-hackernews/hackernews v0.1.0 h1:4d9f4KmqfEnd8WTRyx2ee5jnA4JJz7QHZqA7q3nuGCY=
@@ -70,8 +70,8 @@ github.com/go-icons/iconoir v0.2.0 h1:I5AnDEIPgYfawTmwzemDRJjlYCUbFHuS8GJXrjADhX
 github.com/go-icons/iconoir v0.2.0/go.mod h1:Td/M2vy4xdVv4aOudAskV0nXR9Wv0MlhWvyRIzPBz5U=
 github.com/go-icons/simple-icons v0.1.0 h1:/y6A+NLIgUHcU3oHKtGzPBavxVdQXUbio7rE4T2B3JI=
 github.com/go-icons/simple-icons v0.1.0/go.mod h1:YMpdCqmmsDBSX/FAQbef1H5eTjP/5Mv/GvsYRE1FvSU=
-github.com/go-images/images v0.0.0-20260910072158-ed2a303027a2 h1:9a68bcU99nJ0ef9p+nOSmvRcgEDUrYRFrIquh3diQJg=
-github.com/go-images/images v0.0.0-20260910072158-ed2a303027a2/go.mod h1:VKoOT5YhxwjzPyibxlyO7zZ2xasGl7qnD23EqNIfTRM=
+github.com/go-images/images v0.0.0-20260912071231-12ebfec58453 h1:TgOeSHKvo21u4jA1z1NjO0SzXAV+nAdP6cW574ZSd7M=
+github.com/go-images/images v0.0.0-20260912071231-12ebfec58453/go.mod h1:YYnnR2PknaSv3H4x1gDiElP7Urzat46f8QRo3wlZn1E=
 github.com/go-instagram/instagram v0.5.0 h1:97l457yZg2pbqx+aBJr6Dsjcn3HuVK723F8KWn8KeSE=
 github.com/go-instagram/instagram v0.5.0/go.mod h1:FNtFVnKzf/mUyFS3St/C2wrUeuR+1c2AmlMf/ICsnj8=
 github.com/go-keyring/keyring v0.3.0 h1:UYRL8mdHDn+xl7XFQ5RTkIuyvGCl0sD42HT43yIJhmU=
@@ -146,8 +146,8 @@ github.com/go-widgets/painter v0.13.0 h1:xBPbopFuYfeDVbQKUKviU6HnP2mAhztJ+Bpasah
 github.com/go-widgets/painter v0.13.0/go.mod h1:IPRLqdUJuJX8sfuHeYLZCzjoLvA0ApbOlyIAVmguJDQ=
 github.com/go-widgets/toolkit v0.316.0 h1:K/8npgr8qkQDtIcfcaYTxrPHAxNWIcwhU0RcwKPfY8I=
 github.com/go-widgets/toolkit v0.316.0/go.mod h1:Mucxvqm+K+VjG+Iu5i1RExez41H2Slbc99HYOcyc1sU=
-github.com/go-widgets/tray v0.10.1 h1:7rmQvkS6O4Etav3fyqIJcMYurq4gSghw3iVcgKZEcGU=
-github.com/go-widgets/tray v0.10.1/go.mod h1:N85EGfHbMo1SxX6BH1tlnOJpIP26MP7rKemLNVtcDf8=
+github.com/go-widgets/tray v0.11.0 h1:ho6rvgAbCFIkuKsk2cMlWUELLBpOXrhV1QKQ/Td3Ncw=
+github.com/go-widgets/tray v0.11.0/go.mod h1:WI0hXXWvZ/ViaUxba7vSJ1VZYbRz2CqLSzI0WFQia+I=
 github.com/go-widgets/window v0.77.0 h1:yFEMdmFoW96x//vMKBQOIxqRCPO2lJbuGM7+EXhXsGQ=
 github.com/go-widgets/window v0.77.0/go.mod h1:7tt5MEtYz9yKOVBnRP/kLNCLxhw1YvG+Lktyu3o+UY4=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
