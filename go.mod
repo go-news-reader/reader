@@ -23,7 +23,7 @@ require (
 	github.com/go-newsgroups/nzb v0.1.0
 	github.com/go-newsgroups/par2 v0.1.0
 	github.com/go-newsgroups/yenc v0.1.0
-	github.com/go-opentype/fonts v0.9.0
+	github.com/go-opentype/fonts v0.10.0
 	github.com/go-reddit/reddit v0.9.0
 	github.com/go-syndication/feed v0.1.1
 	github.com/go-tiktok/tiktok v0.3.0
@@ -31,8 +31,8 @@ require (
 	github.com/go-widgets/application v0.2.0
 	github.com/go-widgets/mvvm v0.9.0
 	github.com/go-widgets/painter v0.13.0
-	github.com/go-widgets/toolkit v0.317.0
-	github.com/go-widgets/tray v0.11.0
+	github.com/go-widgets/toolkit v0.320.0
+	github.com/go-widgets/tray v0.12.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.84.0
@@ -53,8 +53,8 @@ require (
 	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-compressions/lzfse v0.3.0 // indirect
-	github.com/go-crdt/collab v0.60.0 // indirect
-	github.com/go-crdt/crdt v0.47.0 // indirect
+	github.com/go-crdt/collab v0.62.0 // indirect
+	github.com/go-crdt/crdt v0.49.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-diskimages/dmg v0.0.0-20260907182204-944939792f30 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
@@ -69,7 +69,7 @@ require (
 	github.com/go-macos/dsstore v0.1.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
 	github.com/go-macos/objc v0.10.2 // indirect
-	github.com/go-mswin/win32 v0.4.0 // indirect
+	github.com/go-mswin/win32 v0.5.0 // indirect
 	github.com/go-opentype/opentype v0.12.0 // indirect
 	github.com/go-opentype/shape v0.5.0 // indirect
 	github.com/go-richdoc/richdoc v0.3.0 // indirect
