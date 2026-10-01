@@ -3,14 +3,14 @@ module github.com/go-news-reader/reader
 go 1.26.4
 
 require (
-	github.com/cenkalti/backoff/v7 v7.0.0
+	github.com/cenkalti/backoff/v7 v7.0.1
 	github.com/go-atproto/atproto v0.2.0
 	github.com/go-birdsite/twitter v0.4.0
 	github.com/go-browserhttp/browserhttp v0.2.0
 	github.com/go-hackernews/hackernews v0.1.0
 	github.com/go-icons/iconoir v0.2.0
 	github.com/go-icons/simple-icons v0.1.0
-	github.com/go-images/images v0.0.0-20260923074905-cdcee44e3c7e
+	github.com/go-images/images v0.0.0-20260927173152-87444e36aac4
 	github.com/go-instagram/instagram v0.5.0
 	github.com/go-keyring/keyring v0.3.0
 	github.com/go-lemmy/lemmy v0.2.0
@@ -31,18 +31,18 @@ require (
 	github.com/go-widgets/application v0.2.0
 	github.com/go-widgets/mvvm v0.9.0
 	github.com/go-widgets/painter v0.13.0
-	github.com/go-widgets/toolkit v0.320.0
+	github.com/go-widgets/toolkit v0.321.2
 	github.com/go-widgets/tray v0.12.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
-	modernc.org/sqlite v1.59.0
+	modernc.org/sqlite v1.60.1
 )
 
 require (
 	github.com/ajroetker/go-highway v0.0.4 // indirect
-	github.com/andybalholm/brotli v1.2.4 // indirect
+	github.com/andybalholm/brotli v1.2.5 // indirect
 	github.com/breml/rootcerts v0.3.7 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
@@ -53,8 +53,8 @@ require (
 	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-compressions/lzfse v0.3.0 // indirect
-	github.com/go-crdt/collab v0.62.0 // indirect
-	github.com/go-crdt/crdt v0.49.0 // indirect
+	github.com/go-crdt/collab v0.74.0 // indirect
+	github.com/go-crdt/crdt v0.55.0 // indirect
 	github.com/go-datetime/dates v0.1.0 // indirect
 	github.com/go-diskimages/dmg v0.0.0-20260907182204-944939792f30 // indirect
 	github.com/go-erasure/reedsolomon v0.3.0 // indirect
@@ -62,17 +62,20 @@ require (
 	github.com/go-filesystems/interface v0.3.0 // indirect
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
 	github.com/go-freedesktop/x11 v0.2.0 // indirect
-	github.com/go-gfx/gfx v0.26.0 // indirect
+	github.com/go-gfx/gfx v0.34.0 // indirect
 	github.com/go-gtk/gtk4 v0.6.0 // indirect
+	github.com/go-images/gif v0.1.0 // indirect
+	github.com/go-images/jpeg v0.2.0 // indirect
 	github.com/go-images/jpeg2000 v0.1.0 // indirect
+	github.com/go-images/png v0.1.0 // indirect
 	github.com/go-macos/appkit v0.5.0 // indirect
 	github.com/go-macos/dsstore v0.1.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
 	github.com/go-macos/objc v0.10.2 // indirect
 	github.com/go-mswin/win32 v0.5.0 // indirect
-	github.com/go-opentype/opentype v0.12.0 // indirect
+	github.com/go-opentype/opentype v0.13.0 // indirect
 	github.com/go-opentype/shape v0.5.0 // indirect
-	github.com/go-richdoc/richdoc v0.3.0 // indirect
+	github.com/go-richdoc/richdoc v0.4.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-typeset/bidi v0.3.0 // indirect
 	github.com/go-volumes/safeio v0.0.0-20260831125406-d8f54b2890d4 // indirect
@@ -95,7 +98,7 @@ require (
 	github.com/sergeymakinen/go-ico v1.0.0 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
-	github.com/tannevaled/gobig2 v0.1.0 // indirect
+	github.com/tannevaled/gobig2 v0.2.0 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
@@ -103,7 +106,7 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	howett.net/plist v1.0.1 // indirect
-	modernc.org/libc v1.75.7 // indirect
+	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
