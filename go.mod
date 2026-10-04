@@ -1,6 +1,6 @@
 module github.com/go-news-reader/reader
 
-go 1.26.4
+go 1.27.1
 
 require (
 	github.com/cenkalti/backoff/v7 v7.0.1
