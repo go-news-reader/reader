@@ -1,12 +1,12 @@
 module github.com/go-news-reader/reader
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/cenkalti/backoff/v7 v7.0.3
 	github.com/go-atproto/atproto v0.3.0
 	github.com/go-birdsite/twitter v0.5.0
-	github.com/go-browserhttp/browserhttp v0.3.0
+	github.com/go-browserhttp/browserhttp v0.3.1
 	github.com/go-hackernews/hackernews v0.2.0
 	github.com/go-icons/iconoir v0.3.0
 	github.com/go-icons/simple-icons v0.2.0
@@ -27,22 +27,22 @@ require (
 	github.com/go-reddit/reddit v0.10.0
 	github.com/go-syndication/feed v0.2.0
 	github.com/go-tiktok/tiktok v0.4.0
-	github.com/go-webengine/engine v0.34.0
+	github.com/go-webengine/engine v0.47.2
 	github.com/go-widgets/application v0.8.1
 	github.com/go-widgets/mvvm v0.15.0
-	github.com/go-widgets/painter v0.17.0
-	github.com/go-widgets/toolkit v0.356.0
+	github.com/go-widgets/painter v0.17.1
+	github.com/go-widgets/toolkit v0.374.11
 	github.com/go-widgets/tray v0.15.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
-	modernc.org/sqlite v1.61.1
+	modernc.org/sqlite v1.62.0
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.7 // indirect
-	github.com/breml/rootcerts v0.3.7 // indirect
+	github.com/andybalholm/brotli v1.2.8 // indirect
+	github.com/breml/rootcerts v0.3.8 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/dop251/goja v0.0.0-20260926152631-39ec2650adc9 // indirect
@@ -62,7 +62,7 @@ require (
 	github.com/go-freedesktop/secretservice v0.1.0 // indirect
 	github.com/go-freedesktop/x11 v0.3.0 // indirect
 	github.com/go-gfx/gfx v0.41.0 // indirect
-	github.com/go-gfx/oksvg v0.3.1 // indirect
+	github.com/go-gfx/oksvg v0.4.0 // indirect
 	github.com/go-gfx/wgsl v0.4.0 // indirect
 	github.com/go-gtk/gtk4 v0.9.0 // indirect
 	github.com/go-images/gif v0.2.0 // indirect
@@ -72,10 +72,10 @@ require (
 	github.com/go-macos/appkit v0.9.0 // indirect
 	github.com/go-macos/dsstore v0.1.0 // indirect
 	github.com/go-macos/keychain v0.1.0 // indirect
-	github.com/go-macos/metal v0.4.0 // indirect
-	github.com/go-macos/objc v0.11.2 // indirect
+	github.com/go-macos/metal v0.7.0 // indirect
+	github.com/go-macos/objc v0.12.0 // indirect
 	github.com/go-mswin/win32 v0.6.0 // indirect
-	github.com/go-opentype/opentype v0.16.2-0.20261027113239-5e69589e9a5e // indirect
+	github.com/go-opentype/opentype v0.21.1 // indirect
 	github.com/go-opentype/shape v0.7.0 // indirect
 	github.com/go-richdoc/richdoc v0.7.0 // indirect
 	github.com/go-simd/highway v0.0.14 // indirect
@@ -86,6 +86,7 @@ require (
 	github.com/go-widgets/android v0.15.0 // indirect
 	github.com/go-widgets/data v0.3.0 // indirect
 	github.com/go-widgets/textinput v0.1.0 // indirect
+	github.com/go-widgets/vcs v0.1.0 // indirect
 	github.com/go-widgets/webcanvas v0.3.0 // indirect
 	github.com/go-widgets/window v0.87.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
@@ -93,7 +94,7 @@ require (
 	github.com/google/pprof v0.0.0-20261016150608-1facf8f91b50 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
-	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect
@@ -110,7 +111,7 @@ require (
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260817212433-ac3dfec99bb1 // indirect
 	howett.net/plist v1.0.1 // indirect
-	modernc.org/libc v1.79.0 // indirect
+	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
